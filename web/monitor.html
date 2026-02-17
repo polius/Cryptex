@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cryptex - Monitor Dashboard</title>
+  <meta name="description" content="Monitor dashboard for Cryptex" />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="css/admin.css" />
+  <script>
+    // Load theme immediately to prevent flash
+    (function() {
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-bs-theme', savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+  </script>
+</head>
+<body class="px-1 pb-4">
+  <div class="top-nav-buttons">
+    <button id="apiReferenceToggle" class="admin-api-toggle" aria-label="API Reference" title="API Reference">
+      <i class="bi bi-code-slash"></i><span class="d-none d-md-inline ms-2">API</span>
+    </button>
+    <button id="themeToggle" class="theme-toggle" aria-label="Dark mode" title="Dark mode">
+      <i class="bi bi-moon-fill" id="themeIcon"></i><span class="d-none d-md-inline ms-2">Dark</span>
+    </button>
+    <a href="#" id="logoutToggle" class="admin-logout-toggle" aria-label="Logout" title="Logout">
+      <i class="bi bi-box-arrow-right"></i><span class="d-none d-md-inline ms-2">Logout</span>
+    </a>
+  </div>
+  
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-12" style="position: relative;">
+        <!-- New Cryptex Button -->
+        <a href="/" class="new-cryptex-toggle" aria-label="New Cryptex" title="Create a new Cryptex">
+          <i class="bi bi-plus-lg"></i>
+          <span>New Cryptex</span>
+        </a>
+
+        <!-- Navigation Bar -->
+        <div class="admin-nav">
+          <div class="admin-nav-link admin-nav-logo">
+            <img src="assets/logo.svg" alt="Cryptex" />
+            <span>Admin</span>
+          </div>
+          <a href="/monitor" class="admin-nav-link active">
+            <i class="bi bi-bar-chart-fill"></i>
+            <span>Monitor</span>
+          </a>
+          <a href="/links" class="admin-nav-link">
+            <i class="bi bi-link"></i>
+            <span>Links</span>
+          </a>
+          <a href="/settings" class="admin-nav-link">
+            <i class="bi bi-gear-fill"></i>
+            <span>Settings</span>
+          </a>
+          <a href="/security" class="admin-nav-link">
+            <i class="bi bi-shield-lock-fill"></i>
+            <span>Security</span>
+          </a>
+        </div>
+
+        <!-- Page Header -->
+        <div class="page-header">
+          <h2 class="page-title">Monitor</h2>
+          <p class="page-desc">Overview of stored items and system resources</p>
+        </div>
+
+        <!-- Stats Cards -->
+        <div class="row g-3 mb-4">
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon stat-icon-indigo">
+                <i class="bi bi-grid-fill"></i>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Total Items</div>
+                <div class="stat-value" id="totalItems">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon stat-icon-blue">
+                <i class="bi bi-card-text"></i>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Text Only</div>
+                <div class="stat-value" id="textOnly">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon stat-icon-amber">
+                <i class="bi bi-paperclip"></i>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Files Only</div>
+                <div class="stat-value" id="filesOnly">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6 col-md-3">
+            <div class="stat-card">
+              <div class="stat-icon stat-icon-purple">
+                <i class="bi bi-file-earmark-text-fill"></i>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Text + Files</div>
+                <div class="stat-value" id="textWithFiles">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3 mb-4">
+          <div class="col-12 col-sm-6">
+            <div class="stat-card">
+              <div class="stat-icon stat-icon-rose">
+                <i class="bi bi-database-fill"></i>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Cryptex Storage</div>
+                <div class="stat-value" id="totalSize">-</div>
+              </div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-6">
+            <div class="stat-card">
+              <div class="stat-icon stat-icon-emerald">
+                <i class="bi bi-hdd-fill"></i>
+              </div>
+              <div class="stat-content">
+                <div class="stat-label">Disk Free</div>
+                <div class="stat-value" id="diskFree">-</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Items Table -->
+        <div class="card">
+          <div class="card-body">
+            <div class="link-toolbar">
+              <div class="link-toolbar-info">
+                <span id="itemCount" class="link-count"></span>
+              </div>
+              <div class="d-flex gap-2">
+                <input type="text" id="filterInput" class="form-control form-control-sm" placeholder="Search..." style="max-width: 180px; display: none;" />
+                <button id="deleteAllBtn" class="btn btn-danger btn-sm">
+                  <i class="bi bi-trash-fill"></i>
+                  <span class="d-none d-md-inline ms-1">Delete All</span>
+                </button>
+                <button id="refreshBtn" class="btn btn-secondary btn-sm">
+                  <i class="bi bi-arrow-clockwise"></i>
+                  <span class="d-none d-md-inline ms-1">Refresh</span>
+                </button>
+              </div>
+            </div>
+            <div id="loadingIndicator" class="loading-state">
+              <div class="loading-spinner"></div>
+              <p>Loading data...</p>
+            </div>
+            
+            <div id="tableContainer" style="display: none;">
+              <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                  <thead>
+                    <tr>
+                      <th class="sortable" data-column="cryptex_id">
+                        Cryptex ID <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="type">
+                        Type <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="encrypted">
+                        Has Password <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="autodestroy">
+                        Self-Destruct <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="file_count">
+                        Files <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="total_size">
+                        Total Size <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="created">
+                        Created <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="expires_in">
+                        Expires In <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th class="sortable" data-column="views">
+                        Views <i class="bi bi-chevron-expand sort-icon"></i>
+                      </th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="itemsTableBody">
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Pagination -->
+            <div id="paginationContainer" class="pagination-container" style="display: none;">
+              <div class="pagination-info">
+                <span id="paginationInfo"></span>
+              </div>
+              <div class="pagination-controls">
+                <div class="pagination-per-page">
+                  <label for="perPageSelect">Per page:</label>
+                  <select id="perPageSelect" class="form-select form-select-sm">
+                    <option value="10" selected>10</option>
+                    <option value="25">25</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </div>
+                <div class="pagination-nav">
+                  <button id="prevPageBtn" class="btn btn-secondary btn-sm" disabled>
+                    <i class="bi bi-chevron-left"></i>
+                  </button>
+                  <span id="pageIndicator" class="pagination-page"></span>
+                  <button id="nextPageBtn" class="btn btn-secondary btn-sm" disabled>
+                    <i class="bi bi-chevron-right"></i>
+                  </button>
+                </div>
+              </div>
+            </div>
+            
+            <div id="emptyState" class="empty-state" style="display: none;">
+              <i class="bi bi-shield-lock empty-state-icon"></i>
+              <p class="empty-state-title">No items found</p>
+              <p class="empty-state-desc">Stored Cryptex items will appear here</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Custom Dialog -->
+  <div id="customDialog" class="custom-dialog" style="display: none;">
+    <div class="custom-dialog-backdrop"></div>
+    <div class="custom-dialog-content">
+      <div class="custom-dialog-header">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <h3 id="dialogTitle">Confirm Action</h3>
+      </div>
+      <div class="custom-dialog-body">
+        <p id="dialogMessage"></p>
+      </div>
+      <div class="custom-dialog-footer">
+        <button id="dialogCancelBtn" class="btn btn-secondary">Cancel</button>
+        <button id="dialogConfirmBtn" class="btn btn-danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
+  <script src="js/common.js"></script>
+  <script src="js/monitor.js"></script>
+  <script src="js/api-reference.js"></script>
+</body>
+</html>

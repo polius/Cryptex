@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cryptex - Settings</title>
+  <meta name="description" content="Settings for Cryptex" />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="css/admin.css" />
+  <script>
+    // Load theme immediately to prevent flash
+    (function() {
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-bs-theme', savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+  </script>
+</head>
+<body class="px-1 pb-4">
+  <div class="top-nav-buttons">
+    <button id="apiReferenceToggle" class="admin-api-toggle" aria-label="API Reference" title="API Reference">
+      <i class="bi bi-code-slash"></i><span class="d-none d-md-inline ms-2">API</span>
+    </button>
+    <button id="themeToggle" class="theme-toggle" aria-label="Dark mode" title="Dark mode">
+      <i class="bi bi-moon-fill" id="themeIcon"></i><span class="d-none d-md-inline ms-2">Dark</span>
+    </button>
+    <a href="#" id="logoutToggle" class="admin-logout-toggle" aria-label="Logout" title="Logout">
+      <i class="bi bi-box-arrow-right"></i><span class="d-none d-md-inline ms-2">Logout</span>
+    </a>
+  </div>
+  
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-12" style="position: relative;">
+        <!-- New Cryptex Button -->
+        <a href="/" class="new-cryptex-toggle" aria-label="New Cryptex" title="Create a new Cryptex">
+          <i class="bi bi-plus-lg"></i>
+          <span>New Cryptex</span>
+        </a>
+
+        <!-- Navigation Bar -->
+        <div class="admin-nav">
+          <div class="admin-nav-link admin-nav-logo">
+            <img src="assets/logo.svg" alt="Cryptex" />
+            <span>Admin</span>
+          </div>
+          <a href="/monitor" class="admin-nav-link">
+            <i class="bi bi-bar-chart-fill"></i>
+            <span>Monitor</span>
+          </a>
+          <a href="/links" class="admin-nav-link">
+            <i class="bi bi-link"></i>
+            <span>Links</span>
+          </a>
+          <a href="/settings" class="admin-nav-link active">
+            <i class="bi bi-gear-fill"></i>
+            <span>Settings</span>
+          </a>
+          <a href="/security" class="admin-nav-link">
+            <i class="bi bi-shield-lock-fill"></i>
+            <span>Security</span>
+          </a>
+        </div>
+
+        <!-- Page Header -->
+        <div class="page-header">
+          <h2 class="page-title">Settings</h2>
+          <p class="page-desc">Control who can access Cryptex and set usage limits</p>
+        </div>
+
+        <!-- Settings Card -->
+        <div class="card" id="settingsCard">
+          <div class="card-body card-body-sections">
+            <form id="settingsForm">
+              <!-- Access Mode Section -->
+              <div class="settings-section">
+                <div class="settings-section-header">
+                  <h4>Access Mode</h4>
+                </div>
+                <div class="settings-section-body">
+                  <div class="mode-option">
+                    <input class="form-check-input" type="radio" name="mode" id="modePublic" value="public">
+                    <label class="mode-option-label" for="modePublic">
+                      <div class="mode-option-title">
+                        <i class="bi bi-globe2"></i>
+                        Public
+                      </div>
+                      <div class="mode-option-desc">No authentication required to create or open</div>
+                    </label>
+                  </div>
+                  
+                  <div class="mode-option">
+                    <input class="form-check-input" type="radio" name="mode" id="modePrivate" value="private">
+                    <label class="mode-option-label" for="modePrivate">
+                      <div class="mode-option-title">
+                        <i class="bi bi-lock-fill"></i>
+                        Private
+                      </div>
+                      <div class="mode-option-desc">Requires authentication to create (anyone can open)</div>
+                    </label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Limits Section -->
+              <div class="settings-section">
+                <div class="settings-section-header">
+                  <h4>Limits & Restrictions</h4>
+                </div>
+                <div class="settings-section-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="maxMessageLength" class="form-label">Max Message Length</label>
+                      <div class="input-with-unit">
+                        <input type="number" class="form-control" id="maxMessageLength" name="max_message_length" min="100" max="100000" required>
+                        <span class="input-unit">characters</span>
+                      </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                      <label for="maxFileCount" class="form-label">Max File Count</label>
+                      <div class="input-with-unit">
+                        <input type="number" class="form-control" id="maxFileCount" name="max_file_count" min="1" max="20" required>
+                        <span class="input-unit">files</span>
+                      </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                      <label for="maxFileSizeNumber" class="form-label">Max File Size</label>
+                      <div class="input-with-select">
+                        <input type="number" class="form-control" id="maxFileSizeNumber" min="1" required>
+                        <select class="form-select" id="maxFileSizeUnit">
+                          <option value="b">Bytes (B)</option>
+                          <option value="kb">Kilobytes (KB)</option>
+                          <option value="mb" selected>Megabytes (MB)</option>
+                          <option value="gb">Gigabytes (GB)</option>
+                        </select>
+                      </div>
+                    </div>
+                    
+                    <div class="col-md-6">
+                      <label for="maxExpirationNumber" class="form-label">Max Expiration Time</label>
+                      <div class="input-with-select">
+                        <input type="number" class="form-control" id="maxExpirationNumber" min="1" required>
+                        <select class="form-select" id="maxExpirationUnit">
+                          <option value="m">Minutes</option>
+                          <option value="h">Hours</option>
+                          <option value="d" selected>Days</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Action Buttons -->
+              <div class="card-actions">
+                <button type="submit" class="btn btn-primary">
+                  Save Changes
+                </button>
+              </div>
+
+              <div id="saveMessage" class="save-message" style="display: none;"></div>
+            </form>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Container -->
+  <div id="toast-container"></div>
+
+  <!-- Custom Dialog -->
+  <div id="customDialog" class="custom-dialog" style="display: none;">
+    <div class="custom-dialog-backdrop"></div>
+    <div class="custom-dialog-content">
+      <div class="custom-dialog-header">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <h3 id="dialogTitle">Confirm Action</h3>
+      </div>
+      <div class="custom-dialog-body">
+        <p id="dialogMessage"></p>
+      </div>
+      <div class="custom-dialog-footer">
+        <button id="dialogCancelBtn" class="btn btn-secondary">Cancel</button>
+        <button id="dialogConfirmBtn" class="btn btn-danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
+  <script src="js/common.js"></script>
+  <script src="js/settings.js"></script>
+  <script src="js/api-reference.js"></script>
+</body>
+</html>

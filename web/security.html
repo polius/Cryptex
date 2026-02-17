@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Cryptex - Security</title>
+  <meta name="description" content="Security settings for Cryptex" />
+  <meta name="robots" content="noindex, nofollow" />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="css/admin.css" />
+  <script>
+    // Load theme immediately to prevent flash
+    (function() {
+      const savedTheme = localStorage.getItem('theme') || 'dark';
+      document.documentElement.setAttribute('data-bs-theme', savedTheme);
+      document.documentElement.setAttribute('data-theme', savedTheme);
+    })();
+  </script>
+</head>
+<body class="px-1 pb-4">
+  <div class="top-nav-buttons">
+    <button id="apiReferenceToggle" class="admin-api-toggle" aria-label="API Reference" title="API Reference">
+      <i class="bi bi-code-slash"></i><span class="d-none d-md-inline ms-2">API</span>
+    </button>
+    <button id="themeToggle" class="theme-toggle" aria-label="Dark mode" title="Dark mode">
+      <i class="bi bi-moon-fill" id="themeIcon"></i><span class="d-none d-md-inline ms-2">Dark</span>
+    </button>
+    <a href="#" id="logoutToggle" class="admin-logout-toggle" aria-label="Logout" title="Logout">
+      <i class="bi bi-box-arrow-right"></i><span class="d-none d-md-inline ms-2">Logout</span>
+    </a>
+  </div>
+  
+  <div class="container">
+    <div class="row justify-content-center">
+      <div class="col-lg-12" style="position: relative;">
+        <!-- New Cryptex Button -->
+        <a href="/" class="new-cryptex-toggle" aria-label="New Cryptex" title="Create a new Cryptex">
+          <i class="bi bi-plus-lg"></i>
+          <span>New Cryptex</span>
+        </a>
+
+        <!-- Navigation Bar -->
+        <div class="admin-nav">
+          <div class="admin-nav-link admin-nav-logo">
+            <img src="assets/logo.svg" alt="Cryptex" />
+            <span>Admin</span>
+          </div>
+          <a href="/monitor" class="admin-nav-link">
+            <i class="bi bi-bar-chart-fill"></i>
+            <span>Monitor</span>
+          </a>
+          <a href="/links" class="admin-nav-link">
+            <i class="bi bi-link"></i>
+            <span>Links</span>
+          </a>
+          <a href="/settings" class="admin-nav-link">
+            <i class="bi bi-gear-fill"></i>
+            <span>Settings</span>
+          </a>
+          <a href="/security" class="admin-nav-link active">
+            <i class="bi bi-shield-lock-fill"></i>
+            <span>Security</span>
+          </a>
+        </div>
+
+        <!-- Page Header -->
+        <div class="page-header">
+          <h2 class="page-title">Security</h2>
+          <p class="page-desc">Protect your account with a strong password and two-factor authentication</p>
+        </div>
+
+        <!-- Security Card -->
+        <div class="card" id="securityCard">
+          <div class="card-body card-body-sections">
+            <!-- Change Password Section -->
+              <div class="settings-section">
+                <div class="settings-section-header">
+                  <h4>Change Password</h4>
+                </div>
+                <div class="settings-section-body">
+                  <div class="row g-3">
+                    <div class="col-md-6">
+                      <label for="newPassword" class="form-label">New Password</label>
+                      <input type="password" class="form-control" id="newPassword" name="new_password" autocomplete="new-password">
+                    </div>
+                    
+                    <div class="col-md-6">
+                      <label for="confirmPassword" class="form-label">Confirm Password</label>
+                      <input type="password" class="form-control" id="confirmPassword" name="confirm_password" autocomplete="new-password">
+                    </div>
+                  </div>
+                  <button type="button" id="changePasswordBtn" class="btn btn-primary mt-3">
+                    <span>Change Password</span>
+                  </button>
+                </div>
+              </div>
+
+              <!-- Two-Factor Authentication Section -->
+              <div class="settings-section">
+                <div class="settings-section-header">
+                  <h4>Two-Factor Authentication</h4>
+                </div>
+                <div class="settings-section-body">
+                  <!-- 2FA Status -->
+                  <div id="twoFactorStatus">
+                    <div class="twofa-banner">
+                      <div class="twofa-banner-icon" id="statusIcon">
+                        <i class="bi bi-shield-fill-x"></i>
+                      </div>
+                      <div class="twofa-banner-body">
+                        <div class="twofa-banner-title" id="statusText">Two-Factor Authentication is Disabled</div>
+                        <div class="twofa-banner-desc">Add an extra layer of security by requiring a verification code</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- 2FA Setup (Hidden by default) -->
+                  <div id="twoFactorSetup" class="twofa-setup" style="display: none;">
+                    <div class="twofa-setup-grid">
+                      <div class="twofa-setup-qr">
+                        <div class="twofa-qr-frame" id="qrCodeContainer"></div>
+                        <p class="twofa-qr-caption">Scan with your authenticator app</p>
+                      </div>
+                      <div class="twofa-setup-details">
+                        <div class="twofa-detail-group">
+                          <label class="form-label"><i class="bi bi-key"></i> Secret Key</label>
+                          <div class="twofa-secret-row">
+                            <input type="text" class="form-control" id="secretKey" readonly>
+                            <button class="btn btn-secondary" type="button" id="copySecretBtn" title="Copy to clipboard">
+                              <i class="bi bi-clipboard"></i>
+                            </button>
+                          </div>
+                          <div class="form-hint">Use this key if you can't scan the QR code</div>
+                        </div>
+                        <div class="twofa-detail-group">
+                          <label for="verificationCode" class="form-label">Verification Code</label>
+                          <input type="text" class="form-control twofa-code-input" id="verificationCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code">
+                          <div class="form-hint">Enter the 6-digit code from your authenticator app</div>
+                        </div>
+                        <div class="twofa-setup-actions">
+                          <button type="button" id="verifyCodeBtn" class="btn btn-primary">
+                            Verify & Enable
+                          </button>
+                          <button type="button" id="cancelSetupBtn" class="btn btn-secondary">
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Action Buttons -->
+                  <div id="twoFactorActions" class="twofa-actions">
+                    <button type="button" id="enable2FABtn" class="btn btn-primary" style="display: none;">
+                      <span>Enable Two-Factor Authentication</span>
+                    </button>
+                    <button type="button" id="disable2FABtn" class="btn btn-primary" style="display: none;">
+                      <span>Disable Two-Factor Authentication</span>
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- API Keys Section -->
+              <div class="settings-section">
+                <div class="settings-section-header">
+                  <h4>API Keys</h4>
+                </div>
+                <div class="settings-section-body">
+                  <div class="link-toolbar" style="border-bottom: none; padding-bottom: 0;">
+                    <div class="link-toolbar-info">
+                      <span id="apiKeyCount" class="link-count"></span>
+                    </div>
+                    <div class="d-flex gap-2 align-items-center flex-nowrap">
+                      <input type="text" id="apiKeysFilterInput" class="form-control form-control-sm" placeholder="Search..." style="max-width: 180px; display: none;" />
+                      <button id="createApiKeyBtn" class="btn btn-primary btn-sm" style="white-space: nowrap;">
+                        <i class="bi bi-plus-lg"></i>
+                        <span class="d-none d-md-inline ms-1">New Key</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  <!-- API Keys List -->
+                  <div id="apiKeysList"></div>
+
+                  <!-- Empty State -->
+                  <div id="apiKeysEmpty" class="empty-state" style="display: none;">
+                    <i class="bi bi-key empty-state-icon"></i>
+                    <p class="empty-state-title">No API keys yet</p>
+                    <p class="empty-state-desc">Create an API key to enable programmatic access</p>
+                  </div>
+                </div>
+              </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast-container"></div>
+
+  <!-- Custom Dialog -->
+  <div id="customDialog" class="custom-dialog" style="display: none;">
+    <div class="custom-dialog-backdrop"></div>
+    <div class="custom-dialog-content">
+      <div class="custom-dialog-header">
+        <i class="bi bi-exclamation-triangle-fill"></i>
+        <h3 id="dialogTitle">Confirm Action</h3>
+      </div>
+      <div class="custom-dialog-body">
+        <p id="dialogMessage"></p>
+      </div>
+      <div class="custom-dialog-footer">
+        <button id="dialogCancelBtn" class="btn btn-secondary">Cancel</button>
+        <button id="dialogConfirmBtn" class="btn btn-danger">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create API Key Dialog -->
+  <div id="createApiKeyDialog" class="custom-dialog" style="display: none;">
+    <div class="custom-dialog-backdrop"></div>
+    <div class="custom-dialog-content">
+      <div class="custom-dialog-header">
+        <h3>Create new API Key</h3>
+      </div>
+      <div class="custom-dialog-body">
+        <!-- Create Form (shown initially) -->
+        <div id="apiKeyFormView">
+          <div class="mb-3">
+            <label for="apiKeyName" class="form-label">Name</label>
+            <input type="text" class="form-control" id="apiKeyName" placeholder="e.g. CI/CD Pipeline" maxlength="64">
+            <div class="form-hint">A short name to identify this key</div>
+          </div>
+          <div>
+            <label for="apiKeyDescription" class="form-label">Description <span class="text-muted">(optional)</span></label>
+            <input type="text" class="form-control" id="apiKeyDescription" placeholder="e.g. Used for automated deployments" maxlength="256">
+            <div class="form-hint">An optional description for this API key</div>
+          </div>
+        </div>
+
+        <!-- Created Key Display (shown after creation) -->
+        <div id="apiKeyCreatedView" style="display: none;">
+          <div class="twofa-banner status-enabled" style="margin-bottom: 1rem;">
+            <div class="twofa-banner-icon status-enabled">
+              <i class="bi bi-check-circle-fill"></i>
+            </div>
+            <div class="twofa-banner-body" style="flex: 1;">
+              <div class="twofa-banner-title">API Key Created</div>
+              <div class="twofa-banner-desc">Copy this key now — it won't be shown again</div>
+              <div class="twofa-secret-row mt-2">
+                <input type="text" class="form-control" id="newKeyValue" readonly>
+                <button class="btn btn-secondary" type="button" id="copyApiKeyBtn" title="Copy to clipboard">
+                  <i class="bi bi-clipboard"></i>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="custom-dialog-footer">
+        <button id="apiKeyDialogCancelBtn" class="btn btn-secondary">Cancel</button>
+        <button id="apiKeyDialogCreateBtn" class="btn btn-primary">Create Key</button>
+      </div>
+    </div>
+  </div>
+
+
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
+  <script src="js/common.js"></script>
+  <script src="js/security.js"></script>
+  <script src="js/api-reference.js"></script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+fastapi
+uvicorn[standard]
+pydantic
+aiosqlite
+python-multipart
+pyotp
+qrcode[pil]
+bcrypt
