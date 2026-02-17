@@ -51,6 +51,12 @@ body {
   padding-top: 5rem;
 }
 
+/* Suppress transitions on initial load to prevent theme flash */
+html:not(.theme-ready) body,
+html:not(.theme-ready) * {
+  transition: none !important;
+}
+
 /* Header Styles - Matching index.html */
 .app-header {
   text-align: center;

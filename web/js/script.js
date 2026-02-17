@@ -759,11 +759,15 @@ async function isAuthenticated() {
 }
 
 function showBannerPage({ icon, iconClass, title, description, btnHref, btnIcon, btnLabel }) {
+  const loader = document.getElementById('initialLoader');
+  if (loader) loader.remove();
+  const pageContent = document.getElementById('pageContent');
+  if (pageContent) pageContent.style.display = '';
   mainCard.style.display = 'none';
   linkBanner.className = 'status-page';
   linkBanner.innerHTML = `
-    <div class="status-page-icon ${iconClass}"><i class="bi ${icon}"></i></div>
-    <h2 class="status-page-title" style="margin-bottom: 0.75rem;">${title}</h2>
+    ${icon ? `<div class="status-page-icon ${iconClass}"><i class="bi ${icon}"></i></div>` : ''}
+    <h2 class="status-page-title" style="margin-bottom: 1.5rem;">${title}</h2>
     <p class="status-page-desc">${description}</p>
     <a href="${btnHref}" class="btn btn-primary status-page-btn" style="margin-top: 0.5rem;">
       <i class="bi ${btnIcon}"></i> ${btnLabel}
@@ -781,11 +785,11 @@ async function checkLinkToken() {
       const authed = await isAuthenticated();
       if (!authed) {
         showBannerPage({
-          icon: 'bi-shield-lock-fill',
-          iconClass: 'status-icon-blue',
+          icon: '',
+          iconClass: '',
           title: 'Private Mode',
-          description: 'This Cryptex instance is in private mode.',
-          btnHref: '/login?redirect=/',
+          description: 'This Cryptex instance is in private mode.<br style="margin-bottom: 0.5rem; display: block;">An invite link or admin access is required to create a cryptex.',
+          btnHref: '/login',
           btnIcon: 'bi-box-arrow-in-right',
           btnLabel: 'Login'
         });
@@ -1005,4 +1009,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   await Promise.all([loadLimits(), updateAuthButtons()]);
   await checkLinkToken();
   autoFillFromUrl();
+
+  // Remove the loading spinner and show the page
+  const loader = document.getElementById('initialLoader');
+  if (loader) loader.remove();
+  const pageContent = document.getElementById('pageContent');
+  if (pageContent) pageContent.style.display = '';
+
+  // Show the main card only if private-mode / banner didn't replace it
+  if (mainCard.style.display === 'none' && linkBanner.style.display === 'none') {
+    mainCard.style.display = '';
+  }
 });

@@ -18,13 +18,20 @@ ACCESS_EXPIRE_MINUTES = 15          # Short-lived access token
 REFRESH_EXPIRE_DAYS = 365           # Long-lived refresh token (1 year)
 
 # Password file is the single source of truth.
-# On first run, seed it from the ADMIN_PASSWORD env var (default: 'admin').
+# If the ADMIN_PASSWORD env var is explicitly set, it always wins (allows
+# Docker restarts with a new password to take effect immediately).
 _password_file = Path("/cryptex/data/password.conf")
-if not _password_file.exists():
-    _password_file.parent.mkdir(parents=True, exist_ok=True)
-    _password_file.write_text(
-        os.getenv("ADMIN_PASSWORD", "sha256:8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918")
-    )
+_password_file.parent.mkdir(parents=True, exist_ok=True)
+_default_hash = "sha256:8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918"
+_env_password = os.getenv("ADMIN_PASSWORD")
+
+if _env_password:
+    # Env var explicitly set — always persist it so restarts with a new
+    # password value are honoured even when the data volume already exists.
+    _password_file.write_text(_env_password)
+elif not _password_file.exists():
+    # No env var and no file yet — seed with the built-in default.
+    _password_file.write_text(_default_hash)
 
 ADMIN_PASSWORD = _password_file.read_text().strip()
 

@@ -72,6 +72,12 @@ body {
   transition: background-color 0.3s ease, color 0.3s ease;
 }
 
+/* Suppress transitions on initial load to prevent theme flash */
+html:not(.theme-ready) body,
+html:not(.theme-ready) * {
+  transition: none !important;
+}
+
 /* Hide steps initially to prevent flash */
 #step1, #step2, #step3, #step4 {
   display: none;
@@ -79,6 +85,30 @@ body {
 
 #step1.active, #step2.active, #step3.active, #step4.active {
   display: block;
+}
+
+/* ===== Initial Loading Spinner ===== */
+.initial-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-primary);
+  z-index: 9999;
+}
+
+.initial-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--card-border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: initial-spin 0.7s linear infinite;
+}
+
+@keyframes initial-spin {
+  to { transform: rotate(360deg); }
 }
 
 .container {
@@ -322,8 +352,8 @@ body {
 }
 
 .header-icon img {
-  width: 62px;
-  height: 62px;
+  width: 64px;
+  height: 64px;
   display: block;
 }
 
@@ -1816,7 +1846,7 @@ textarea.form-control {
   color: var(--text-secondary);
   margin: 0 0 1.5rem;
   line-height: 1.6;
-  max-width: 340px;
+  max-width: 420px;
   margin-left: auto;
   margin-right: auto;
 }
@@ -1996,8 +2026,8 @@ textarea.form-control {
   }
   
   .header-icon img {
-    width: 62px;
-    height: 62px;
+    width: 64px;
+    height: 64px;
   }
 
   .app-title {

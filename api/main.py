@@ -15,7 +15,7 @@ from .routes.security import router as security_router
 from .cleanup import cleanup_expired
 
 # Configuration from environment variables
-VERSION = "2.0.0"
+VERSION = "2.1.0"
 MAX_RETRIES = 5
 MAX_MESSAGE_LENGTH = int(os.getenv("MAX_MESSAGE_LENGTH", "1000"))
 MAX_FILE_COUNT = int(os.getenv("MAX_FILE_COUNT", "3"))
