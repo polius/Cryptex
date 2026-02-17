@@ -30,7 +30,8 @@ CREATE TABLE IF NOT EXISTS cryptex (
     has_text    INTEGER NOT NULL DEFAULT 0,
     file_count  INTEGER NOT NULL DEFAULT 0,
     total_size  INTEGER NOT NULL DEFAULT 0,
-    views       INTEGER NOT NULL DEFAULT 0
+    views       INTEGER NOT NULL DEFAULT 0,
+    pending     INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS links (
@@ -61,6 +62,12 @@ async def init_db() -> None:
     DATABASE_DIR.mkdir(parents=True, exist_ok=True)
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.executescript(SCHEMA)
+        # Migrate: add 'pending' column for existing databases
+        try:
+            # v.2.2.0
+            await db.execute("ALTER TABLE cryptex ADD COLUMN pending INTEGER NOT NULL DEFAULT 0")
+        except Exception:
+            pass  # Column already exists
         await db.commit()
 
 
@@ -77,6 +84,7 @@ async def store_cryptex(
     autodestroy: bool = False,
     has_text: bool = False,
     total_size: int = 0,
+    pending: bool = False,
 ) -> None:
     """Insert a new cryptex record."""
     async with aiosqlite.connect(DATABASE_PATH) as db:
@@ -84,8 +92,8 @@ async def store_cryptex(
             """
             INSERT INTO cryptex
                 (id, password, created, retention, files, autodestroy, consumed,
-                 has_text, file_count, total_size)
-            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+                 has_text, file_count, total_size, pending)
+            VALUES (?, ?, ?, ?, ?, ?, 0, ?, ?, ?, ?)
             """,
             (
                 cryptex_id,
@@ -97,6 +105,7 @@ async def store_cryptex(
                 int(has_text),
                 len(files),
                 total_size,
+                int(pending),
             ),
         )
         await db.commit()
@@ -331,6 +340,39 @@ async def update_link_cryptex(token: str, cryptex_id: str, has_password: bool) -
         await db.execute(
             "UPDATE links SET cryptex_id = ?, cryptex_has_password = ?, uses = uses + 1 WHERE token = ?",
             (cryptex_id, int(has_password), token),
+        )
+        await db.commit()
+
+
+async def mark_cryptex_ready(cryptex_id: str) -> None:
+    """Clear the pending flag on a cryptex, marking it as fully created."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute("UPDATE cryptex SET pending = 0 WHERE id = ?", (cryptex_id,))
+        await db.commit()
+
+
+async def is_cryptex_pending(cryptex_id: str) -> bool | None:
+    """Check if a cryptex is still pending.
+
+    Returns True if pending, False if ready, or None if the cryptex
+    doesn't exist (e.g. expired and cleaned up).
+    """
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT pending FROM cryptex WHERE id = ?", (cryptex_id,))
+        row = await cursor.fetchone()
+        if row is None:
+            return None
+        return bool(row["pending"])
+
+
+async def reset_link_cryptex(token: str) -> None:
+    """Reset a link's cryptex association so it can be reused."""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        await db.execute(
+            "UPDATE links SET cryptex_id = NULL, cryptex_has_password = 0, uses = MAX(uses - 1, 0) "
+            "WHERE token = ?",
+            (token,),
         )
         await db.commit()
 

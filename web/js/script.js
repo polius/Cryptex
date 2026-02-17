@@ -281,7 +281,7 @@ function getRetentionSeconds() {
   return value * 86400;
 }
 
-async function uploadFileMultipart(cryptexId, file, uploadIndex, totalFiles, signal, bytesBefore, totalBytes) {
+async function uploadFileMultipart(cryptexId, file, uploadIndex, totalFiles, signal, bytesBefore, totalBytes, isLast = false) {
   setUploadProgress({
     title: totalFiles > 1 ? `Uploading file ${uploadIndex + 1} of ${totalFiles}` : 'Uploading file',
     subtitle: `<i class="bi bi-file-earmark file-icon"></i><span class="file-name">${escapeHtml(file.name)}</span><span class="file-size-badge">${formatFileSize(file.size)}</span>`,
@@ -336,10 +336,8 @@ async function uploadFileMultipart(cryptexId, file, uploadIndex, totalFiles, sig
       });
     }
 
-    await requestJson(
-      `${API_URL}/create/file/complete?cryptex_id=${encodeURIComponent(cryptexId)}&upload_id=${encodeURIComponent(uploadId)}`,
-      { method: 'POST', signal }
-    );
+    const completeUrl = `${API_URL}/create/file/complete?cryptex_id=${encodeURIComponent(cryptexId)}&upload_id=${encodeURIComponent(uploadId)}${isLast ? '&finalize=true' : ''}`;
+    await requestJson(completeUrl, { method: 'POST', signal });
   } catch (error) {
     try {
       await fetch(
@@ -391,6 +389,19 @@ function renderCreateSuccess(data, password) {
   const passwordField = document.getElementById('passwordField');
   const passwordSection = document.getElementById('passwordSection');
   const cryptexPassword = document.getElementById('cryptexPassword');
+  const cryptexUrlSection = document.getElementById('cryptexUrlSection');
+  const openBtn = document.getElementById('openCryptexBtn');
+
+  // Ensure sections are visible (may have been hidden by invite-link success)
+  cryptexUrlSection.style.display = '';
+  if (openBtn) openBtn.style.display = '';
+  const successMsg = document.getElementById('successMessage');
+  if (successMsg) {
+    successMsg.style.display = 'none';
+    successMsg.style.marginBottom = '';
+  }
+  const step3Body = document.querySelector('#step3 .card-body');
+  if (step3Body) step3Body.style.paddingBottom = '';
 
   const baseUrl = generateShareUrl(data.id);
   const urlWithPassword = generateShareUrl(data.id, password);
@@ -498,26 +509,45 @@ async function createCryptex() {
       throw new Error(msg);
     }
 
+    // Upload files if any (must happen before the invite-link early return)
+    const cryptexId = created.id;
+    if (hasFiles && cryptexId) {
+      const totalBytes = selectedFiles.reduce((sum, f) => sum + f.size, 0);
+      let bytesBefore = 0;
+      for (let i = 0; i < selectedFiles.length; i++) {
+        const isLast = i === selectedFiles.length - 1;
+        await uploadFileMultipart(cryptexId, selectedFiles[i], i, selectedFiles.length, uploadAbortController.signal, bytesBefore, totalBytes, isLast);
+        bytesBefore += selectedFiles[i].size;
+      }
+    }
+
     if (linkToken) {
       setUploadProgress({ title: 'Success', subtitle: 'Cryptex created', percent: 100, detail: '' });
       showToast('Cryptex created successfully', 'success');
-      showStep(1);
+
+      // Show the success step but hide URL, password, QR, and open button
+      document.getElementById('qrPreview').style.display = 'none';
+      document.getElementById('cryptexUrlSection').style.display = 'none';
+      document.getElementById('passwordField').style.display = 'none';
+      document.getElementById('passwordSection').style.display = 'none';
+      const openBtn = document.getElementById('openCryptexBtn');
+      if (openBtn) openBtn.style.display = 'none';
+      const successMsg = document.getElementById('successMessage');
+      if (successMsg) {
+        successMsg.style.display = '';
+        successMsg.style.marginBottom = '0';
+      }
+      const step3Body = document.querySelector('#step3 .card-body');
+      if (step3Body) step3Body.style.paddingBottom = '0';
+
+      showStep(3);
       encMessage.value = '';
       selectedFiles = [];
       updateFilesList();
       return;
     }
 
-    if (!created.id) throw new Error('Server did not return cryptex ID');
-
-    if (hasFiles) {
-      const totalBytes = selectedFiles.reduce((sum, f) => sum + f.size, 0);
-      let bytesBefore = 0;
-      for (let i = 0; i < selectedFiles.length; i++) {
-        await uploadFileMultipart(created.id, selectedFiles[i], i, selectedFiles.length, uploadAbortController.signal, bytesBefore, totalBytes);
-        bytesBefore += selectedFiles[i].size;
-      }
-    }
+    if (!cryptexId) throw new Error('Server did not return cryptex ID');
 
     setUploadProgress({
       title: 'Success',
@@ -778,10 +808,15 @@ function showBannerPage({ icon, iconClass, title, description, btnHref, btnIcon,
 
 async function checkLinkToken() {
   const linkToken = new URLSearchParams(window.location.search).get('invite');
+  const path = window.location.pathname.replace(/^\//, '');
+  const isOpeningCryptex = CRYPTEX_ID_PATTERN.test(path);
 
   try {
     const root = await requestJson(`${API_URL}/`, { method: 'GET' });
     if (root?.config?.mode === 'private' && !linkToken) {
+      // Private mode only restricts creating — allow opening cryptexes via URL
+      if (isOpeningCryptex) return false;
+
       const authed = await isAuthenticated();
       if (!authed) {
         showBannerPage({
@@ -793,14 +828,15 @@ async function checkLinkToken() {
           btnIcon: 'bi-box-arrow-in-right',
           btnLabel: 'Login'
         });
+        return true;
       }
-      return;
+      return false;
     }
   } catch {
-    return;
+    return false;
   }
 
-  if (!linkToken) return;
+  if (!linkToken) return false;
 
   try {
     const result = await requestJson(`${API_URL}/links/check/${encodeURIComponent(linkToken)}`, { method: 'GET' });
@@ -811,18 +847,19 @@ async function checkLinkToken() {
       if (passwordSection) passwordSection.style.display = 'none';
       if (advancedOptionsWrapper) advancedOptionsWrapper.style.display = 'none';
       if (encBtn) encBtn.style.marginTop = '12px';
-      return;
+      return false;
     }
 
     showBannerPage({
-      icon: 'bi-x-circle-fill',
-      iconClass: 'status-icon-red',
-      title: 'Link Invalid',
+      icon: '',
+      iconClass: '',
+      title: 'Link invalid',
       description: 'This link is no longer valid.',
       btnHref: '/',
       btnIcon: 'bi-house-door',
       btnLabel: 'Go to Homepage'
     });
+    return true;
   } catch {
     showBannerPage({
       icon: 'bi-exclamation-triangle-fill',
@@ -833,6 +870,7 @@ async function checkLinkToken() {
       btnIcon: 'bi-arrow-clockwise',
       btnLabel: 'Try Again'
     });
+    return true;
   }
 }
 
@@ -1007,8 +1045,12 @@ window.addEventListener('pagehide', () => {
 document.addEventListener('DOMContentLoaded', async () => {
   initUi();
   await Promise.all([loadLimits(), updateAuthButtons()]);
-  await checkLinkToken();
-  autoFillFromUrl();
+  const bannerShown = await checkLinkToken();
+
+  // Only auto-fill from URL if a banner didn't take over (e.g. private mode)
+  if (!bannerShown) {
+    autoFillFromUrl();
+  }
 
   // Remove the loading spinner and show the page
   const loader = document.getElementById('initialLoader');

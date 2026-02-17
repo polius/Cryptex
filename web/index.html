@@ -22,7 +22,7 @@
 </head>
 <body class="d-flex align-items-center justify-content-center px-1 py-4">
   <!-- Full-page overlay (shown until mode is determined) -->
-  <div id="initialLoader" class="initial-loader"></div>
+  <div id="initialLoader" class="initial-loader"><div class="initial-spinner"></div></div>
 
   <div id="pageContent" style="display: none; width: 100%;">
   <div class="top-nav-buttons">
@@ -213,8 +213,8 @@
               <h3>Cryptex Created</h3>
             </div>
             <div class="card-body">
-              <div class="success-message">
-                <p>Your cryptex has been created successfully and is ready to share.</p>
+              <div class="success-message" id="successMessage" style="display: none;">
+                <p>Your cryptex has been created successfully.</p>
               </div>
               <div id="qrPreview" class="qr-preview" style="display: none;">
                 <label class="form-label">Cryptex QR</label>

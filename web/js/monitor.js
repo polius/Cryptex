@@ -442,6 +442,10 @@ function formatTimeRemaining(seconds) {
 (async function() {
   const authenticated = await checkAuth();
   if (authenticated) {
+    const loader = document.getElementById('initialLoader');
+    if (loader) loader.remove();
+    const pageContent = document.getElementById('pageContent');
+    if (pageContent) pageContent.style.display = '';
     await loadAdminData();
   }
 })();

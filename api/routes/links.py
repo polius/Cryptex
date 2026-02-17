@@ -86,7 +86,25 @@ async def check_link(token: str):
         return {"valid": False, "reason": "Invalid token"}
 
     if link.get("cryptex_id"):
-        return {"valid": False, "reason": "Used"}
+        # Self-healing: if the linked cryptex is still pending (abandoned
+        # upload), reset the link so it can be reused.
+        pending_status = await db.is_cryptex_pending(link["cryptex_id"])
+        if pending_status is True:
+            # Cryptex exists but was never finalised — clean it up
+            await db.reset_link_cryptex(link["token"])
+            cryptex_id = link["cryptex_id"]
+            await db.delete_cryptex(cryptex_id)
+            cryptex_dir = db.FILES_DIR / cryptex_id
+            if cryptex_dir.exists():
+                shutil.rmtree(cryptex_dir, ignore_errors=True)
+            # Re-fetch the now-reset link
+            link = await db.get_link(token)
+            if not link:
+                return {"valid": False, "reason": "Invalid token"}
+        else:
+            # Cryptex was completed (False) or already expired/deleted (None)
+            # — either way the link has been used
+            return {"valid": False, "reason": "Used"}
 
     now = int(time.time())
     if link["expires_at"] > 0 and link["expires_at"] < now:

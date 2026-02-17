@@ -101,11 +101,15 @@ class CryptexRouter:
         link_password = None
         if invite:
             link = await db.get_link(invite)
-            if link:
-                now = int(time.time())
-                if (link['expires_at'] == 0 or link['expires_at'] > now) and link['uses'] < link['max_uses'] and not link.get('cryptex_id'):
-                    valid_link_token = invite
-                    link_password = link.get('password')
+            if not link:
+                raise HTTPException(404, "Invalid invite link")
+            now = int(time.time())
+            if link['expires_at'] > 0 and link['expires_at'] <= now:
+                raise HTTPException(410, "Invite link has expired")
+            if link['uses'] >= link['max_uses'] or link.get('cryptex_id'):
+                raise HTTPException(410, "Invite link has already been used")
+            valid_link_token = invite
+            link_password = link.get('password')
         
         # Check if app is in private mode
         settings = load_settings()
@@ -238,15 +242,16 @@ class CryptexRouter:
                 autodestroy=autodestroy,
                 has_text=bool(text_content),
                 total_size=total_size,
+                pending=has_pending_files,
             )
             
-            # If created via link, store cryptex_id and increment usage
+            # If created via link, consume it immediately
             if valid_link_token:
                 await db.update_link_cryptex(valid_link_token, cryptex_id, bool(cryptex_data.password))
             
-            # If created via invite link, return no details for security
+            # If created via invite link, return minimal details
             if valid_link_token:
-                return {"message": "Cryptex created successfully"}
+                return {"message": "Cryptex created successfully", "id": cryptex_id}
             return CryptexResponse(
                 id=cryptex_id,
                 expiration=utils.format_time(cryptex_data.retention),
@@ -457,6 +462,11 @@ class CryptexRouter:
 
         # Register the file in the database
         await db.add_file_to_cryptex(cryptex_id, filename, file_size)
+
+        # If this is the last file, mark the cryptex as ready
+        finalize = request.query_params.get("finalize")
+        if finalize == "true":
+            await db.mark_cryptex_ready(cryptex_id)
 
         return {"message": "Upload completed successfully", "filename": filename, "size": file_size}
 

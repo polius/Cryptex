@@ -66,6 +66,7 @@
                 <td class="api-endpoint-cell">/api/destroy</td>
                 <td>Permanently destroy a Cryptex</td>
               </tr>
+
             </tbody>
           </table>
         </div>
@@ -199,6 +200,8 @@
 }</code></pre>
           </div>
         </div>
+
+
 
       </div>
       <div class="custom-dialog-footer">

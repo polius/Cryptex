@@ -73,12 +73,12 @@ async function login(event) {
     
     // Success - redirect to the requested page (or home)
     const params = new URLSearchParams(window.location.search);
-    const redirect = params.get('redirect') || '/';
+    const redirect = params.get('redirect') || '/monitor';
     // Prevent open redirect — only allow relative paths
     if (redirect.startsWith('/') && !redirect.startsWith('//')) {
       window.location.href = redirect;
     } else {
-      window.location.href = '/';
+      window.location.href = '/monitor';
     }
   }
   catch (error) {
@@ -112,7 +112,7 @@ async function checkLogin() {
     if (response.ok) {
       // Already logged in, redirect to requested page
       const params = new URLSearchParams(window.location.search);
-      window.location.href = params.get('redirect') || '/';
+      window.location.href = params.get('redirect') || '/monitor';
     }
   } catch (error) {
     // Not logged in, stay on login page
@@ -126,4 +126,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (loader) loader.remove();
   const pageContent = document.getElementById('pageContent');
   if (pageContent) pageContent.style.display = '';
+
+  // Autofocus doesn't work when the parent starts hidden, so focus manually
+  const pwdInput = document.getElementById('password');
+  if (pwdInput) pwdInput.focus();
 });

@@ -37,6 +37,30 @@
   --header-border: #e5e5e5;
 }
 
+/* ===== Initial Loading Spinner ===== */
+.initial-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-primary);
+  z-index: 9999;
+}
+
+.initial-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--card-border);
+  border-top-color: var(--border-hover);
+  border-radius: 50%;
+  animation: initial-spin 0.7s linear infinite;
+}
+
+@keyframes initial-spin {
+  to { transform: rotate(360deg); }
+}
+
 body {
   background-color: var(--bg-primary);
   color: var(--text-primary);

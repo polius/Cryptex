@@ -62,7 +62,7 @@ async function authFetch(url, options = {}) {
 }
 
 // ===== Toast Notifications =====
-function showToast(message, type = 'warning', duration = 3000) {
+function showToast(message, type = 'warning', duration = 1500) {
   const container = document.getElementById('toast-container');
   if (!container) {
     console.error('Toast container not found');

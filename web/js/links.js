@@ -105,6 +105,8 @@ async function loadLinks() {
       if (filterInput) filterInput.style.display = 'none';
       const statusFilter = document.getElementById('linksStatusFilter');
       if (statusFilter) statusFilter.style.display = 'none';
+      const paginationContainer = document.getElementById('linksPaginationContainer');
+      if (paginationContainer) paginationContainer.style.display = 'none';
       return;
     }
 
@@ -154,9 +156,7 @@ async function loadLinks() {
 
       // Action buttons
       let actionButtons = '';
-      if (statusKey === 'active') {
-        actionButtons += `<button class="btn btn-secondary btn-sm api-link" data-token="${link.token}" title="API Reference"><i class="bi bi-code-slash"></i></button>`;
-      }
+      actionButtons += `<button class="btn btn-secondary btn-sm api-link" data-token="${link.token}" title="API Reference"><i class="bi bi-code-slash"></i></button>`;
       actionButtons += `<button class="btn btn-secondary btn-sm qr-link" data-url="${displayUrl}" title="Show QR Code"><i class="bi bi-qr-code"></i></button>`;
       actionButtons += `<button class="btn btn-secondary btn-sm copy-link" data-url="${displayUrl}" title="Copy URL"><i class="bi bi-clipboard"></i></button>`;
       actionButtons += `<a href="${displayUrl}" class="btn btn-secondary btn-sm" target="_blank" title="Open"><i class="bi bi-box-arrow-up-right"></i></a>`;
@@ -353,24 +353,10 @@ createLinkConfirmBtn.addEventListener('click', async () => {
     createLinkConfirmBtn.style.display = 'none';
     createLinkCancelBtn.textContent = 'Close';
 
-    // Build API snippet
-    const baseUrl = window.location.origin;
-      const snippet = `curl -X POST ${baseUrl}/api/create \\\n  -F "invite=${linkData.token}" \\\n  -F "text=Secret message" \\\n  -F "file=@/path/to/file.pdf"`;
-    document.getElementById('linkApiSnippet').textContent = snippet;
-
     // Copy URL button
     document.getElementById('copyCreatedLinkBtn').onclick = () => {
       navigator.clipboard.writeText(linkUrl);
       showToast('URL copied to clipboard', 'success', 1200);
-    };
-
-    // Copy snippet button
-    document.querySelector('#linkCreatedView .api-copy-btn').onclick = () => {
-      navigator.clipboard.writeText(snippet).then(() => {
-        const btn = document.querySelector('#linkCreatedView .api-copy-btn');
-        btn.innerHTML = '<i class="bi bi-check"></i>';
-        setTimeout(() => { btn.innerHTML = '<i class="bi bi-clipboard"></i>'; }, 1500);
-      });
     };
 
     // Reset form
@@ -574,9 +560,15 @@ function setupLinksFilter() {
 
 // Initialize
 function init() {
-  checkAuth().then(() => {
-    setupLinksFilter();
-    loadLinks();
+  checkAuth().then((authenticated) => {
+    if (authenticated) {
+      const loader = document.getElementById('initialLoader');
+      if (loader) loader.remove();
+      const pageContent = document.getElementById('pageContent');
+      if (pageContent) pageContent.style.display = '';
+      setupLinksFilter();
+      loadLinks();
+    }
   });
 }
 

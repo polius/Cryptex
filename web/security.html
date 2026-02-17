@@ -21,6 +21,8 @@
   <link rel="stylesheet" href="css/admin.css" />
 </head>
 <body class="px-1 pb-4">
+  <div id="initialLoader" class="initial-loader"><div class="initial-spinner"></div></div>
+  <div id="pageContent" style="display: none;">
   <div class="top-nav-buttons">
     <button id="apiReferenceToggle" class="admin-api-toggle" aria-label="API Reference" title="API Reference">
       <i class="bi bi-code-slash"></i><span class="d-none d-md-inline ms-2">API</span>
@@ -270,6 +272,7 @@
 
 
 
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
   <script src="js/common.js"></script>
   <script src="js/security.js"></script>

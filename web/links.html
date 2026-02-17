@@ -21,6 +21,8 @@
   <link rel="stylesheet" href="css/admin.css" />
 </head>
 <body class="px-1 pb-4">
+  <div id="initialLoader" class="initial-loader"><div class="initial-spinner"></div></div>
+  <div id="pageContent" style="display: none;">
   <div class="top-nav-buttons">
     <button id="apiReferenceToggle" class="admin-api-toggle" aria-label="API Reference" title="API Reference">
       <i class="bi bi-code-slash"></i><span class="d-none d-md-inline ms-2">API</span>
@@ -208,7 +210,7 @@
 
         <!-- Created view (shown after creation) -->
         <div id="linkCreatedView" style="display: none;">
-          <div class="twofa-banner status-enabled" style="margin-bottom: 1rem;">
+          <div class="twofa-banner status-enabled">
             <div class="twofa-banner-icon status-enabled">
               <i class="bi bi-check-circle-fill"></i>
             </div>
@@ -222,15 +224,6 @@
                 </button>
               </div>
             </div>
-          </div>
-
-          <div class="api-usage-section mt-3">
-            <h6>API Reference</h6>
-            <div class="api-code-block">
-              <button class="btn btn-sm api-copy-btn" title="Copy"><i class="bi bi-clipboard"></i></button>
-              <pre><code id="linkApiSnippet"></code></pre>
-            </div>
-            <div class="form-hint mt-2">Either <code>text</code> or <code>file</code> parameter is required. To attach multiple files, include the <code>file</code> parameter multiple times.</div>
           </div>
         </div>
       </div>
@@ -334,6 +327,7 @@
   <div id="toast-container"></div>
 
 
+  </div>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js" integrity="sha384-w76AqPfDkMBDXo30jS1Sgez6pr3x5MlQ1ZAGC+nuZB+EYdgRZgiwxhTBTkF7CXvN" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.min.js"></script>
   <script src="js/common.js"></script>

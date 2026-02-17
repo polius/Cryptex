@@ -113,6 +113,12 @@ document.getElementById('settingsForm').addEventListener('submit', async (e) => 
 });
 
 // Initialize
-checkAuth().then(() => {
-  loadSettings();
+checkAuth().then((authenticated) => {
+  if (authenticated) {
+    const loader = document.getElementById('initialLoader');
+    if (loader) loader.remove();
+    const pageContent = document.getElementById('pageContent');
+    if (pageContent) pageContent.style.display = '';
+    loadSettings();
+  }
 });
