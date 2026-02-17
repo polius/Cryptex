@@ -97,6 +97,12 @@ environment:
   - ADMIN_PASSWORD=$2b$12$LJ3m4ys3uz0Cb6PEhV7hXOBFg7b6I1MeZaYvLYEPYj5KzKIO/3Cxm
 ```
 
+**Note:** If you're using the Docker CLI (`-e` flag), wrap the hash in **single quotes**:
+
+```bash
+-e ADMIN_PASSWORD='$2b$12$LJ3m4ys3uz0Cb6PEhV7hXOBFg7b6I1MeZaYvLYEPYj5KzKIO/3Cxm'
+```
+
 ## Upgrading
 
 ### Docker CLI
