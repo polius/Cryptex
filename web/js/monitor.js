@@ -53,6 +53,8 @@ async function loadAdminData() {
       loadingIndicator.style.display = 'none';
       tableContainer.style.display = 'none';
       emptyState.style.display = 'flex';
+      const paginationContainer = document.getElementById('paginationContainer');
+      if (paginationContainer) paginationContainer.style.display = 'none';
     } else {
       data.items.forEach(item => {
         const row = document.createElement('tr');

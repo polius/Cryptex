@@ -3,7 +3,7 @@ setupLogout();
 
 // DOM Elements
 const twoFactorStatus = document.getElementById('twoFactorStatus');
-const twoFactorSetup = document.getElementById('twoFactorSetup');
+const twofaSetupDialog = document.getElementById('twofaSetupDialog');
 const twoFactorActions = document.getElementById('twoFactorActions');
 const enable2FABtn = document.getElementById('enable2FABtn');
 const disable2FABtn = document.getElementById('disable2FABtn');
@@ -44,7 +44,7 @@ function updateTwoFactorUI() {
     banner.className = 'twofa-banner status-enabled';
     enable2FABtn.style.display = 'none';
     disable2FABtn.style.display = 'inline-flex';
-    twoFactorSetup.style.display = 'none';
+    twofaSetupDialog.style.display = 'none';
   } else {
     statusText.innerHTML = 'Two-Factor Authentication is Disabled';
     statusIcon.innerHTML = '<i class="bi bi-shield-x"></i>';
@@ -52,7 +52,7 @@ function updateTwoFactorUI() {
     banner.className = 'twofa-banner status-disabled';
     enable2FABtn.style.display = 'inline-flex';
     disable2FABtn.style.display = 'none';
-    twoFactorSetup.style.display = 'none';
+    twofaSetupDialog.style.display = 'none';
   }
 }
 
@@ -73,11 +73,10 @@ enable2FABtn.addEventListener('click', async () => {
       // Display secret key
       secretKeyInput.value = data.secret;
       
-      // Show setup UI
-      twoFactorSetup.style.display = 'block';
-      enable2FABtn.style.display = 'none';
+      // Show setup dialog
+      twofaSetupDialog.style.display = '';
       verificationCode.value = '';
-      verificationCode.focus();
+      setTimeout(() => verificationCode.focus(), 100);
     } else {
       const error = await response.json();
       showToast(error.detail || 'Failed to setup 2FA', 'error');
@@ -112,6 +111,7 @@ verifyCodeBtn.addEventListener('click', async () => {
 
     if (response.ok) {
       showToast('2FA enabled successfully!', 'success');
+      twofaSetupDialog.style.display = 'none';
       currentTwoFactorEnabled = true;
       updateTwoFactorUI();
     } else {
@@ -125,8 +125,13 @@ verifyCodeBtn.addEventListener('click', async () => {
 
 // Cancel setup
 cancelSetupBtn.addEventListener('click', () => {
-  twoFactorSetup.style.display = 'none';
-  updateTwoFactorUI();
+  twofaSetupDialog.style.display = 'none';
+  verificationCode.value = '';
+});
+
+// Close 2FA dialog on backdrop click
+twofaSetupDialog.querySelector('.custom-dialog-backdrop').addEventListener('click', () => {
+  twofaSetupDialog.style.display = 'none';
   verificationCode.value = '';
 });
 
@@ -312,6 +317,8 @@ createApiKeyBtn.addEventListener('click', () => {
   apiKeyCreatedView.style.display = 'none';
   apiKeyDialogCreateBtn.style.display = '';
   apiKeyDialogCancelBtn.textContent = 'Cancel';
+  createApiKeyDialog.classList.remove('dialog-wide-key');
+  document.getElementById('apiKeyDialogTitle').textContent = 'Create new API Key';
   createApiKeyDialog.style.display = '';
   apiKeyNameInput.focus();
 });
@@ -322,10 +329,12 @@ let apiKeyDialogLocked = false;
 apiKeyDialogCancelBtn.addEventListener('click', () => {
   apiKeyDialogLocked = false;
   createApiKeyDialog.style.display = 'none';
+  createApiKeyDialog.classList.remove('dialog-wide-key');
 });
 createApiKeyDialog.querySelector('.custom-dialog-backdrop').addEventListener('click', () => {
   if (!apiKeyDialogLocked) {
     createApiKeyDialog.style.display = 'none';
+    createApiKeyDialog.classList.remove('dialog-wide-key');
   }
 });
 
@@ -359,8 +368,13 @@ apiKeyDialogCreateBtn.addEventListener('click', async () => {
     apiKeyCreatedView.style.display = '';
     newKeyValue.value = data.key;
     apiKeyDialogCreateBtn.style.display = 'none';
-    apiKeyDialogCancelBtn.textContent = 'Close';
+    apiKeyDialogCancelBtn.textContent = 'Done';
     apiKeyDialogLocked = true;
+    createApiKeyDialog.classList.add('dialog-wide-key');
+    document.getElementById('apiKeyDialogTitle').textContent = 'API Key Created';
+    // Reset copy button state
+    document.getElementById('copyApiKeyIcon').className = 'bi bi-clipboard';
+    document.getElementById('copyApiKeyText').textContent = 'Copy';
 
     // Reload the list
     await loadApiKeys();
@@ -374,6 +388,15 @@ apiKeyDialogCreateBtn.addEventListener('click', async () => {
 copyApiKeyBtn.addEventListener('click', () => {
   newKeyValue.select();
   navigator.clipboard.writeText(newKeyValue.value);
+  // Visual feedback on button
+  const icon = document.getElementById('copyApiKeyIcon');
+  const text = document.getElementById('copyApiKeyText');
+  icon.className = 'bi bi-check-lg';
+  text.textContent = 'Copied!';
+  setTimeout(() => {
+    icon.className = 'bi bi-clipboard';
+    text.textContent = 'Copy';
+  }, 2000);
   showToast('API key copied to clipboard', 'success');
 });
 

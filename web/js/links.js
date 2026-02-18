@@ -344,22 +344,9 @@ createLinkConfirmBtn.addEventListener('click', async () => {
     if (!response.ok) throw new Error('Failed to create link');
 
     const linkData = await response.json();
-    const linkUrl = `${window.location.origin}/?invite=${linkData.token}`;
 
-    // Switch to created view
-    document.getElementById('createLinkForm').style.display = 'none';
-    document.getElementById('linkCreatedView').style.display = '';
-    document.getElementById('createdLinkUrl').value = linkUrl;
-    createLinkConfirmBtn.style.display = 'none';
-    createLinkCancelBtn.textContent = 'Close';
-
-    // Copy URL button
-    document.getElementById('copyCreatedLinkBtn').onclick = () => {
-      navigator.clipboard.writeText(linkUrl);
-      showToast('URL copied to clipboard', 'success', 1200);
-    };
-
-    // Reset form
+    // Close dialog and reset form
+    createLinkDialog.style.display = 'none';
     document.getElementById('linkLabel').value = '';
     document.getElementById('linkExpires').value = '604800';
 

@@ -119,41 +119,6 @@
                     </div>
                   </div>
 
-                  <!-- 2FA Setup (Hidden by default) -->
-                  <div id="twoFactorSetup" class="twofa-setup" style="display: none;">
-                    <div class="twofa-setup-grid">
-                      <div class="twofa-setup-qr">
-                        <div class="twofa-qr-frame" id="qrCodeContainer"></div>
-                        <p class="twofa-qr-caption">Scan with your authenticator app</p>
-                      </div>
-                      <div class="twofa-setup-details">
-                        <div class="twofa-detail-group">
-                          <label class="form-label"><i class="bi bi-key"></i> Secret Key</label>
-                          <div class="twofa-secret-row">
-                            <input type="text" class="form-control" id="secretKey" readonly>
-                            <button class="btn btn-secondary" type="button" id="copySecretBtn" title="Copy to clipboard">
-                              <i class="bi bi-clipboard"></i>
-                            </button>
-                          </div>
-                          <div class="form-hint">Use this key if you can't scan the QR code</div>
-                        </div>
-                        <div class="twofa-detail-group">
-                          <label for="verificationCode" class="form-label">Verification Code</label>
-                          <input type="text" class="form-control twofa-code-input" id="verificationCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code">
-                          <div class="form-hint">Enter the 6-digit code from your authenticator app</div>
-                        </div>
-                        <div class="twofa-setup-actions">
-                          <button type="button" id="verifyCodeBtn" class="btn btn-primary">
-                            Verify & Enable
-                          </button>
-                          <button type="button" id="cancelSetupBtn" class="btn btn-secondary">
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
                   <!-- Action Buttons -->
                   <div id="twoFactorActions" class="twofa-actions">
                     <button type="button" id="enable2FABtn" class="btn btn-primary" style="display: none;">
@@ -222,12 +187,51 @@
     </div>
   </div>
 
+  <!-- 2FA Setup Dialog -->
+  <div id="twofaSetupDialog" class="custom-dialog" style="display: none;">
+    <div class="custom-dialog-backdrop"></div>
+    <div class="custom-dialog-content custom-dialog-wide">
+      <div class="custom-dialog-header">
+        <h3>Set Up Two-Factor Authentication</h3>
+      </div>
+      <div class="custom-dialog-body">
+        <div class="twofa-dialog-grid">
+          <div class="twofa-dialog-qr">
+            <div class="twofa-qr-frame" id="qrCodeContainer"></div>
+            <p class="twofa-qr-caption">Scan with your authenticator app</p>
+          </div>
+          <div class="twofa-dialog-details">
+            <div class="twofa-detail-group">
+              <label class="form-label"><i class="bi bi-key"></i> Secret Key</label>
+              <div class="twofa-secret-row">
+                <input type="text" class="form-control" id="secretKey" readonly>
+                <button class="btn btn-secondary" type="button" id="copySecretBtn" title="Copy to clipboard">
+                  <i class="bi bi-clipboard"></i>
+                </button>
+              </div>
+              <div class="form-hint">Use this key if you can't scan the QR code</div>
+            </div>
+            <div class="twofa-detail-group">
+              <label for="verificationCode" class="form-label">Verification Code</label>
+              <input type="text" class="form-control twofa-code-input" id="verificationCode" placeholder="000000" maxlength="6" pattern="[0-9]{6}" inputmode="numeric" autocomplete="one-time-code">
+              <div class="form-hint">Enter the 6-digit code from your authenticator app</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="custom-dialog-footer">
+        <button type="button" id="cancelSetupBtn" class="btn btn-secondary">Cancel</button>
+        <button type="button" id="verifyCodeBtn" class="btn btn-primary">Verify & Enable</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Create API Key Dialog -->
   <div id="createApiKeyDialog" class="custom-dialog" style="display: none;">
     <div class="custom-dialog-backdrop"></div>
     <div class="custom-dialog-content">
       <div class="custom-dialog-header">
-        <h3>Create new API Key</h3>
+        <h3 id="apiKeyDialogTitle">Create new API Key</h3>
       </div>
       <div class="custom-dialog-body">
         <!-- Create Form (shown initially) -->
@@ -246,19 +250,24 @@
 
         <!-- Created Key Display (shown after creation) -->
         <div id="apiKeyCreatedView" style="display: none;">
-          <div class="twofa-banner status-enabled" style="margin-bottom: 1rem;">
-            <div class="twofa-banner-icon status-enabled">
-              <i class="bi bi-check-circle-fill"></i>
+          <div class="apikey-created-success">
+            <div class="apikey-created-icon">
+              <i class="bi bi-check-lg"></i>
             </div>
-            <div class="twofa-banner-body" style="flex: 1;">
-              <div class="twofa-banner-title">API Key Created</div>
-              <div class="twofa-banner-desc">Copy this key now — it won't be shown again</div>
-              <div class="twofa-secret-row mt-2">
-                <input type="text" class="form-control" id="newKeyValue" readonly>
-                <button class="btn btn-secondary" type="button" id="copyApiKeyBtn" title="Copy to clipboard">
-                  <i class="bi bi-clipboard"></i>
-                </button>
-              </div>
+            <div class="apikey-created-heading">Your API key has been created</div>
+            <p class="apikey-created-warning">
+              <i class="bi bi-exclamation-triangle-fill"></i>
+              Make sure to copy your key now. You won't be able to see it again.
+            </p>
+          </div>
+          <div class="apikey-created-key-box">
+            <label class="form-label">Your API Key</label>
+            <div class="apikey-created-key-row">
+              <input type="text" class="form-control apikey-created-key-input" id="newKeyValue" readonly>
+              <button class="btn btn-primary apikey-copy-btn" type="button" id="copyApiKeyBtn" title="Copy to clipboard">
+                <i class="bi bi-clipboard" id="copyApiKeyIcon"></i>
+                <span id="copyApiKeyText">Copy</span>
+              </button>
             </div>
           </div>
         </div>

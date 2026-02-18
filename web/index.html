@@ -126,22 +126,32 @@
               <button id="encBtn" class="btn btn-primary" aria-label="Create cryptex">
                 Create Cryptex
               </button>
-              <div id="encStatus" class="status-section" style="display: none">
-                <div id="encProgress" class="upload-progress" style="display: none">
-                  <div class="progress-header">
-                    <div class="progress-info">
+            </div>
+          </div>
+
+          <!-- Step Upload: Processing -->
+          <div id="stepUpload">
+            <div class="card-header">
+              <i class="bi bi-cloud-arrow-up"></i>
+              <h3>Creating Cryptex</h3>
+            </div>
+            <div class="card-body">
+              <div id="uploadSummary" class="upload-summary">
+                <div id="uploadSummaryItems" class="upload-summary-items"></div>
+              </div>
+              <div id="encStatus" class="status-section">
+                <div id="encProgress" class="upload-progress">
+                  <div class="progress-top-row">
+                    <div class="progress-status-group">
                       <div id="encProgressText" class="progress-text">Processing...</div>
                       <div id="encProgressSubtext" class="progress-subtext"></div>
                     </div>
-                    <button id="encCancelBtn" class="btn-cancel" aria-label="Cancel upload" title="Cancel upload">
-                      <i class="bi bi-x-lg"></i>
-                    </button>
+                    <span id="encProgressPercent" class="progress-percent-large">0%</span>
                   </div>
-                  <div class="progress-bar-container">
+                  <div class="progress-bar-full">
                     <div class="progress">
                       <div id="encProgressBar" class="progress-bar" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
-                    <span id="encProgressPercent" class="progress-percent">0%</span>
                   </div>
                   <div id="encProgressDetails" class="progress-details">
                     <span id="encProgressSize"></span>
@@ -153,6 +163,9 @@
                   <span class="status-message"></span>
                 </div>
               </div>
+              <button id="encCancelBtn" class="btn btn-cancel-upload" aria-label="Cancel upload">
+                <i class="bi bi-x-lg"></i> Cancel
+              </button>
             </div>
           </div>
 
@@ -181,17 +194,17 @@
               </button>
               <div id="decStatus" class="status-section" style="display: none">
                 <div id="decProgress" class="upload-progress" style="display: none">
-                  <div class="progress-header">
-                    <div class="progress-info">
+                  <div class="progress-top-row">
+                    <div class="progress-status-group">
                       <div id="decProgressText" class="progress-text">Opening...</div>
                       <div id="decProgressSubtext" class="progress-subtext"></div>
                     </div>
+                    <span id="decProgressPercent" class="progress-percent-large" style="color: #10b981;">0%</span>
                   </div>
-                  <div class="progress-bar-container">
+                  <div class="progress-bar-full">
                     <div class="progress">
                       <div id="decProgressBar" class="progress-bar bg-success" role="progressbar" style="width: 0%" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
                     </div>
-                    <span id="decProgressPercent" class="progress-percent">0%</span>
                   </div>
                   <div id="decProgressDetails" class="progress-details">
                     <span id="decProgressFile"></span>

@@ -1457,13 +1457,14 @@ html:not(.theme-ready) * {
 /* Responsive link items & toolbar */
 @media (max-width: 640px) {
   .link-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
+    flex-wrap: wrap;
     gap: 0.75rem;
   }
 
   .link-toolbar > .d-flex {
-    width: 100%;
+    flex: 1;
+    min-width: 0;
+    justify-content: flex-end;
   }
 
   .link-toolbar > .d-flex .form-control,
@@ -1685,6 +1686,94 @@ html:not(.theme-ready) * {
 /* 2FA Actions */
 .twofa-actions {
   margin-top: 1.25rem;
+}
+
+/* API Key Created Dialog */
+.apikey-created-success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0.5rem 0 1.25rem;
+}
+
+.apikey-created-icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: rgba(25, 135, 84, 0.12);
+  color: #198754;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.apikey-created-heading {
+  font-size: 1.0625rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 1.5rem;
+}
+
+.apikey-created-warning {
+  font-size: 0.8125rem;
+  color: var(--text-primary) !important;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+  padding: 0.5rem 0.875rem;
+  background: rgba(245, 158, 11, 0.08);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: 8px;
+}
+
+.apikey-created-warning i {
+  color: #f59e0b;
+  font-size: 0.875rem;
+  flex-shrink: 0;
+}
+
+.apikey-created-key-box {
+  margin-top: 0.25rem;
+}
+
+.apikey-created-key-box .form-label {
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.375rem;
+}
+
+.apikey-created-key-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.apikey-created-key-input {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 0.875rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-primary);
+  color: var(--text-primary);
+}
+
+.apikey-copy-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  white-space: nowrap;
+  flex-shrink: 0;
+  min-width: 80px;
+  justify-content: center;
+}
+
+.dialog-wide-key .custom-dialog-content {
+  max-width: 580px;
 }
 
 /* API Key Items */
@@ -1968,10 +2057,35 @@ html:not(.theme-ready) * {
   }
 }
 
+/* 2FA Dialog Layout */
+.twofa-dialog-grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2rem;
+  align-items: start;
+}
+
+.twofa-dialog-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.twofa-dialog-details {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
 /* 2FA Responsive */
 @media (max-width: 640px) {
-  .twofa-setup-grid {
+  .twofa-dialog-grid {
     grid-template-columns: 1fr;
+  }
+
+  .twofa-dialog-qr {
+    justify-self: center;
   }
 
   .twofa-banner {
@@ -1982,10 +2096,6 @@ html:not(.theme-ready) * {
 
   .twofa-code-input {
     max-width: 100%;
-  }
-
-  .twofa-setup-actions {
-    flex-direction: column;
   }
 }
 

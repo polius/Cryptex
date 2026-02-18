@@ -16,6 +16,7 @@ const mainCard = document.getElementById('mainCard');
 const linkBanner = document.getElementById('linkBanner');
 
 const step1 = document.getElementById('step1');
+const stepUpload = document.getElementById('stepUpload');
 const step2 = document.getElementById('step2');
 const step3 = document.getElementById('step3');
 const step4 = document.getElementById('step4');
@@ -124,6 +125,7 @@ function startCountdownForElement(element, expirationTimeMs) {
 
 function showStep(step) {
   step1.classList.toggle('active', step === 1);
+  stepUpload.classList.toggle('active', step === 'upload');
   step2.classList.toggle('active', step === 2);
   step3.classList.toggle('active', step === 3);
   step4.classList.toggle('active', step === 4);
@@ -137,12 +139,54 @@ function setCreateProcessing(isProcessing) {
   encFiles.disabled = isProcessing;
 }
 
+function buildUploadSummary(text, files) {
+  const container = document.getElementById('uploadSummaryItems');
+  if (!container) return;
+  container.innerHTML = '';
+
+  if (files.length) {
+    const totalSize = files.reduce((s, f) => s + f.size, 0);
+    let html = `<div class="upload-file-list">`;
+    html += `<div class="upload-file-list-header"><span class="upload-file-list-title">${files.length} file${files.length > 1 ? 's' : ''}</span><span class="upload-file-list-total">${formatFileSize(totalSize)}</span></div>`;
+    files.forEach((file, i) => {
+      html += `<div class="upload-file-row" id="uploadFileRow${i}">`;
+      html += `  <div class="upload-file-status" id="uploadFileStatus${i}"><i class="bi bi-circle"></i></div>`;
+      html += `  <div class="upload-file-info">`;
+      html += `    <span class="upload-file-name">${escapeHtml(file.name)}</span>`;
+      html += `    <span class="upload-file-size">${formatFileSize(file.size)}</span>`;
+      html += `  </div>`;
+      html += `  <div class="upload-file-badge" id="uploadFileBadge${i}">Queued</div>`;
+      html += `</div>`;
+    });
+    html += `</div>`;
+    container.innerHTML += html;
+  }
+}
+
+function updateFileUploadStatus(index, status) {
+  const statusEl = document.getElementById(`uploadFileStatus${index}`);
+  const badgeEl = document.getElementById(`uploadFileBadge${index}`);
+  const rowEl = document.getElementById(`uploadFileRow${index}`);
+  if (!statusEl || !badgeEl || !rowEl) return;
+
+  rowEl.classList.remove('queued', 'uploading', 'done');
+  rowEl.classList.add(status);
+
+  if (status === 'uploading') {
+    statusEl.innerHTML = '<div class="upload-file-spinner"></div>';
+    badgeEl.textContent = 'Uploading';
+    badgeEl.className = 'upload-file-badge uploading';
+  } else if (status === 'done') {
+    statusEl.innerHTML = '<i class="bi bi-check-circle-fill"></i>';
+    badgeEl.textContent = 'Done';
+    badgeEl.className = 'upload-file-badge done';
+  }
+}
+
 function setUploadProgress({ title, subtitle, percent, size, detail }) {
-  encStatus.style.display = 'block';
-  encProgress.style.display = 'block';
   encLog.style.display = 'none';
   if (title !== undefined) encProgressText.textContent = title;
-  if (subtitle !== undefined) encProgressSubtext.innerHTML = subtitle;
+  if (subtitle !== undefined) encProgressSubtext.textContent = subtitle;
   if (percent !== undefined) {
     const safePct = Math.max(0, Math.min(100, percent));
     encProgressBar.style.width = `${safePct}%`;
@@ -282,12 +326,13 @@ function getRetentionSeconds() {
 }
 
 async function uploadFileMultipart(cryptexId, file, uploadIndex, totalFiles, signal, bytesBefore, totalBytes, isLast = false) {
+  updateFileUploadStatus(uploadIndex, 'uploading');
   setUploadProgress({
-    title: totalFiles > 1 ? `Uploading file ${uploadIndex + 1} of ${totalFiles}` : 'Uploading file',
-    subtitle: `<i class="bi bi-file-earmark file-icon"></i><span class="file-name">${escapeHtml(file.name)}</span><span class="file-size-badge">${formatFileSize(file.size)}</span>`,
+    title: file.name,
+    subtitle: totalFiles > 1 ? `File ${uploadIndex + 1} of ${totalFiles}` : '',
     percent: totalBytes > 0 ? (bytesBefore / totalBytes) * 100 : 0,
-    size: `0 / ${formatFileSize(file.size)}`,
-    detail: 'Preparing multipart upload...'
+    size: `${formatFileSize(bytesBefore)} / ${formatFileSize(totalBytes)}`,
+    detail: 'Preparing...'
   });
 
   const started = await requestJson(
@@ -328,14 +373,15 @@ async function uploadFileMultipart(cryptexId, file, uploadIndex, totalFiles, sig
       const overallPct = totalBytes > 0 ? ((bytesBefore + uploadedBytes) / totalBytes) * 100 : filePct;
 
       setUploadProgress({
-        title: totalFiles > 1 ? `Uploading file ${uploadIndex + 1} of ${totalFiles}` : 'Uploading file',
-        subtitle: `<i class="bi bi-file-earmark file-icon"></i><span class="file-name">${escapeHtml(file.name)}</span><span class="file-size-badge">${formatFileSize(file.size)}</span>`,
+        title: file.name,
+        subtitle: totalFiles > 1 ? `File ${uploadIndex + 1} of ${totalFiles}` : '',
         percent: overallPct,
-        size: `${formatFileSize(uploadedBytes)} / ${formatFileSize(file.size)}`,
-        detail: `Part ${part + 1} / ${totalChunks} (${Math.round(filePct)}%)`
+        size: `${formatFileSize(bytesBefore + uploadedBytes)} / ${formatFileSize(totalBytes)}`,
+        detail: totalChunks > 1 ? `Part ${part + 1} / ${totalChunks}` : ''
       });
     }
 
+    updateFileUploadStatus(uploadIndex, 'done');
     const completeUrl = `${API_URL}/create/file/complete?cryptex_id=${encodeURIComponent(cryptexId)}&upload_id=${encodeURIComponent(uploadId)}${isLast ? '&finalize=true' : ''}`;
     await requestJson(completeUrl, { method: 'POST', signal });
   } catch (error) {
@@ -470,16 +516,32 @@ async function createCryptex() {
 
   setCreateProcessing(true);
   uploadAbortController = new AbortController();
-  encCancelBtn.onclick = () => uploadAbortController?.abort();
+
+  // Build summary and transition to upload step
+  buildUploadSummary(text, selectedFiles);
+  const totalBytes = selectedFiles.reduce((s, f) => s + f.size, 0);
+  setUploadProgress({
+    title: hasFiles ? 'Preparing files...' : 'Saving content...',
+    subtitle: '',
+    percent: 0,
+    size: hasFiles ? `0 / ${formatFileSize(totalBytes)}` : '',
+    detail: ''
+  });
+  encProgressBar.style.width = '0%';
+  encProgressPercent.textContent = '0%';
+  showStep('upload');
+
+  encCancelBtn.onclick = async () => {
+    const confirmed = await showDialog(
+      'Cancel Upload',
+      'Are you sure you want to cancel? All upload progress will be lost.',
+      'Cancel Upload',
+      'danger'
+    );
+    if (confirmed) uploadAbortController?.abort();
+  };
 
   try {
-    setUploadProgress({
-      title: 'Creating Cryptex',
-      subtitle: hasFiles ? 'Preparing metadata...' : 'Saving content...',
-      percent: 0,
-      size: '',
-      detail: ''
-    });
 
     const formData = new FormData();
     formData.append('text', text);
@@ -573,7 +635,7 @@ async function createCryptex() {
     } else {
       showToast(error.message || 'Failed to create cryptex', 'error');
     }
-    encProgress.style.display = 'none';
+    showStep(1);
   } finally {
     setCreateProcessing(false);
     uploadAbortController = null;

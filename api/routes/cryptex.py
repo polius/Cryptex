@@ -107,7 +107,25 @@ class CryptexRouter:
             if link['expires_at'] > 0 and link['expires_at'] <= now:
                 raise HTTPException(410, "Invite link has expired")
             if link['uses'] >= link['max_uses'] or link.get('cryptex_id'):
-                raise HTTPException(410, "Invite link has already been used")
+                # Self-healing: if the linked cryptex is still pending
+                # (user cancelled an upload), clean it up and allow reuse.
+                if link.get('cryptex_id'):
+                    pending_status = await db.is_cryptex_pending(link['cryptex_id'])
+                    if pending_status is True:
+                        old_cryptex_id = link['cryptex_id']
+                        await db.reset_link_cryptex(link['token'])
+                        await db.delete_cryptex(old_cryptex_id)
+                        cryptex_dir = self.FILES_DIR / old_cryptex_id
+                        if cryptex_dir.exists():
+                            shutil.rmtree(cryptex_dir, ignore_errors=True)
+                        # Re-fetch the now-reset link
+                        link = await db.get_link(invite)
+                        if not link:
+                            raise HTTPException(404, "Invalid invite link")
+                    else:
+                        raise HTTPException(410, "Invite link has already been used")
+                else:
+                    raise HTTPException(410, "Invite link has already been used")
             valid_link_token = invite
             link_password = link.get('password')
         
