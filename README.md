@@ -16,7 +16,7 @@
 
 <br>
 
-![Cryptex](web/assets/cryptex.png?v=2.0.0)
+![Cryptex](web/assets/cryptex.png?v=2.4.0)
 
 </div>
 
