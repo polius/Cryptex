@@ -6,7 +6,7 @@
     <div class="custom-dialog-backdrop"></div>
     <div class="custom-dialog-content custom-dialog-wide">
       <div class="custom-dialog-header">
-        <i class="bi bi-code-slash" style="color: #3b82f6; -webkit-text-fill-color: #3b82f6;"></i>
+        <i class="bi bi-code-slash" style="color: var(--accent); -webkit-text-fill-color: var(--accent);"></i>
         <h3>API Reference</h3>
       </div>
       <div class="custom-dialog-body api-usage-body">

@@ -18,13 +18,20 @@
   </script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="css/tokens.css" />
   <link rel="stylesheet" href="css/style.css" />
 </head>
-<body class="d-flex align-items-center justify-content-center px-1 py-4">
+<body class="px-1">
   <!-- Full-page overlay (shown until mode is determined) -->
   <div id="initialLoader" class="initial-loader"><div class="initial-spinner"></div></div>
 
   <div id="pageContent" style="display: none; width: 100%;">
+  <header class="app-bar">
+    <div class="app-bar-inner">
+      <a href="/" class="brand-bar" aria-label="Cryptex home">
+        <img class="brand-bar-logo" src="assets/logo.svg" alt="Cryptex" />
+        <span class="brand-bar-name">Cryptex<span id="appVersion" class="app-version"></span></span>
+      </a>
   <div class="top-nav-buttons">
     <a href="/monitor" id="adminToggle" class="admin-toggle" aria-label="Admin panel" title="Admin panel">
       <i class="bi bi-gear-fill"></i><span class="d-none d-md-inline ms-2">Admin</span>
@@ -35,6 +42,7 @@
     <button id="themeToggle" class="theme-toggle" aria-label="Dark mode" title="Dark mode">
       <i class="bi bi-moon-fill" id="themeIcon"></i><span class="d-none d-md-inline ms-2">Dark</span>
     </button>
+    <span class="nav-divider" aria-hidden="true"></span>
     <a href="/login" id="loginToggle" class="login-toggle" aria-label="Login" title="Admin Login">
       <i class="bi bi-box-arrow-in-right"></i><span class="d-none d-md-inline ms-2">Login</span>
     </a>
@@ -42,40 +50,38 @@
       <i class="bi bi-box-arrow-right"></i><span class="d-none d-md-inline ms-2">Logout</span>
     </a>
   </div>
-  
-  <div class="container">
-    <header class="app-header">
-      <div class="header-brand-wrapper">
-        <a href="/" class="header-brand">
-          <div class="header-icon">
-            <img src="assets/logo.svg" alt="Cryptex" />
-          </div>
-          <h1 class="app-title">Cryptex<span class="app-version" id="appVersion"></span></h1>
-        </a>
-      </div>
-      <p class="app-subtitle">Lock down your data. Send it securely.</p>
-    </header>
+    </div>
+  </header>
 
-    <div class="row justify-content-center">
-      <div class="col-lg-8">
+  <main class="page-main">
+  <div class="container">
+    <div class="landing">
+      <div class="landing-card">
         <!-- Status Banner (private mode, link errors, etc.) -->
         <div id="linkBanner" class="status-page" style="display: none;"></div>
-        
+
         <div class="card" id="mainCard" style="display: none;">
           <!-- Step 1: Create -->
           <div id="step1">
             <div class="card-header">
-              <h3>Create Cryptex</h3>
+              <div class="card-header-text">
+                <h3>Create a Cryptex</h3>
+                <p class="card-subtitle">Share text or files with optional password protection and an expiry.</p>
+              </div>
             </div>
             <div class="card-body">
               <div>
                 <label for="encMessage" class="form-label">Text</label>
-                <textarea id="encMessage" class="form-control" rows="4" placeholder="Enter your text (optional)" aria-label="Cryptex text"></textarea>
+                <textarea id="encMessage" class="form-control" rows="5" placeholder="Enter your text (optional)" aria-label="Cryptex text"></textarea>
                 <div id="encMessageCount" class="char-count">0 / 1000</div>
               </div>
               <div>
                 <label for="encFiles" class="form-label">Files <span class="text-muted" id="encFilesLimit">(max 5 files)</span></label>
-                <input type="file" id="encFiles" class="form-control" multiple accept="*/*" aria-label="File attachments" />
+                <input type="file" id="encFiles" class="file-input-hidden" multiple accept="*/*" aria-label="File attachments" />
+                <label for="encFiles" class="file-dropzone">
+                  <i class="bi bi-cloud-arrow-up"></i>
+                  <span class="file-dropzone-text">Drag &amp; drop files here, or <span class="file-dropzone-link">browse</span></span>
+                </label>
                 <div id="encFilesInfo" class="char-count" style="display: none;">0 / 5 files</div>
                 <div id="encFilesList" class="file-list" style="margin-top: 10px;"></div>
               </div>
@@ -171,8 +177,7 @@
 
           <!-- Step 2: Open -->
           <div id="step2">
-            <div class="card-header open">
-              <i class="bi bi-shield-check"></i>
+            <div class="card-header">
               <h3>Open Cryptex</h3>
             </div>
             <div class="card-body">
@@ -199,7 +204,7 @@
                       <div id="decProgressText" class="progress-text">Opening...</div>
                       <div id="decProgressSubtext" class="progress-subtext"></div>
                     </div>
-                    <span id="decProgressPercent" class="progress-percent-large" style="color: #10b981;">0%</span>
+                    <span id="decProgressPercent" class="progress-percent-large" style="color: var(--success);">0%</span>
                   </div>
                   <div class="progress-bar-full">
                     <div class="progress">
@@ -318,8 +323,15 @@
           </div>
         </div>
       </div>
+      <footer class="site-footer">
+        <p class="site-footer-note">
+          <i class="bi bi-shield-check"></i>
+          Encrypted in your browser. Your password and keys never reach the server.
+        </p>
+      </footer>
     </div>
   </div>
+  </main>
 
   <div id="toast-container" class="toast-container position-fixed top-0 start-50 translate-middle-x p-3"></div>
 

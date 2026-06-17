@@ -18,61 +18,42 @@
   </script>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-GLhlTQ8iRABdZLl6O3oVMWSktQOp6b7In1Zl3/Jr59b6EGGoI1aFkw7cmDA6j6gD" crossorigin="anonymous">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  <link rel="stylesheet" href="css/tokens.css" />
   <link rel="stylesheet" href="css/admin.css" />
 </head>
-<body class="px-1 pb-4">
+<body>
   <div id="initialLoader" class="initial-loader"><div class="initial-spinner"></div></div>
   <div id="pageContent" style="display: none;">
-  <div class="top-nav-buttons">
-    <button id="apiReferenceToggle" class="admin-api-toggle" aria-label="API Reference" title="API Reference">
-      <i class="bi bi-code-slash"></i><span class="d-none d-md-inline ms-2">API</span>
-    </button>
-    <button id="themeToggle" class="theme-toggle" aria-label="Dark mode" title="Dark mode">
-      <i class="bi bi-moon-fill" id="themeIcon"></i><span class="d-none d-md-inline ms-2">Dark</span>
-    </button>
-    <a href="#" id="logoutToggle" class="admin-logout-toggle" aria-label="Logout" title="Logout">
-      <i class="bi bi-box-arrow-right"></i><span class="d-none d-md-inline ms-2">Logout</span>
-    </a>
-  </div>
-  
-  <div class="container">
-    <div class="row justify-content-center">
-      <div class="col-lg-12" style="position: relative;">
-        <!-- New Cryptex Button -->
-        <a href="/" class="new-cryptex-toggle" aria-label="New Cryptex" title="Create a new Cryptex">
-          <i class="bi bi-plus-lg"></i>
-          <span>New Cryptex</span>
-        </a>
-
-        <!-- Navigation Bar -->
-        <div class="admin-nav">
-          <div class="admin-nav-link admin-nav-logo">
-            <img src="assets/logo.svg" alt="Cryptex" />
-            <span>Admin</span>
-          </div>
-          <a href="/monitor" class="admin-nav-link active">
-            <i class="bi bi-bar-chart-fill"></i>
-            <span>Monitor</span>
-          </a>
-          <a href="/links" class="admin-nav-link">
-            <i class="bi bi-link"></i>
-            <span>Links</span>
-          </a>
-          <a href="/settings" class="admin-nav-link">
-            <i class="bi bi-gear-fill"></i>
-            <span>Settings</span>
-          </a>
-          <a href="/security" class="admin-nav-link">
-            <i class="bi bi-shield-lock-fill"></i>
-            <span>Security</span>
-          </a>
+  <div class="admin-shell">
+    <aside class="admin-sidebar">
+      <a href="/" class="admin-brand" aria-label="Cryptex home">
+        <img class="admin-brand-logo" src="assets/logo.svg" alt="Cryptex" />
+        <span class="admin-brand-name">Cryptex</span>
+      </a>
+      <div class="admin-nav-label">Menu</div>
+      <nav class="admin-nav">
+        <a href="/monitor" class="admin-nav-link active"><i class="bi bi-bar-chart-fill"></i><span>Monitor</span></a>
+        <a href="/links" class="admin-nav-link"><i class="bi bi-link-45deg"></i><span>Links</span></a>
+        <a href="/settings" class="admin-nav-link"><i class="bi bi-gear-fill"></i><span>Settings</span></a>
+        <a href="/security" class="admin-nav-link"><i class="bi bi-shield-lock-fill"></i><span>Security</span></a>
+      </nav>
+      <div class="admin-sidebar-footer">
+        <a href="/" class="admin-new-btn" aria-label="New Cryptex" title="Create a new Cryptex"><i class="bi bi-plus-lg"></i><span>New Cryptex</span></a>
+        <div class="admin-sidebar-actions">
+          <button id="apiReferenceToggle" class="admin-icon-btn" aria-label="API Reference" title="API Reference"><i class="bi bi-code-slash"></i></button>
+          <button id="themeToggle" class="admin-icon-btn" aria-label="Dark mode" title="Dark mode"><i class="bi bi-moon-fill" id="themeIcon"></i></button>
+          <a href="#" id="logoutToggle" class="admin-icon-btn is-logout" aria-label="Logout" title="Logout"><i class="bi bi-box-arrow-right"></i></a>
         </div>
-
-        <!-- Page Header -->
+      </div>
+    </aside>
+    <main class="admin-main">
+      <header class="admin-topbar">
         <div class="page-header">
-          <h2 class="page-title">Monitor</h2>
+          <h1 class="page-title">Monitor</h1>
           <p class="page-desc">Overview of stored items and system resources</p>
         </div>
+      </header>
+      <div class="admin-content">
 
         <!-- Stats Cards -->
         <div class="row g-3 mb-4">
@@ -247,9 +228,9 @@
           </div>
         </div>
       </div>
+    </main>
     </div>
-  </div>
-  
+
   <!-- Toast Container -->
   <div id="toast-container"></div>
 

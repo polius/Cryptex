@@ -939,7 +939,8 @@ async function checkLinkToken() {
 async function loadLimits() {
   try {
     const data = await requestJson(`${API_URL}/`, { method: 'GET' });
-    document.getElementById('appVersion').textContent = `v${data.version}`;
+    const appVersion = document.getElementById('appVersion');
+    if (appVersion) appVersion.textContent = `v${data.version}`;
     MAX_MESSAGE_LENGTH = data.config.max_message_length;
     MAX_FILES = data.config.max_file_count;
     MAX_FILE_SIZE = data.config.max_file_size;
