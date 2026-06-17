@@ -12,6 +12,18 @@ updates:
         patterns:
           - "*"
 
+  # Keep the Python dependencies (api/requirements.txt) up to date.
+  - package-ecosystem: "pip"
+    directory: "/api"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "dependencies"
+    groups:
+      pip:
+        patterns:
+          - "*"
+
   # Keep the nginx base image in the Dockerfile up to date.
   # NOTE: Dependabot can only bump a versioned tag. A floating tag such as
   # "nginx:alpine" has no version to compare, so pin it (e.g. "nginx:1.27-alpine"
