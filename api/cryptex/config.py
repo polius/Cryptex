@@ -193,6 +193,8 @@ def load_env(environ: dict[str, str] | None = None) -> Env:
         return Rate(c, w)
 
     proxies = [ipaddress.ip_network(p.strip(), strict=False) for p in (get("TRUSTED_PROXIES", "") or "").split(",") if p.strip()]
+    if parse_bool(get("CRYPTEX_BEHIND_NGINX", "false")):  # the container's own nginx, on loopback
+        proxies += [ipaddress.ip_network("127.0.0.1/32"), ipaddress.ip_network("::1/128")]
     setup_code = get("SETUP_CODE") or "-".join(secrets.token_hex(2).upper() for _ in range(3))
     static_dir = get("STATIC_DIR")
 

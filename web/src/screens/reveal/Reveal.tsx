@@ -12,6 +12,7 @@ import { host, Page, RecipientHeader } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
 import { errorText } from '../errors';
 import { Output } from './Output';
+import { confirmDialog } from '../../ui/confirm';
 
 type State =
   | { k: 'loading' }
@@ -215,7 +216,7 @@ export function Reveal({ id }: { id: string }) {
         </div>
         <p class="fine">{t('reveal.nothing_opened', { brand: config.value?.brand.name || 'this sender' }).replace(/Make sure the address is .*$/, '')}Make sure the address is <span class="mono">{host()}</span>.</p>
         {demo && <p class="fine"><button type="button" class="link small" onClick={async () => {
-          if (!confirm('Report this link as abuse? It will be deleted for everyone.')) return;
+          if (!(await confirmDialog({ title: 'Report this link?', body: 'It’s deleted for everyone, now. Report links that look like phishing, malware or abuse.', confirm: 'Report and delete', danger: true }))) return;
           await report(id, o.keys).catch(() => undefined);
           setS({ k: 'gone', reason: 'destroyed' });
         }}>Report abuse</button></p>}

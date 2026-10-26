@@ -3,25 +3,51 @@ import './styles/fonts.css';
 import './styles/app.css';
 import './styles/live.css';
 import { render } from 'preact';
-import { useEffect } from 'preact/hooks';
+import type { ComponentType } from 'preact';
+import { useEffect, useState } from 'preact/hooks';
 import { match, navigate, route } from './lib/router';
 import { applyTheme, bootError, config, loadConfig } from './lib/state';
-import { refreshLinksCount } from './screens/links/sync';
-import { SignIn } from './screens/auth/SignIn';
-import { Setup } from './screens/auth/Setup';
-import { Home } from './screens/Home';
-import { Links } from './screens/links/Links';
-import { Receipt } from './screens/links/Receipt';
-import { DemoLimit, Privacy } from './screens/misc';
-import { KeyImport, Respond } from './screens/respond/Respond';
-import { NotFoundBody, Reveal } from './screens/reveal/Reveal';
 import { ReauthDialog } from './screens/server/common';
-import { AccessSection, AuditSection, BrandingSection, LimitsSection, NotificationsSection, OverviewSection } from './screens/server/Sections';
-import { MyTokens, TokensSection } from './screens/server/Tokens';
 import { Toasts } from './ui/chrome';
+import { ConfirmHost } from './ui/confirm';
 import { t } from './lib/i18n';
 
 applyTheme();
+
+/** Load a screen's code only when its route is used, so recipients download the reveal page and nothing else. */
+function lazy<P extends object>(load: () => Promise<ComponentType<P>>): ComponentType<P> {
+  let C: ComponentType<P> | null = null;
+  let pending: Promise<void> | null = null;
+  return (props: P) => {
+    const [, ready] = useState(0);
+    if (C) return <C {...props} />;
+    pending ??= load().then((c) => {
+      C = c;
+    });
+    void pending.then(() => ready((n) => n + 1));
+    return null;
+  };
+}
+
+const Reveal = lazy(() => import('./screens/reveal/Reveal').then((m) => m.Reveal));
+const NotFoundBody = lazy(() => import('./screens/reveal/Reveal').then((m) => m.NotFoundBody));
+const Respond = lazy(() => import('./screens/respond/Respond').then((m) => m.Respond));
+const KeyImport = lazy(() => import('./screens/respond/Respond').then((m) => m.KeyImport));
+const Home = lazy(() => import('./screens/Home').then((m) => m.Home));
+const Links = lazy(() => import('./screens/links/Links').then((m) => m.Links));
+const Receipt = lazy(() => import('./screens/links/Receipt').then((m) => m.Receipt));
+const SignIn = lazy(() => import('./screens/auth/SignIn').then((m) => m.SignIn));
+const Setup = lazy(() => import('./screens/auth/Setup').then((m) => m.Setup));
+const DemoLimit = lazy(() => import('./screens/misc').then((m) => m.DemoLimit));
+const Privacy = lazy(() => import('./screens/misc').then((m) => m.Privacy));
+const MyTokens = lazy(() => import('./screens/server/Tokens').then((m) => m.MyTokens));
+const TokensSection = lazy(() => import('./screens/server/Tokens').then((m) => m.TokensSection));
+const OverviewSection = lazy(() => import('./screens/server/Sections').then((m) => m.OverviewSection));
+const AccessSection = lazy(() => import('./screens/server/Sections').then((m) => m.AccessSection));
+const LimitsSection = lazy(() => import('./screens/server/Sections').then((m) => m.LimitsSection));
+const BrandingSection = lazy(() => import('./screens/server/Sections').then((m) => m.BrandingSection));
+const NotificationsSection = lazy(() => import('./screens/server/Sections').then((m) => m.NotificationsSection));
+const AuditSection = lazy(() => import('./screens/server/Sections').then((m) => m.AuditSection));
 
 function Screen() {
   const c = config.value!;
@@ -93,6 +119,7 @@ function App() {
     <>
       <Screen />
       <ReauthDialog />
+      <ConfirmHost />
       <Toasts />
     </>
   );
@@ -105,7 +132,7 @@ async function boot() {
   } else {
     try {
       await loadConfig();
-      void refreshLinksCount();
+      if (!/^\/(s|q)\//.test(location.pathname)) void import('./screens/links/sync').then((m) => m.refreshLinksCount());
     } catch {
       bootError.value = 'offline';
     }

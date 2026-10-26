@@ -277,6 +277,13 @@ def delete_logo(request: Request) -> Response:
 
 
 # ------------------------------------------------------------------ notifications
+def _webhook_list() -> list[dict[str, Any]]:
+    return [{"id": w["id"], "url": w["url"], "events": w["events"].split(","), "created_at": iso(w["created_at"]),
+             "last_status": w["last_status"], "last_error": w["last_error"], "last_attempt_at": iso(w["last_attempt_at"]),
+             "pending": db.val("SELECT count(*) FROM webhook_deliveries WHERE webhook_id = ? AND done = 0", w["id"])}
+            for w in db.all("SELECT * FROM webhooks ORDER BY created_at")]
+
+
 @router.get("/server/notifications")
 def notifications(request: Request) -> dict[str, Any]:
     require_owner(request)
@@ -285,12 +292,15 @@ def notifications(request: Request) -> dict[str, Any]:
     return {
         "smtp": {"enabled": e.smtp_enabled, "host": u.hostname, "port": u.port, "from": e.smtp_from,
                  "tls": {"smtps": "implicit", "smtp+starttls": "starttls"}.get(u.scheme, "none") if e.smtp_url else None},
-        "webhooks": [{"id": w["id"], "url": w["url"], "events": w["events"].split(","), "created_at": iso(w["created_at"]),
-                      "last_status": w["last_status"], "last_error": w["last_error"], "last_attempt_at": iso(w["last_attempt_at"]),
-                      "pending": db.val("SELECT count(*) FROM webhook_deliveries WHERE webhook_id = ? AND done = 0", w["id"])}
-                     for w in db.all("SELECT * FROM webhooks ORDER BY created_at")],
+        "webhooks": _webhook_list(),
         "event_types": sorted(webhooks.LABELS),
     }
+
+
+@router.get("/server/webhooks")
+def list_webhooks(request: Request) -> dict[str, Any]:
+    require_owner(request)
+    return {"items": _webhook_list()}
 
 
 class TestEmail(Body):

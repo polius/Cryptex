@@ -384,6 +384,26 @@ paths:
         '204': {$ref: '#/components/responses/NoContent'}
         '404': {$ref: '#/components/responses/NotFound'}
 
+  /secrets/{id}/read:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    delete:
+      tags: [Secrets]
+      summary: The recipient decrypted everything. Ends the read session; on the last view, deletes the data now (otherwise after a 60-second retry grace).
+      security: [{read: []}]
+      responses:
+        '204': {$ref: '#/components/responses/NoContent'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
+  /secrets/{id}/report:
+    parameters: [{$ref: '#/components/parameters/Id'}]
+    post:
+      tags: [Secrets]
+      summary: DEMO=true only. Anyone holding the link takes it down as abuse.
+      security: [{reveal: []}]
+      responses:
+        '204': {$ref: '#/components/responses/NoContent'}
+        '404': {$ref: '#/components/responses/NotFound'}
+
   /receipts/{id}:
     parameters: [{$ref: '#/components/parameters/Id'}]
     get:
@@ -735,6 +755,48 @@ paths:
       responses: {'200': {description: OK, content: {application/json: {schema: {type: object, properties: {items: {type: array, items: {$ref: '#/components/schemas/Event'}}, next: {type: string}}}}}}}
   /server/audit.csv:
     get: {tags: [Server], security: [{session: []}], responses: {'200': {description: CSV, content: {text/csv: {schema: {type: string}}}}}}
+
+  /me/receipts/{item_id}:
+    delete:
+      tags: [Receipts]
+      summary: Detach a receipt from the account (the item itself is untouched)
+      security: [{session: []}]
+      parameters: [{name: item_id, in: path, required: true, schema: {type: string}}]
+      responses: {'204': {$ref: '#/components/responses/NoContent'}}
+  /me/password:
+    put:
+      tags: [Auth]
+      summary: Change your password (password owners). Signs out your other sessions.
+      security: [{session: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [current, new], properties: {current: {type: string}, new: {type: string, minLength: 12}}}}}}
+      responses: {'204': {$ref: '#/components/responses/NoContent'}, '400': {$ref: '#/components/responses/Invalid'}}
+  /me/totp:
+    post:
+      tags: [Auth]
+      summary: Start 2FA setup; returns a new secret and otpauth URI (not saved yet)
+      security: [{session: []}]
+      responses: {'200': {description: OK, content: {application/json: {schema: {type: object, properties: {secret: {type: string}, uri: {type: string}}}}}}}
+    put:
+      tags: [Auth]
+      summary: Turn on 2FA with the secret and a current code. Needs re-auth.
+      security: [{session: []}]
+      requestBody: {required: true, content: {application/json: {schema: {type: object, required: [secret, code], properties: {secret: {type: string}, code: {type: string}}}}}}
+      responses: {'204': {$ref: '#/components/responses/NoContent'}, '403': {$ref: '#/components/responses/Forbidden'}}
+    delete:
+      tags: [Auth]
+      summary: Turn off 2FA. Needs re-auth.
+      security: [{session: []}]
+      responses: {'204': {$ref: '#/components/responses/NoContent'}, '403': {$ref: '#/components/responses/Forbidden'}}
+  /demo/challenge:
+    get:
+      tags: [Config]
+      summary: "DEMO=true only: a proof-of-work challenge. Send X-PoW: <challenge>:<nonce> where SHA-256 of that string has `bits` leading zero bits."
+      responses: {'200': {description: OK, content: {application/json: {schema: {type: object, properties: {challenge: {type: string}, bits: {type: integer}, expires_in: {type: integer}}}}}}, '404': {$ref: '#/components/responses/NotFound'}}
+  /brand/logo:
+    get:
+      tags: [Config]
+      summary: The operator's logo (sanitized SVG or PNG), served with a sandboxing CSP
+      responses: {'200': {description: Image}, '404': {$ref: '#/components/responses/NotFound'}}
 
   /healthz:
     get: {tags: [Health], summary: Liveness and database check (no auth), responses: {'200': {description: OK}, '503': {description: Unhealthy}}}

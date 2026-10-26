@@ -16,6 +16,9 @@ input,textarea,select{font:inherit;color:inherit}
 .skip{position:absolute;left:12px;top:-60px;z-index:60;background:var(--ink);color:var(--surface);padding:10px 14px;border-radius:10px;font-weight:600;text-decoration:none}
 .skip:focus{top:12px}
 .grow{flex:1;min-width:0}
+[data-page-heading]:focus{outline:none;box-shadow:none}
+.stack > .btn,.stack > a.btn{justify-self:start}
+.stack > .btn.full{justify-self:stretch}
 .row.nowrap{flex-wrap:nowrap}
 .center-col{justify-items:center;text-align:center;padding-top:72px}
 .prose{gap:16px}
@@ -50,7 +53,7 @@ input,textarea,select{font:inherit;color:inherit}
 .link:disabled{color:var(--faint);text-decoration:none}
 .spin{width:16px;height:16px;border-radius:50%;border:2px solid currentColor;border-right-color:transparent;animation:spin .7s linear infinite;flex:none}
 @keyframes spin{to{transform:rotate(360deg)}}
-kbd{display:inline-block;line-height:1.2}
+kbd{display:inline-block;line-height:1.2;opacity:1;color:var(--muted);border-color:var(--line-2)}
 
 /* ---------- inputs (real controls) ---------- */
 input.input,textarea.input,select.input{width:100%;outline:none;font-size:15px}

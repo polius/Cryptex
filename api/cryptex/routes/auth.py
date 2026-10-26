@@ -182,6 +182,25 @@ def totp_disable(request: Request) -> Response:
     return Response(status_code=204)
 
 
+class PasswordChange(Body):
+    current: str = Field(max_length=1024)
+    new: str = Field(min_length=12, max_length=1024)
+
+
+@router.put("/me/password", status_code=204)
+def change_password(body: PasswordChange, request: Request) -> Response:
+    c = require_session(request)
+    ratelimit.hit("auth", state.env().rate_auth, c.subject)
+    assert c.user is not None
+    if c.user["password_hash"] is None:
+        raise invalid("current", "You sign in with single sign-on.")
+    if not security.verify_password(c.user["password_hash"], body.current):
+        raise invalid("current", "That isn’t your current password.")
+    db.run("UPDATE users SET password_hash = ? WHERE id = ?", security.hash_password(body.new), c.user_id)
+    db.run("DELETE FROM sessions WHERE user_id = ? AND id_hash != ?", c.user_id, c.session_hash)  # sign out other devices
+    return Response(status_code=204)
+
+
 # ------------------------------------------------------------------ OIDC
 _discovery: dict[str, Any] = {}
 _jwks: dict[str, Any] = {}

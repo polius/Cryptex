@@ -373,3 +373,25 @@ def test_cancelling_an_unread_answer_is_not_reported_as_read(client):
     assert client.delete(f"/api/v1/requests/{a.id}", headers=a.manage_headers()).status_code == 204
     rec = client.get(f"/api/v1/receipts/{a.id}", headers=a.manage_headers()).json()
     assert rec["status"] == "destroyed" and rec["events"][-1]["type"] == "request.cancelled"
+
+
+def test_owner_reset_command(client, capsys):
+    from cryptex import manage
+    assert manage.owner_reset(None) == 0
+    out = capsys.readouterr().out
+    password = [line.strip() for line in out.splitlines() if line.startswith("  ")][0]
+    assert client.get("/api/v1/auth/session").json()["user"] is None  # signed out everywhere
+    r = anon(client).post("/api/v1/auth/login", json={"email": OWNER["email"], "password": password})
+    assert r.status_code == 200 and r.json()["user"]["mfa"] is False
+    assert manage.owner_reset("nobody@x.example") == 1
+
+
+def test_change_password_signs_out_other_sessions(client):
+    other = anon(client)
+    r = other.post("/api/v1/auth/login", json={"email": OWNER["email"], "password": OWNER["password"]})
+    other.headers["X-CSRF"] = r.json()["csrf"]
+    assert client.put("/api/v1/me/password", json={"current": "wrong", "new": "x" * 12}).status_code == 400
+    assert client.put("/api/v1/me/password", json={"current": OWNER["password"], "new": "short"}).status_code == 400
+    assert client.put("/api/v1/me/password", json={"current": OWNER["password"], "new": "a brand new passphrase"}).status_code == 204
+    assert other.get("/api/v1/auth/session").json()["user"] is None
+    assert client.get("/api/v1/auth/session").json()["user"] is not None

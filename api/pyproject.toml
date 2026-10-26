@@ -16,7 +16,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "aiosmtpd==1.4.6", "ruff==0.17.2", "mypy"]
+dev = ["pytest==9.1.1", "aiosmtpd==1.4.6", "ruff==0.17.2", "mypy", "pyyaml==6.0.3", "openapi-spec-validator==0.9.0"]
 
 [tool.setuptools]
 packages = ["cryptex", "cryptex.routes", "cryptex.migrations"]

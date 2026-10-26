@@ -10,6 +10,12 @@ export async function loadConfig(): Promise<Config> {
   setCsrf(c.csrf);
   config.value = c;
   document.title = c.brand.name ? `${c.brand.name} · Secure share` : 'Cryptex';
+  if (c.demo && !document.querySelector('meta[name="robots"]')) {
+    const m = document.createElement('meta');
+    m.name = 'robots';
+    m.content = 'noindex, nofollow';
+    document.head.appendChild(m);
+  }
   return c;
 }
 

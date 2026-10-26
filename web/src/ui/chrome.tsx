@@ -7,6 +7,7 @@ import { t } from '../lib/i18n';
 import { navigate, route } from '../lib/router';
 import { config, dismiss, linksCount, loadConfig, setTheme, theme, toast, toasts, type Theme } from '../lib/state';
 import { clearDevice } from '../store/db';
+import { confirmDialog } from './confirm';
 import { useFocusTrap } from './dialog';
 import { Icon, Mark } from './icons';
 
@@ -91,7 +92,8 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
     navigate('/');
   };
   const clear = async () => {
-    if (!confirm(t('app.menu_clear_device') + '? Your links on this device, and request keys, are removed.')) return;
+    onClose();
+    if (!(await confirmDialog({ title: 'Clear this device?', body: 'Your links, saved link keys and request keys are removed from this browser. Secrets on the server aren’t affected, and answers to your requests can’t be opened here anymore.', confirm: 'Clear this device', danger: true }))) return;
     await clearDevice();
     linksCount.value = 0;
     onClose();

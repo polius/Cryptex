@@ -1,0 +1,49 @@
+# End-to-end environment: the real image, a demo instance, Mailpit, and Playwright on one network.
+#   docker compose -f e2e/compose.yml up -d --build --wait cryptex cryptex-demo mailpit
+#   docker compose -f e2e/compose.yml run --rm playwright
+name: cryptex-e2e
+# Service names avoid real TLDs: Chrome forces HTTPS for HSTS-preloaded ones such as .app.
+x-app: &app
+  build: { context: .., dockerfile: Dockerfile }
+  image: cryptex:e2e
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://127.0.0.1/api/v1/healthz"]
+    interval: 2s
+    retries: 30
+services:
+  cryptex:
+    <<: *app
+    environment:
+      SETUP_CODE: E2E-SETUP-CODE
+      SMTP_URL: smtp://mailpit:1025
+      SMTP_FROM: "Acme <no-reply@acme.example>"
+      RATE_CREATE: 5000/h
+      RATE_REVEAL: 20000/h
+      RATE_AUTH: 1000/15m
+      RATE_FAILED_TOKENS: 1000/h
+      LOG_LEVEL: warning
+  cryptex-demo:
+    <<: *app
+    environment:
+      DEMO: "true"
+      DEMO_SEALS_PER_DAY: "3"
+      RATE_REVEAL: 20000/h
+      RATE_FAILED_TOKENS: 1000/h
+      LOG_LEVEL: warning
+  mailpit:
+    image: axllent/mailpit:v1.28.0
+  playwright:
+    image: mcr.microsoft.com/playwright:v1.64.1-noble
+    profiles: [test]
+    working_dir: /e2e
+    volumes: [".:/e2e"]
+    environment:
+      BASE_URL: http://localhost:8080
+      DEMO_URL: http://localhost:8081
+      MAILPIT_URL: http://localhost:8025
+      CI: ${CI:-}
+    command: ["sh", "-c", "node forward.mjs & npm ci --no-audit --no-fund >/dev/null && npx playwright test ${PW_ARGS:-}"]
+    depends_on:
+      cryptex: { condition: service_healthy }
+      cryptex-demo: { condition: service_healthy }
+      mailpit: { condition: service_started }

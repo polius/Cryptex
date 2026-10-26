@@ -39,9 +39,10 @@ export function OverviewSection() {
       {data && (
         <>
           <div class="health">
-            <div class="metric"><small>{t('server.storage')}</small><b>{bytes(data.storage.used)} <span>of {bytes(data.storage.disk_total)}</span></b>
+            <div class="metric"><small>{t('server.storage')}</small><b>{bytes(data.storage.used)} <span>stored</span></b>
               <div class="meter" role="meter" aria-valuenow={data.storage.disk_total - data.storage.disk_free} aria-valuemin={0} aria-valuemax={data.storage.disk_total} aria-label="Disk used">
-                <i style={{ width: `${Math.min(100, Math.max(2, (100 * (data.storage.disk_total - data.storage.disk_free)) / Math.max(1, data.storage.disk_total)))}%` }} /></div></div>
+                <i style={{ width: `${Math.min(100, Math.max(2, (100 * (data.storage.disk_total - data.storage.disk_free)) / Math.max(1, data.storage.disk_total)))}%` }} /></div>
+              <span class="sub">{bytes(data.storage.disk_free)} free of {bytes(data.storage.disk_total)}</span></div>
             <div class="metric"><small>{t('server.live_links')}</small><b>{data.live.secrets + data.live.requests}</b><span class="sub">{t('server.expire_today', { n: data.live.expiring_today })}</span></div>
             <div class="metric"><small>{t('server.created_week')}</small><b>{data.week.created}</b><span class="sub">{t('server.by_people', { n: data.week.senders })}</span></div>
             <div class="metric"><small>{t('server.cleanup')}</small>
@@ -80,6 +81,7 @@ interface Access { mode: 'anyone' | 'signed_in'; locked_by: string | null; sso: 
 export function AccessSection() {
   const { data, reload } = useServer<Access>('/server/access');
   const [totp, setTotp] = useState<{ secret: string; uri: string } | null>(null);
+  const [pwOpen, setPwOpen] = useState(false);
   const setMode = (mode: 'anyone' | 'signed_in') => sensitive(async () => {
     await api('PUT', '/server/access', { body: { mode } });
     toast(t('toast.saved'));
@@ -122,14 +124,16 @@ export function AccessSection() {
               <PeopleTable people={members} me={data.me} onRole={setRole} /></div>
           )}
           {me && me.sign_in === 'password' && !readOnly() && (
-            <div class="set"><div class="k"><b>Your two-step verification</b><small>A code from an authenticator app, asked at every sign-in.</small></div>
+            <div class="set"><div class="k"><b>Your sign-in</b><small>Password and a code from an authenticator app, asked at every sign-in.</small></div>
               <div class="stack">
+                <Btn kind="secondary" icon="key" onClick={() => setPwOpen(true)}>Change password</Btn>
                 {me.mfa ? <span class="row"><Status kind="opened">On</Status><button class="btn sm ghost danger" onClick={() => sensitive(async () => { await api('DELETE', '/me/totp'); toast('2FA turned off'); reload(); })}>Turn off</button></span>
                   : <Btn kind="secondary" icon="shield" onClick={async () => setTotp(await api('POST', '/me/totp'))}>Turn on 2FA</Btn>}
               </div></div>
           )}
         </div></section>
       )}
+      {pwOpen && <PasswordDialog onClose={() => setPwOpen(false)} />}
       {totp && <TotpDialog setup={totp} onClose={() => setTotp(null)} onDone={() => { setTotp(null); reload(); void loadConfig(); }} />}
     </ServerShell>
   );
@@ -150,6 +154,39 @@ function PeopleTable({ people, me, onRole }: { people: Person[]; me: string; onR
         </tr>
       ))}</tbody>
     </table></div>
+  );
+}
+
+function PasswordDialog({ onClose }: { onClose: () => void }) {
+  const [cur, setCur] = useState('');
+  const [next, setNext] = useState('');
+  const [err, setErr] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const save = async () => {
+    setErr(null);
+    if (next.length < 12) return setErr('Use at least 12 characters.');
+    setBusy(true);
+    try {
+      await api('PUT', '/me/password', { body: { current: cur, new: next } });
+      toast('Password changed. Other devices were signed out.');
+      onClose();
+    } catch (e) {
+      setErr(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open onClose={onClose} labelledBy="pw-title" footer={<><button class="btn secondary" onClick={onClose}>{t('send.cancel')}</button><Btn kind="primary" loading={busy} onClick={save}>Change password</Btn></>}>
+      <h2 class="h3" id="pw-title">Change your password</h2>
+      <form class="stack" onSubmit={(e) => { e.preventDefault(); void save(); }}>
+        <div><label class="label" for="pw-cur">Current password</label><input id="pw-cur" class="input" type="password" autoComplete="current-password" value={cur} data-autofocus onInput={(e) => setCur((e.target as HTMLInputElement).value)} /></div>
+        <div><label class="label" for="pw-new">New password</label><input id="pw-new" class="input" type="password" autoComplete="new-password" minLength={12} value={next} onInput={(e) => setNext((e.target as HTMLInputElement).value)} />
+          <p class="help">At least 12 characters. Other devices are signed out.</p></div>
+        {err && <ErrMsg>{err}</ErrMsg>}
+        <button type="submit" class="sr">Change password</button>
+      </form>
+    </Dialog>
   );
 }
 

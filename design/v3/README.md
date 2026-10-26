@@ -1,6 +1,6 @@
 # Cryptex 3.0 developer kit
 
-Everything needed to implement Cryptex 3.0, from the audit and redesign artifact. Copy this folder into the repository as `design/v3/` (or `spec/`), next to `proto/`.
+The specification Cryptex 3 is built from: the crypto format, API contract, schema, behavior specs, copy deck, brand files and the static prototype the screens were designed in. The implementation lives in `api/`, `web/`, `cli/` and `e2e/` at the repository root; CI checks that it still matches this folder (crypto vectors, OpenAPI routes, copy keys).
 
 | Path | What it is | Used by |
 |---|---|---|
@@ -21,5 +21,19 @@ Everything needed to implement Cryptex 3.0, from the audit and redesign artifact
 | `brand/` | Mark, small mark, outlined wordmark and lockups (SVG), favicon, app icons, social image | CX-15 |
 | `research/usability-test.md` | 5-person prototype test, tasks and decision rules | Before CX-20/30/51 |
 | `legal/privacy-notice.md` | Draft privacy notice matching the product | Legal review before launch |
-| `../backlog.md` | 32 issues with dependencies and acceptance criteria | Planning |
-| `../proto/` | 36 static screens + `app.css` (the starting stylesheet) | Everything front end |
+| `backlog.md` | 32 issues with dependencies and acceptance criteria | Planning |
+| `proto/` | 36 static screens + `app.css` (the starting stylesheet, used as-is by `web/`) | Everything front end |
+
+## Decisions changed during implementation
+
+| Spec said | Built | Why |
+|---|---|---|
+| Create sends `meta_ct`, `reveal_hash`, `passcheck_hash` (and `prompt_ct`, `answer_token_hash` for requests) | They're sent with **seal** (`/requests/{id}/seal` added) | Every derived value is bound to the ID, and the server assigns the ID on create. |
+| The last view deletes data when the last chunk is served | Deleted when the client confirms (`DELETE /secrets/{id}/read`), or 60 s after the last chunk | A dropped connection on the last chunk would otherwise lose the secret. |
+| Meta plaintext `{title, from}` | `{title, from, fields, notes}` | So the sealed page can say “3 fields and 1 file” before reveal. |
+| Lucide icons | The prototype's own icon set (`web/src/ui/icons.tsx`) | Pixel-identical to the approved screens; no dependency. |
+| Authlib, aiosmtplib | joserfc (same author, the maintained JOSE library) and the standard library's smtplib on a worker thread | Authlib's JOSE module is deprecated; SMTP never blocks a request either way. |
+| `size-limit` | `web/scripts/budget.mjs` over the Vite manifest | Measures each route's real chunk graph. |
+| 2.4 migration, `LEGACY_API` | Removed | 3.0 is a new application with no upgrade path. |
+
+Added beyond the spec: `cryptex answer` in the CLI, `cryptex owner reset` in the container, `PUT /me/password`, `/me/totp`, demo abuse reports, `GET /server/webhooks`.

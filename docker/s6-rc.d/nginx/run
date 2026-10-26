@@ -1,0 +1,7 @@
+#!/command/with-contenv sh
+# DEMO=true: keep every page out of search engines.
+case "$(echo "${DEMO:-false}" | tr '[:upper:]' '[:lower:]')" in
+  1|true|yes|on) echo 'add_header X-Robots-Tag "noindex, nofollow" always;' > /etc/nginx/cryptex-demo.conf ;;
+  *) : > /etc/nginx/cryptex-demo.conf ;;
+esac
+exec nginx -g 'daemon off;'

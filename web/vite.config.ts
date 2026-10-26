@@ -8,6 +8,7 @@ export default defineConfig({
     sourcemap: false,
     assetsInlineLimit: 0, // CSP: no data: fonts or scripts
     modulePreload: { polyfill: false },
+    manifest: true,
   },
   worker: { format: 'es' },
   server: {
