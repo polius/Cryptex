@@ -96,7 +96,8 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
         }
         await page.goto('/server');
         await expect(page.locator('.health')).toBeVisible();
-        await snap(page, `server-overview-${tag}`, ['.count', '.lede', '.metric', '.card:last-of-type tbody', '.attn-list'], vp === 'mobile' ? undefined : 760);
+        // Only the stable top: what needs attention depends on the host (disk, email), so it isn't pixel-tested.
+        await snap(page, `server-overview-${tag}`, ['.count', '.lede', '.metric'], vp === 'mobile' ? 560 : 330);
       });
 
       test('sign in and empty links', async ({ browser }) => {
