@@ -36,8 +36,9 @@ test('passphrase: the right one reveals', async ({ browser }) => {
   await page.getByRole('button', { name: 'Change' }).click();
   await page.getByRole('switch', { name: 'Passphrase' }).click();
   await page.getByRole('button', { name: 'Generate words' }).click();
-  const pass = await page.getByRole('textbox', { name: 'Passphrase' }).inputValue();
-  expect(pass).toMatch(/^[a-z-]+-[a-z-]+-[a-z-]+-[a-z-]+-\d\d$/);
+  const box = page.getByRole('textbox', { name: 'Passphrase' });
+  await expect(box).toHaveValue(/^[a-z-]+-[a-z-]+-[a-z-]+-[a-z-]+-\d\d$/);
+  const pass = await box.inputValue();
   const link = await createLink(page);
   const r = await stranger(browser);
   await r.page.goto(link);

@@ -9,11 +9,19 @@ import { createLink, owner, paste, sendText, stranger } from './helpers';
 const VIEWPORTS = { desktop: { width: 1440, height: 900 }, mobile: { width: 390, height: 844 } } as const;
 const THEMES = ['light', 'dark'] as const;
 
-async function snap(page: Page, name: string, mask: string[] = []) {
+async function snap(page: Page, name: string, mask: string[] = [], clipHeight?: number) {
   await page.evaluate(() => document.fonts.ready);
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
+  await page.evaluate(() => {
+    (document.activeElement as HTMLElement | null)?.blur();
+    window.scrollTo(0, 0);
+  });
   await page.waitForTimeout(150);
+  // Phones: what fits on screen (sticky action bars make full-page captures misleading). Desktop: the whole page.
+  const mobile = page.viewportSize()!.width < 720;
   await expect(page).toHaveScreenshot(`${name}.png`, {
-    fullPage: true,
+    fullPage: !clipHeight && !mobile,
+    ...(clipHeight ? { clip: { x: 0, y: 0, width: page.viewportSize()!.width, height: clipHeight } } : {}),
     mask: [page.locator('.toasts'), ...mask.map((m) => page.locator(m))],
   });
 }
@@ -80,7 +88,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
         const { page } = await owner(browser, opts);
         await page.goto('/links');
         await expect(page.locator('.rows')).toBeVisible();
-        await snap(page, `links-${tag}`, ['.count', '.rows', '.tab .n']);
+        await snap(page, `links-${tag}`, ['.count', '.rows', '.tabs'], vp === 'mobile' ? 640 : 520); // the list grows as other tests run
         for (const s of ['access', 'limits', 'branding', 'notifications']) {
           await page.goto(`/server/${s}`);
           await expect(page.locator('.srv-main h1')).toBeVisible();
@@ -88,7 +96,7 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
         }
         await page.goto('/server');
         await expect(page.locator('.health')).toBeVisible();
-        await snap(page, `server-overview-${tag}`, ['.count', '.lede', '.metric', '.card:last-of-type tbody']);
+        await snap(page, `server-overview-${tag}`, ['.count', '.lede', '.metric', '.card:last-of-type tbody', '.attn-list'], vp === 'mobile' ? undefined : 760);
       });
 
       test('sign in and empty links', async ({ browser }) => {

@@ -50,6 +50,7 @@ export function applyPaste(s: ComposerState, raw: string): ComposerState {
 export function Composer(props: {
   state: ComposerState; onChange: (s: ComposerState) => void; maxChars: number; maxFiles: number; maxFileBytes: number;
   disabled?: boolean; demoPlaceholder?: boolean; onFilesRejected: (msg: string) => void; registerPaste: (fn: (raw: string) => void) => void;
+  registerDrop?: (fn: (files: File[]) => void) => void;
 }) {
   const s = props.state;
   const set = (p: Partial<ComposerState>) => props.onChange({ ...s, ...p });
@@ -63,6 +64,7 @@ export function Composer(props: {
   // Pastes anywhere on the page land here (⌘V on /).
   useEffect(() => {
     props.registerPaste((raw) => props.onChange(applyPaste(props.state, raw)));
+    props.registerDrop?.((files) => addFiles(files));
   });
 
   // Grow the note box with its content.
@@ -107,7 +109,7 @@ export function Composer(props: {
   return (
     <section class={`composer${focus ? ' focus' : ''}`} aria-label={t('send.title')}
       onFocusIn={() => setFocus(true)} onFocusOut={() => setFocus(false)}
-      onDragOver={(e) => e.preventDefault()} onDrop={(e) => { e.preventDefault(); addFiles(Array.from(e.dataTransfer?.files ?? [])); }}>
+      >
       {!empty && (
         <div class="cmp-title">
           <input class="t" value={s.title} maxLength={120} placeholder={t('send.title_placeholder')} aria-label="Title" disabled={props.disabled}

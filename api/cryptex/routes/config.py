@@ -32,6 +32,10 @@ def brand_json() -> dict[str, Any]:
 def config(request: Request) -> dict[str, Any]:
     c = caller(request)
     e = state.env()
+    if not e.public_url and not state.raw("detected_url"):
+        # PUBLIC_URL unset: the address the first browser used becomes the public address (config.md).
+        from .setup import detected_url
+        state.save("detected_url", detected_url(request))
     max_exp = int(state.setting("max_expiration"))
     out: dict[str, Any] = {
         "version": VERSION,

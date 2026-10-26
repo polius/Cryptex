@@ -414,8 +414,8 @@ export function NotificationsSection() {
         <section class="card"><div class="card-b">
           <div class="set"><div class="k"><b>Email (SMTP)</b><small>Used for open notices and 6-digit codes.</small></div>
             <div class="stack">
-              <div class="kv"><dt>Server</dt><dd class="mono">{data.smtp.host ? `${data.smtp.host}:${data.smtp.port ?? ''}` : '—'}</dd><dt>From</dt><dd class="mono">{data.smtp.from ?? '—'}</dd>
-                <dt>Security</dt><dd>{data.smtp.tls === 'implicit' ? 'TLS' : data.smtp.tls === 'starttls' ? 'STARTTLS' : data.smtp.tls ? 'None' : '—'}</dd></div>
+              <dl class="kv"><dt>Server</dt><dd class="mono">{data.smtp.host ? `${data.smtp.host}:${data.smtp.port ?? ''}` : '—'}</dd><dt>From</dt><dd class="mono">{data.smtp.from ?? '—'}</dd>
+                <dt>Security</dt><dd>{data.smtp.tls === 'implicit' ? 'TLS' : data.smtp.tls === 'starttls' ? 'STARTTLS' : data.smtp.tls ? 'None' : '—'}</dd></dl>
               <Lock vars="SMTP_URL, SMTP_FROM" />
               <Btn kind="secondary" class="" loading={testing} disabled={!data.smtp.enabled || readOnly()} onClick={async () => {
                 setTesting(true);

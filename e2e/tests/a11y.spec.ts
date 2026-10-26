@@ -4,6 +4,7 @@ import { expect, test, type Page } from '@playwright/test';
 import { createLink, owner, paste, sendText, stranger } from './helpers';
 
 async function audit(page: Page, name: string) {
+  await page.evaluate(() => Promise.all(document.getAnimations().map((a) => a.finished)));
   const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
   const bad = r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical');
   expect(bad.map((v) => `${name}: ${v.id} (${v.impact}) ${v.nodes.map((n) => n.target.join(' ')).slice(0, 3).join(', ')}`)).toEqual([]);

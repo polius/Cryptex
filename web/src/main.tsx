@@ -14,6 +14,15 @@ import { t } from './lib/i18n';
 
 applyTheme();
 
+/** First focus on each route: the page heading, except "/" where it's the composer (frontend.md §6).
+ *  Leaves focus alone if the person already moved it. */
+function focusFirst(force = false): void {
+  const active = document.activeElement;
+  if (!force && active && active !== document.body && active.closest('main')) return;
+  if (location.pathname === '/') (document.getElementById('composer') ?? document.querySelector<HTMLElement>('[data-autofocus]'))?.focus({ preventScroll: true });
+  else document.querySelector<HTMLElement>('[data-page-heading]')?.focus({ preventScroll: true });
+}
+
 /** Load a screen's code only when its route is used, so recipients download the reveal page and nothing else. */
 function lazy<P extends object>(load: () => Promise<ComponentType<P>>): ComponentType<P> {
   let C: ComponentType<P> | null = null;
@@ -24,7 +33,10 @@ function lazy<P extends object>(load: () => Promise<ComponentType<P>>): Componen
     pending ??= load().then((c) => {
       C = c;
     });
-    void pending.then(() => ready((n) => n + 1));
+    void pending.then(() => {
+      ready((n) => n + 1);
+      requestAnimationFrame(() => focusFirst()); // the screen arrived after the route's first focus attempt
+    });
     return null;
   };
 }
@@ -99,11 +111,7 @@ function App() {
   const c = config.value;
   const path = route.value.path;
   useEffect(() => {
-    // First focus on each route: the page heading, except "/" where it's the composer (frontend.md §6).
-    requestAnimationFrame(() => {
-      if (path === '/') (document.getElementById('composer') ?? document.querySelector<HTMLElement>('[data-autofocus]'))?.focus({ preventScroll: true });
-      else document.querySelector<HTMLElement>('[data-page-heading]')?.focus({ preventScroll: true });
-    });
+    requestAnimationFrame(() => focusFirst(true));
   }, [path, !!c]);
   if (bootError.value) {
     return (

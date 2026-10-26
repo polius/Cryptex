@@ -48,3 +48,10 @@ def test_request_answer_roundtrip(client):
     # one answer per request
     r = vendor.get(f"/api/v1/requests/{a.id}/prompt", headers=a.answer_headers())
     assert r.status_code == 410 and r.json()["error"]["reason"] == "answered"
+
+
+def test_public_url_is_detected_from_the_first_browser_request(server):
+    c = server(setup=False, PUBLIC_URL="")
+    assert c.get("/api/v1/config", headers={"Host": "vault.example:8443"}).json()["brand"]["public_url"] == "http://vault.example:8443"
+    # later requests from other hosts don't change it
+    assert c.get("/api/v1/config", headers={"Host": "evil.example"}).json()["brand"]["public_url"] == "http://vault.example:8443"

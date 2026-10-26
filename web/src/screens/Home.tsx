@@ -42,6 +42,8 @@ export function Home() {
   const abort = useRef<AbortController | null>(null);
   const upload = useRef<{ id: string; token: string } | null>(null);
   const pasteHandler = useRef<(raw: string) => void>(() => undefined);
+  const dropHandler = useRef<(files: File[]) => void>(() => undefined);
+  const [dragging, setDragging] = useState(false);
 
   // Restore the last-used policy, within today's limits.
   useEffect(() => {
@@ -67,11 +69,33 @@ export function Home() {
         else void ask();
       }
     };
+    // Files dropped anywhere on the page are attached (A1: "Or drop files anywhere on this page").
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+    const onOver = (e: DragEvent) => {
+      if (!hasFiles(e) || phase.k !== 'compose' || mode !== 'send') return;
+      e.preventDefault();
+      setDragging(true);
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!e.relatedTarget) setDragging(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragging(false);
+      if (phase.k === 'compose' && mode === 'send') dropHandler.current(Array.from(e.dataTransfer!.files));
+    };
     document.addEventListener('paste', onPaste);
     document.addEventListener('keydown', onKey);
+    document.addEventListener('dragover', onOver);
+    document.addEventListener('dragleave', onLeave);
+    document.addEventListener('drop', onDrop);
     return () => {
       document.removeEventListener('paste', onPaste);
       document.removeEventListener('keydown', onKey);
+      document.removeEventListener('dragover', onOver);
+      document.removeEventListener('dragleave', onLeave);
+      document.removeEventListener('drop', onDrop);
     };
   });
 
@@ -264,6 +288,7 @@ export function Home() {
 
   return (
     <Page header={<AppHeader active="new" />}>
+      {dragging && <div class="dropzone" aria-hidden="true"><span><Icon name="upload" size="lg" />Drop to attach. Files are encrypted on this device.</span></div>}
       <main class="main" id="main">
         {phase.k === 'error' && (
           <Banner kind="danger" icon="alert" action={<Btn kind="secondary" class="sm" icon="refresh" onClick={create}>{t('send.try_again')}</Btn>}>{phase.message}</Banner>
@@ -285,7 +310,7 @@ export function Home() {
           <>
             <Composer state={composer} onChange={setComposer} maxChars={c.limits.max_message_chars} maxFiles={c.limits.max_files}
               maxFileBytes={c.limits.max_file_bytes} disabled={sealing} demoPlaceholder={c.demo} onFilesRejected={(m) => toast(m, 'error')}
-              registerPaste={(fn) => { pasteHandler.current = fn; }} />
+              registerPaste={(fn) => { pasteHandler.current = fn; }} registerDrop={(fn) => { dropHandler.current = fn; }} />
             {sealing ? (
               <Sealing files={composer.files} manifestBytes={Math.max(1, phase.progress.total - composer.files.reduce((n, f) => n + f.size, 0))}
                 progress={phase.progress} offline={phase.offline} onCancel={cancel} cancelling={cancelling} />
