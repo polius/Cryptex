@@ -22,6 +22,7 @@ router = APIRouter()
 MAX_TRIES = 5
 CODE_TTL = 600
 GRANT_TTL = 600
+READ_GRACE = 60
 _code_hasher = PasswordHasher(time_cost=2, memory_cost=19456, parallelism=1)
 
 
@@ -364,8 +365,20 @@ def _get_chunk(sid: str, stream: int, n: int, request: Request) -> bytes:
         raise NotFound()
     db.run("UPDATE chunks SET served = 1 WHERE owner_kind = 'secret' AND owner_id = ? AND stream = ? AND n = ?", sid, stream, n)
     if s["last_view"] and not db.val("SELECT 1 FROM chunks WHERE owner_kind='secret' AND owner_id=? AND served=0 LIMIT 1", sid):
-        items.purge_secret(sid, "opened")  # everything delivered: delete now, don't wait for the session to end
+        # Every chunk went out once. Keep a 60-second grace for a retry after a dropped connection; the client
+        # confirms with DELETE /secrets/{id}/read once it decrypted everything, which deletes the data at once.
+        db.run("UPDATE read_sessions SET expires_at = min(expires_at, ?) WHERE token_hash = ?", now() + READ_GRACE, s["token_hash"])
     return data
+
+
+@router.delete("/secrets/{sid}/read", status_code=204)
+def read_done(sid: str, request: Request) -> Response:
+    """The recipient decrypted everything: end the read session; on the last view, delete the data now."""
+    s = _read_session(request, sid)
+    db.run("DELETE FROM read_sessions WHERE token_hash = ?", s["token_hash"])
+    if s["last_view"]:
+        items.purge_secret(sid, "opened")
+    return Response(status_code=204)
 
 
 @router.get("/secrets/{sid}/chunks/{stream}/{n}")

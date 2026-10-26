@@ -125,7 +125,7 @@ def passcheck(s: Sent, passphrase: str) -> str:
 
 
 def reveal(client: TestClient, s: Sent, *, passphrase: str | None = None, grant: str | None = None,
-           headers: dict[str, str] | None = None) -> tuple[dict[str, Any], list[bytes]]:
+           headers: dict[str, str] | None = None, done: bool = True) -> tuple[dict[str, Any], list[bytes]]:
     h = {**s.reveal_headers(), **(headers or {})}
     if passphrase is not None:
         h["X-Passcheck"] = passcheck(s, passphrase)
@@ -144,6 +144,8 @@ def reveal(client: TestClient, s: Sent, *, passphrase: str | None = None, grant:
             assert cr.status_code == 200, cr.text
             chunks.append(cr.content)
         plain.append(ref.stream_decrypt(key, s.id, st["stream"], ref.unb64u(st["prefix"]), chunks))
+    if done:
+        assert client.delete(f"/api/v1/secrets/{s.id}/read", headers=rh).status_code == 204
     return json.loads(plain[0]), plain[1:]
 
 

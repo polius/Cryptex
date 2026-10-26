@@ -252,8 +252,11 @@ def cancel(rid: str, request: Request) -> Response:
         if e.code == "gone":
             return Response(status_code=204)  # already gone: idempotent
         raise
-    if row["answered_at"]:
-        items.purge_request(rid, "answered")
+    if row["answer_read_at"]:
+        items.purge_request(rid, "answered")  # read, then deleted: the receipt stays "revealed"
+    elif row["answered_at"]:
+        items.purge_request(rid, "destroyed", event=("request.cancelled", {"answered": True}), actor=c.actor if c.user else "link",
+                            user_id=c.user_id)
     else:
         items.purge_request(rid, "cancelled", event=("request.cancelled", {}), actor=c.actor if c.user else "link", user_id=c.user_id)
     return Response(status_code=204)

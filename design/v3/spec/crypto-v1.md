@@ -61,7 +61,7 @@ passcheck    = Expand(prk', "passcheck")
 ### 3.3 Metadata blob (title and sender name)
 
 ```
-plaintext = JSON {"title": string|null, "from": string|null}
+plaintext = JSON {"title": string|null, "from": string|null, "fields": int, "notes": int}   // counts let the sealed page say "3 fields and 1 file"
 nonce     = random(12)
 meta_ct   = b64u(nonce || AES-GCM(meta_key, nonce, plaintext, aad = "cryptex/v1|meta|" || id))
 ```

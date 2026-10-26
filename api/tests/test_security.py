@@ -344,3 +344,32 @@ def test_enc_key_is_generated_once_with_0600(server):
     server()
     p = state.env().data_dir / "enc.key"
     assert p.exists() and oct(os.stat(p).st_mode & 0o777) == "0o600"
+
+
+def test_last_view_survives_a_dropped_last_chunk_for_a_minute(client):
+    """A retry after a lost response still works; then the grace ends and cleanup deletes it."""
+    s = send(client, files=[("a", b"abc")])
+    bob = anon(client)
+    manifest, _ = reveal(bob, s, done=False)
+    r = bob.post(f"/api/v1/secrets/{s.id}/reveal", headers=s.reveal_headers())
+    assert r.status_code == 410  # no second view
+    assert chunk_files()  # still there for the retry
+    exp = db.val("SELECT expires_at FROM read_sessions")
+    assert exp <= now() + 60
+    db.run("UPDATE read_sessions SET expires_at = ?", now() - 1)
+    jobs.cleanup()
+    assert chunk_files() == []
+
+
+def test_read_done_needs_the_read_session(client):
+    s = send(client)
+    assert anon(client).delete(f"/api/v1/secrets/{s.id}/read", headers=s.reveal_headers()).status_code == 404
+
+
+def test_cancelling_an_unread_answer_is_not_reported_as_read(client):
+    from helpers import answer
+    a = ask(client)
+    answer(anon(client), a, {"Access key ID": "x", "Secret access key": "y"})
+    assert client.delete(f"/api/v1/requests/{a.id}", headers=a.manage_headers()).status_code == 204
+    rec = client.get(f"/api/v1/receipts/{a.id}", headers=a.manage_headers()).json()
+    assert rec["status"] == "destroyed" and rec["events"][-1]["type"] == "request.cancelled"
