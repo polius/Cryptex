@@ -1,0 +1,43 @@
+[project]
+name = "cryptex"
+version = "3.0.0"
+description = "Blind, two-way secret sharing"
+requires-python = ">=3.12"
+license = "MIT"
+dependencies = [
+  "fastapi==0.162.0",
+  "uvicorn[standard]==0.54.0",
+  "cryptography==50.0.2",
+  "argon2-cffi==25.1.0",
+  "pyotp==2.10.0",
+  "joserfc==1.7.7",
+  "httpx==0.28.1",
+  "email-validator==2.3.0",
+]
+
+[project.optional-dependencies]
+dev = ["pytest==9.1.1", "aiosmtpd==1.4.6", "ruff==0.17.2", "mypy"]
+
+[tool.setuptools]
+packages = ["cryptex", "cryptex.routes", "cryptex.migrations"]
+
+[tool.setuptools.package-data]
+"cryptex.migrations" = ["*.sql"]
+
+[tool.pytest.ini_options]
+pythonpath = [".", "tests"]
+testpaths = ["tests"]
+addopts = "-q"
+filterwarnings = ["ignore::DeprecationWarning", "ignore:Using `httpx`"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "B", "I", "UP", "S"]
+ignore = ["S101", "S608", "B008", "S311", "S105", "S106", "S310", "E501", "UP017"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S"]
+"tests/reference.py" = ["E", "F", "W", "B", "I", "UP", "S"]
