@@ -1,76 +1,156 @@
 # Cryptex
 
-Send and ask for secrets (passwords, API keys, `.env` files, files) through one-time links that are encrypted on your device. The server only ever stores ciphertext: it can't read what you send, its title, its file names or who it's from.
+**Share passwords, keys and files through links that are encrypted in your browser.**
+The server stores only ciphertext: it can't read the secret, its title, its file names or who sent it.
 
-- **Send**: paste anything. Logins, `.env` files, connection strings and keys are read into fields. You get a link that opens once (or a few times) and expires.
-- **Request**: ask someone for a secret. They fill in a simple form. Their answer is encrypted for a key that only your browser holds.
-- **You'll know**: *Your links* shows when each link was opened, live. You can destroy one early.
-- **Who can open it**: anyone with the link, only one email address (they confirm a 6-digit code), or only people at your organization (single sign-on). Add a passphrase for a second factor.
-- **For teams**: single sign-on (OpenID Connect), owners and members, a Server tab with limits, branding, email and webhooks, API tokens and an audit log without contents.
-- **CLI**: `cryptex send`, `request`, `open` and `status`, encrypting on your own computer.
+## Features
 
-## Run it
+- **Encrypted before it leaves your browser.** The key is part of the link, so only the people you give the link to can open it.
+- **Links that expire.** Choose how long a link lasts, or make it work only once.
+- **Optional passphrase.** Protect a link with a passphrase and share it separately.
+- **Text and files.** Share passwords, notes, keys or whole files. Logins and keys are laid out clearly for the recipient.
+- **Know when it's opened.** See when each link was opened, and destroy it at any time.
+- **Ask for a secret.** Send someone a link to put a secret in, no account needed. Only you can open what they send.
+- **Built for teams.** Invite your colleagues, set limits, add your logo and review an activity log that never contains secrets.
+- **17 languages.** Everyone sees Cryptex in their own language.
 
-```yaml
-services:
-  cryptex:
-    image: poliuscorp/cryptex:3
-    restart: unless-stopped
-    ports: ["8080:80"]
-    volumes: ["./data:/data"]
-    environment:
-      PUBLIC_URL: https://vault.example.com
-      ENC_KEY: ${CRYPTEX_ENC_KEY}        # openssl rand -base64 32; keep it in your secret manager
+## Quick start
+
+### Option A: on your computer (HTTP)
+
+To try Cryptex. Browsers only allow its encryption on `https://` pages and on `localhost`, so this works on this computer only.
+
+With Docker:
+
+```sh
+docker run -d --pull always --name cryptex --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
 ```
 
-1. Put it behind HTTPS. Link keys live in the part of the URL after `#`, which is only private over TLS.
-2. Open the address. The first screen asks for the **setup code** printed in the log (`docker logs cryptex`), then creates the owner account.
-3. Optional: set `SMTP_URL` for email codes and "tell me when it's opened", and `OIDC_*` for single sign-on.
+Or with Docker Compose:
 
-Every setting is listed in [design/v3/spec/config.md](design/v3/spec/config.md). An environment variable locks the matching setting in the Server tab. Operations (backups, jobs, retention, metrics) are in [design/v3/spec/operations.md](design/v3/spec/operations.md).
+```sh
+curl -fsSLO https://raw.githubusercontent.com/polius/Cryptex/main/deploy/docker-compose.yml
+docker compose up -d
+```
 
-Locked out? `docker exec -it cryptex cryptex owner reset`.
+Open `http://localhost:8080`.
+
+### Option B: on your own domain (HTTPS, recommended)
+
+You need a server with a public IP address and a domain name. [Caddy](https://caddyserver.com) runs alongside Cryptex and gets the certificate for you.
+
+1. Point your domain's DNS (an `A` record) at the server, and open the [required ports](#required-ports).
+2. Download the two files:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/polius/Cryptex/main/deploy/docker-compose-ssl.yml -o docker-compose.yml
+   curl -fsSLO https://raw.githubusercontent.com/polius/Cryptex/main/deploy/Caddyfile
+   ```
+
+3. Open `Caddyfile` and replace `yourdomain.com` on the first line with your domain.
+4. Start it:
+
+   ```sh
+   docker compose up -d
+   ```
+
+Open `https://yourdomain.com`.
+
+### Updating
+
+With Docker:
+
+```sh
+docker rm -f cryptex
+docker run -d --pull always --name cryptex --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
+```
+
+Or with Docker Compose:
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+### Required ports
+
+For Option B, open these on your server's firewall (and in your cloud provider's security group, if it has one):
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `443` | TCP + UDP | The web interface over HTTPS (UDP for HTTP/3) |
+| `80` | TCP | Getting the certificate, and redirecting to HTTPS |
+
+Option A opens no ports: Cryptex listens on `127.0.0.1:8080`, this computer only.
+
+## Configuration
+
+Cryptex needs no configuration. To change a default, pass the variable to `docker run` with `-e`, such as `-e MAX_FILES=10`, or add it under `environment:` on the `cryptex` service in the compose file. An invalid value stops the server at start and names the variable.
+
+Formats: sizes `500kb`, `10mb`, `1gb` · durations `30m`, `24h`, `7d` · rates `60/h`, `10/15m`.
+
+### Server
+
+| Variable | Default | Description |
+|---|---|---|
+| `TRUSTED_PROXIES` | private ranges | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Set it when the proxy runs on another machine. |
+| `MIN_FREE_DISK` | `1gb` | New links are refused when they'd leave less free disk space than this. |
+
+### Links and access
+
+These can also be changed in the **Server** tab. Setting the variable locks them there.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ACCESS` | `anyone` | Who can create links and ask for secrets: `anyone` or `signed_in`. Opening a link, or answering a request, never needs an account. |
+| `MAX_EXPIRATION` | `7d` | Longest lifetime offered for a link, at least `5m`. |
+| `MAX_MESSAGE_LENGTH` | `10000` | Characters per link, across all notes and fields. |
+| `MAX_FILES` | `5` | Files per link (`0` turns files off). |
+| `MAX_FILE_SIZE` | `100mb` | Size per file. |
+| `BRAND_NAME` | none | Organization name shown to recipients. |
+| `DEFAULT_LANGUAGE` | `auto` | `auto` (the visitor's browser language) or one of `en`, `es`, `ca`, `fr`, `de`, `it`, `pt`, `nl`, `pl`, `tr`, `ru`, `uk`, `hi`, `id`, `ja`, `ko`, `zh-CN`. |
+| `AUDIT_RETENTION_DAYS` | `365` | Audit events older than this are deleted. |
+
+### Rate limits
+
+Counted per visitor address.
+
+| Variable | Default | Limits |
+|---|---|---|
+| `RATE_CREATE` | `60/h` | Links created (per account when signed in). |
+| `RATE_REVEAL` | `120/h` | Links opened. |
+| `RATE_STATUS` | `600/h` | Status checks from *Your links*. |
+| `RATE_AUTH` | `10/15m` | Wrong passwords, 2FA, reset and setup codes. Each account also allows 30 an hour in total. |
+| `RATE_FAILED_TOKENS` | `30/h` | Wrong link tokens, then a 1-hour block. |
+
+### Logs and metrics
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `info` | Even `debug` never logs tokens or contents. |
+| `LOG_FORMAT` | `json` | `json` or `text`. |
+| `LOG_IPS` | `false` | Add the visitor's address to request logs. |
+| `METRICS_TOKEN` | none | Enables Prometheus metrics at `/api/v1/metrics` for `Authorization: Bearer <token>`. |
 
 ### Public demo
 
-`DEMO=true` turns an instance into a public demo: 1 hour, 1 view, 500 characters and 1 × 1 MB per link, a daily quota per IP (IPv6 by /64), proof of work instead of a CAPTCHA, circuit breakers, abuse reports, a banner on every page, `noindex`, no sign-in, and a nightly wipe. Run it on its own domain, never one used for real secrets.
+`DEMO=true` turns the server into a public demo: links last at most 1 hour and hold 500 characters and one 1 MB file, there's no sign-in, a proof of work and a daily quota per address, search engines are kept out, and everything is wiped every day at 00:00 UTC. Run it on its own domain, never on one used for real secrets.
 
-## How it's secured
-
-- The browser encrypts with AES-256-GCM in 5 MiB chunks (STREAM construction, so truncation, reordering and extension are detected). Keys come from a 128-bit link key through HKDF-SHA-256; passphrases go through Argon2id. Requests use ECDH P-256. The format is in [crypto-v1.md](design/v3/spec/crypto-v1.md), with a reference implementation and test vectors that the browser, the CLI and the test suite all verify.
-- An ID alone authorizes nothing. Revealing, uploading, managing and answering each need their own capability token, and every wrong or missing token gets the same `404`. Wrong tokens count toward an hourly block per IP.
-- Loading a link changes nothing. Revealing is a click, so link previews and scanners can't burn a secret. After the last view the data is deleted from disk.
-- There is no admin bypass: owners can't read, reveal or destroy other people's items.
-- A strict Content Security Policy, no third-party requests, and no tokens or contents in logs. The threat model is in [threat-model.md](design/v3/spec/threat-model.md).
-
-A web page can only be as trustworthy as the server that serves its code. If you need protection even from the people running the server, use the CLI.
-
-## CLI
-
-```
-$ cryptex login vault.example.com
-$ cryptex send --title "Staging database" --ttl 1d < .env.staging
-https://vault.example.com/s/k7Qp2vR9mL#08hLdXPyTgClYg1aikN6PA
-$ cryptex request "AWS read-only keys" --field "Access key ID" --field "Secret access key"
-$ cryptex open https://vault.example.com/s/k7Qp2vR9mL#08hLdXPyTgClYg1aikN6PA --as env
-$ cryptex status --watch
-```
-
-Binaries for Linux, macOS and Windows are attached to each release. See [cli/README.md](cli/README.md).
-
-## Development
-
-| Part | Where | Run |
+| Variable | Default | Description |
 |---|---|---|
-| API (FastAPI, SQLite) | `api/` | `cd api && python -m venv .venv && .venv/bin/pip install -r requirements-dev.txt && .venv/bin/pytest` |
-| Web app (Preact, Vite) | `web/` | `cd web && npm ci && npm test && npm run dev` (proxies `/api` to `127.0.0.1:8000`) |
-| CLI (Go) | `cli/` | `cd cli && go test ./...`; live: `CRYPTEX_IT=1 go test ./cmd/cryptex -run Integration` |
-| End to end (Playwright) | `e2e/` | `docker compose -f e2e/compose.yml up -d --build --wait cryptex cryptex-demo mailpit && docker compose -f e2e/compose.yml run --rm playwright` |
-| Design, specs, prototype | `design/v3/` | Screens, API contract, schema, crypto spec, copy deck |
+| `DEMO_SEALS_PER_DAY` | `10` | Links per address per day. |
+| `DEMO_UPLOAD_BYTES_PER_DAY` | `10mb` | Uploads per address per day. |
+| `DEMO_STORAGE_CAP` | `1gb` | Total storage. |
 
-Run the API locally with `DATA_DIR=./data SETUP_CODE=dev PUBLIC_URL=http://localhost:8000 STATIC_DIR=../web/dist .venv/bin/uvicorn cryptex.app:create_app --factory`.
+## Security
 
-CI runs everything above on every push: linting, the API suite (one test per permission rule and threat-model row), the crypto vectors in three languages, size budgets, the CLI against a live server, Playwright in two browser contexts with Mailpit and a demo instance, visual regression at desktop and mobile sizes in light and dark, and a multi-arch image build with a smoke test.
+- Secrets are encrypted in the browser with AES-256-GCM. Passphrases go through Argon2id. The format is in [docs/crypto.md](docs/crypto.md), with test vectors.
+- Opening a link page changes nothing: revealing takes a click, so link previews and scanners can't use up a secret.
+- Passwords never reach the server. Owners can't read, open or destroy other people's links.
+- A strict Content Security Policy, no third-party requests, and no tokens or contents in logs (and no IP addresses unless `LOG_IPS` is on).
+
+What Cryptex does and doesn't protect against is in [docs/threat-model.md](docs/threat-model.md). A web page is only as trustworthy as the server that serves it: if you need protection from the people running the server, run your own.
 
 ## License
 

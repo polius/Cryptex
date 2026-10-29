@@ -1,4 +1,4 @@
-"""The API error model (openapi.yaml → components.schemas.Error).
+"""The API error model.
 
 Every failure is `{"error": {"code", "message", ...}}`. `not_found` is byte-for-byte
 identical whatever the cause, so it can't be used to probe IDs or tokens.
@@ -17,26 +17,26 @@ MESSAGES = {
     "sign_in_required": "Sign in to do this.",
     "forbidden": "You don’t have access to this.",
     "reauth_required": "Confirm it’s you to make this change.",
-    "code_required": "Enter the code we emailed to continue.",
     "wrong_code": "That code didn’t work.",
+    "wrong_password": "That password didn’t work.",
     "not_found": "Not found.",
     "already_sealed": "This link is already complete.",
-    "already_answered": "This request was already answered.",
     "setup_done": "Setup is already finished.",
     "gone": "This is no longer available.",
     "too_large": "That’s too large for this server.",
     "wrong_passphrase": "That passphrase didn’t work.",
     "rate_limited": "Too many tries. Try again later.",
     "demo_locked": "This is fixed in the demo.",
+    "storage_full": "This server is almost out of disk space. Try a smaller secret, or ask whoever runs it.",
     "internal": "Something went wrong on our side. Nothing was opened or deleted.",
 }
 
 STATUS = {
     "invalid": 400, "limit_exceeded": 400, "sign_in_required": 401, "forbidden": 403,
-    "reauth_required": 403, "code_required": 403, "wrong_code": 403, "not_found": 404,
-    "already_sealed": 409, "already_answered": 409, "setup_done": 409, "gone": 410,
+    "reauth_required": 403, "wrong_code": 403, "wrong_password": 401, "not_found": 404,
+    "already_sealed": 409, "setup_done": 409, "gone": 410,
     "too_large": 413, "wrong_passphrase": 422, "rate_limited": 429, "demo_locked": 403,
-    "internal": 500,
+    "storage_full": 507, "internal": 500,
 }
 
 
@@ -62,8 +62,9 @@ class NotFound(ApiError):
         super().__init__("not_found")
 
 
-def gone(reason: str, at: int) -> ApiError:
-    return ApiError("gone", reason=reason, at=iso(at))
+def gone(reason: str, at: int, opened: bool) -> ApiError:
+    """A secret that no longer exists, for someone holding its link. `opened`: was it ever revealed?"""
+    return ApiError("gone", reason=reason, at=iso(at), opened=opened)
 
 
 def invalid(field: str, message: str | None = None, code: str = "invalid", limit: int | None = None) -> ApiError:

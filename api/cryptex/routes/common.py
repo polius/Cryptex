@@ -31,12 +31,10 @@ async def read_body(request: Request, limit: int) -> bytes:
     return bytes(buf)
 
 
-def check_create_allowed(c: Caller, scope: str) -> None:
+def check_create_allowed(c: Caller) -> None:
     """ACCESS rule and the create rate limit (per person when signed in, per IP otherwise)."""
     if state.setup_needed():
-        raise ApiError("forbidden", "This server isn’t set up yet.")
-    if c.via == "token" and scope not in c.scopes:
-        raise ApiError("forbidden", f"This token can’t {scope}.")
+        raise ApiError("forbidden", "This server isn’t set up yet.", reason="setup_needed")
     if state.setting("access") == "signed_in" and c.user is None:
         raise ApiError("sign_in_required")
     key = f"user:{c.user_id}" if c.user_id else c.subject

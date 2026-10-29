@@ -1,5 +1,5 @@
 /**
- * Cryptex crypto format v1 (design/v3/spec/crypto-v1.md), on WebCrypto.
+ * Cryptex crypto format v1 (docs/crypto.md), on WebCrypto.
  * A line-by-line port of reference.py; tested against vectors.json.
  * Runs in the crypto worker and in tests. Never logs or stores key material.
  */
@@ -112,9 +112,13 @@ export function parseLinkFragment(fragment: string): Bytes | null {
 // ------------------------------------------------------------------ §3.2 passphrase
 export type Argon2Fn = (password: string, salt: Uint8Array) => Promise<Uint8Array>;
 
-export async function argon2id(password: string, salt: Uint8Array): Promise<Bytes> {
+/** Argon2id settings: the link passphrase uses ARGON2; account passwords pass their own (stronger) ones. */
+export interface Kdf { m: number; t: number; p: number }
+
+export async function argon2id(password: string, salt: Uint8Array, kdf?: Kdf): Promise<Bytes> {
   const { argon2id: run } = await import('hash-wasm');
-  const out = await run({ password, salt, ...ARGON2, outputType: 'binary' });
+  const params = kdf ? { memorySize: kdf.m, iterations: kdf.t, parallelism: kdf.p, hashLength: 32 } : ARGON2;
+  const out = await run({ password, salt, ...params, outputType: 'binary' });
   return new Uint8Array(out);
 }
 
@@ -184,65 +188,61 @@ export async function streamEncrypt(rawKey: Uint8Array, id: string, stream: numb
   return out;
 }
 
-/** Throws on tampering, reordering, truncation or extension. */
+/** Throws on tampering, reordering, truncation or extension, and on an empty chunk list (a stream always has at
+ *  least one chunk: an empty one is one empty chunk with the last flag). */
 export async function streamDecrypt(rawKey: Uint8Array, id: string, stream: number, prefix: Uint8Array, chunks: Uint8Array[]): Promise<Bytes> {
+  if (!chunks.length) throw new Error('a stream has at least one chunk');
   const key = await streamKey(rawKey, 'decrypt');
   const parts: Bytes[] = [];
   for (let i = 0; i < chunks.length; i++) parts.push(await decryptChunk(key, id, stream, prefix, i, i === chunks.length - 1, chunks[i]));
   return concat(...parts);
 }
 
-// ------------------------------------------------------------------ §4 requests
-export const P256 = { name: 'ECDH', namedCurve: 'P-256' } as const;
-
-export async function spki(key: CryptoKey): Promise<Bytes> {
-  return new Uint8Array(await subtle.exportKey('spki', key));
-}
-
-export async function fingerprint(spkiDer: Uint8Array): Promise<Bytes> {
-  return (await sha256(spkiDer)).slice(0, 8);
-}
-
-export interface RequestKeys {
-  fragment: string;
-  promptKey: Bytes;
+// ------------------------------------------------------------------ §4 asking for a secret
+export interface AskKeys {
+  askKey: Bytes;
   answerToken: Bytes;
-  answerTokenHash: string;
+  answerHash: string;
 }
 
-export async function requestLink(id: string, P: Uint8Array, requesterSpki: Uint8Array): Promise<RequestKeys> {
-  const fp = await fingerprint(requesterSpki);
-  const prk = await extract(saltFor(id), P);
-  const answerToken = await expand(prk, 'answer-token');
-  return { fragment: b64u(concat(P, fp)), promptKey: await expand(prk, 'prompt'), answerToken, answerTokenHash: await sha256Hex(answerToken) };
+/** The request link's key R gives the note's key and the token that lets its holder answer (never read). */
+export async function deriveAsk(id: string, R: Uint8Array): Promise<AskKeys> {
+  if (R.length !== 16) throw new Error('request key must be 16 bytes');
+  const prk = await extract(utf8(`${VERSION}/ask/${id}`), R);
+  const answerToken = await expand(prk, 'answer');
+  return { askKey: await expand(prk, 'ask'), answerToken, answerHash: await sha256Hex(answerToken) };
 }
 
-/** A /q/ fragment must be exactly 32 base64url characters: P (16 bytes) || fingerprint (8 bytes). */
-export function parseRequestFragment(fragment: string): { P: Bytes; fp: Bytes } | null {
-  if (!/^[A-Za-z0-9_-]{32}$/.test(fragment)) return null;
-  const raw = unb64u(fragment);
-  return raw.length === 24 ? { P: raw.slice(0, 16), fp: raw.slice(16) } : null;
+const P256 = { name: 'ECDH', namedCurve: 'P-256' } as const;
+
+/** The requester's key pair: the private half as a JWK (kept in the account vault), the public half as the 65-byte
+ *  uncompressed point (inside the note). */
+export async function newRequestKey(): Promise<{ jwk: JsonWebKey; Q: Bytes }> {
+  const pair = await subtle.generateKey(P256, true, ['deriveBits']) as CryptoKeyPair;
+  return { jwk: await subtle.exportKey('jwk', pair.privateKey), Q: new Uint8Array(await subtle.exportKey('raw', pair.publicKey)) };
 }
 
-export async function importPublic(spkiDer: Uint8Array): Promise<CryptoKey> {
-  return subtle.importKey('spki', spkiDer as Bytes, P256, true, []);
+async function answerKey(id: string, sid: string, z: Uint8Array, E: Uint8Array, Q: Uint8Array): Promise<Bytes> {
+  return expand(await extract(utf8(`${VERSION}/answer/${id}/${sid}`), concat(z, E, Q)), 'answer');
 }
 
-export async function answerKey(id: string, ownPrivate: CryptoKey, peerPublic: CryptoKey): Promise<Bytes> {
-  const shared = new Uint8Array(await subtle.deriveBits({ name: 'ECDH', public: peerPublic }, ownPrivate, 256));
-  return expand(await extract(saltFor(id), shared), 'answer');
+const ecdh = async (priv: CryptoKey, pubRaw: Uint8Array) => new Uint8Array(await subtle.deriveBits(
+  { name: 'ECDH', public: await subtle.importKey('raw', pubRaw as Bytes, P256, false, []) }, priv, 256));
+
+/** The answer's link key K, encrypted to the requester's public key Q: only their private key opens it. */
+export async function wrapAnswer(id: string, sid: string, K: Uint8Array, Q: Uint8Array): Promise<string> {
+  if (Q.length !== 65) throw new Error('not a P-256 public key');
+  const e = await subtle.generateKey(P256, true, ['deriveBits']) as CryptoKeyPair;
+  const E = new Uint8Array(await subtle.exportKey('raw', e.publicKey));
+  const key = await answerKey(id, sid, await ecdh(e.privateKey, Q), E, Q);
+  return b64u(concat(E, unb64u(await sealBlob(key, 'answer', `${id}|${sid}`, K))));
 }
 
-export function equalBytes(a: Uint8Array, b: Uint8Array): boolean {
-  if (a.length !== b.length) return false;
-  let d = 0;
-  for (let i = 0; i < a.length; i++) d |= a[i] ^ b[i];
-  return d === 0;
-}
-
-/** JWK for a P-256 private scalar, using the public point from its SPKI (vectors and backup import). */
-export function privateJwk(scalar: Uint8Array, spkiDer: Uint8Array): JsonWebKey {
-  const point = spkiDer.slice(spkiDer.length - 65);
-  if (point[0] !== 4) throw new Error('expected an uncompressed P-256 point');
-  return { kty: 'EC', crv: 'P-256', d: b64u(scalar), x: b64u(point.slice(1, 33)), y: b64u(point.slice(33)), ext: true };
+export async function unwrapAnswer(id: string, sid: string, jwk: JsonWebKey, answerCt: string): Promise<Bytes> {
+  const raw = unb64u(answerCt);
+  const E = raw.slice(0, 65);
+  const Q = concat(new Uint8Array([4]), unb64u(jwk.x ?? ''), unb64u(jwk.y ?? ''));
+  const d = await subtle.importKey('jwk', jwk, P256, false, ['deriveBits']);
+  const key = await answerKey(id, sid, await ecdh(d, E), E, Q);
+  return openBlob(key, 'answer', `${id}|${sid}`, b64u(raw.slice(65)));
 }

@@ -1,7 +1,16 @@
 version: 2
-# Every update goes through CI (api, web, cli, e2e, image). Nothing is merged automatically.
+# Every update goes through CI (api, web, e2e, image). Nothing is merged automatically.
+
+# @playwright/test (e2e/package.json) and the Playwright image (e2e/compose.yml) must be the same version,
+# so they move together in one pull request.
+multi-ecosystem-groups:
+  e2e:
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+
 updates:
-  # Actions used by CI and releases
+  # Actions used by CI and releases (pinned by commit SHA; updates keep the SHA and its version comment)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
@@ -31,27 +40,17 @@ updates:
       npm-web:
         patterns: ["*"]
 
-  # End-to-end tests
+  # End-to-end tests: npm packages and the Playwright image, in one group
   - package-ecosystem: "npm"
     directory: "/e2e"
-    schedule:
-      interval: "weekly"
-    labels: ["dependencies"]
-    groups:
-      npm-e2e:
-        patterns: ["*"]
+    patterns: ["*"]
+    multi-ecosystem-group: "e2e"
+  - package-ecosystem: "docker-compose"
+    directory: "/e2e"
+    patterns: ["*"]
+    multi-ecosystem-group: "e2e"
 
-  # CLI
-  - package-ecosystem: "gomod"
-    directory: "/cli"
-    schedule:
-      interval: "weekly"
-    labels: ["dependencies"]
-    groups:
-      gomod-cli:
-        patterns: ["*"]
-
-  # Base images in the Dockerfile
+  # Base images in the Dockerfile (pinned by digest; updates keep the tag and the digest)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:

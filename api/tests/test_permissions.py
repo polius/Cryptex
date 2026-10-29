@@ -1,7 +1,7 @@
-"""One test per row of design/v3/spec/permissions.md, plus its four "rules worth testing"."""
+"""One test per permission rule: who may do what to secrets, receipts, accounts and the server."""
 import pytest
-from conftest import OWNER, anon
-from helpers import ask, open_meta, reveal, send
+from conftest import OWNER, OWNER_SALT, SETUP, anon, auth_key, creds, reauth, totp_code
+from helpers import open_meta, reveal, send
 
 NOT_FOUND = {"error": {"code": "not_found", "message": "Not found."}}
 
@@ -17,19 +17,14 @@ def test_visitor_cannot_create_when_access_is_signed_in(server):
     bob = anon(c)
     r = bob.post("/api/v1/secrets", json={"policy": {"views": 1, "expires_in": 3600}, "streams": []})
     assert r.status_code == 401 and r.json()["error"]["code"] == "sign_in_required"
-    r = bob.post("/api/v1/requests", json={"public_key": "x", "expires_in": 3600, "keep_answer_s": 3600})
-    assert r.status_code == 401
     # signed-in owner still can
     send(c)
 
 
-def test_visitor_can_still_open_and_answer_when_signed_in_required(server):
+def test_visitor_can_still_open_when_signed_in_required(server):
     c = server(access="signed_in")
     s = send(c)
-    a = ask(c)
-    bob = anon(c)
-    reveal(bob, s)
-    assert bob.get(f"/api/v1/requests/{a.id}/prompt", headers=a.answer_headers()).status_code == 200
+    reveal(anon(c), s)
 
 
 def test_meta_and_reveal_need_the_reveal_token(client):
@@ -53,14 +48,6 @@ def test_404_is_identical_for_unknown_id_wrong_token_and_unknown_route(client):
     assert {a.status_code, b.status_code, c.status_code, d.status_code} == {404}
 
 
-def test_answer_needs_the_answer_token(client):
-    a = ask(client)
-    bob = anon(client)
-    assert bob.get(f"/api/v1/requests/{a.id}/prompt").status_code == 404
-    assert bob.get(f"/api/v1/requests/{a.id}/prompt", headers=a.manage_headers()).status_code == 404
-    assert bob.post(f"/api/v1/requests/{a.id}/answer", json={"ephemeral_key": "x", "streams": []}).status_code == 404
-
-
 def test_status_and_destroy_need_the_manage_token(client):
     s = send(client)
     bob = anon(client)
@@ -82,67 +69,31 @@ def test_members_see_status_through_synced_receipts(client):
     assert client.delete(f"/api/v1/secrets/{s.id}").status_code == 204
 
 
-def test_owner_session_never_grants_reveal_answer_or_manage_for_others(client):
+def test_owner_session_never_grants_reveal_or_manage_for_others(client):
     """Rule 2: there is no admin bypass."""
     bob = anon(client)
     s = send(bob)  # anonymous sender
-    a = ask(bob)
     for r in (client.get(f"/api/v1/secrets/{s.id}/meta"), client.post(f"/api/v1/secrets/{s.id}/reveal"),
-              client.get(f"/api/v1/receipts/{s.id}"), client.delete(f"/api/v1/secrets/{s.id}"),
-              client.get(f"/api/v1/requests/{a.id}/prompt"), client.get(f"/api/v1/requests/{a.id}/answer"),
-              client.delete(f"/api/v1/requests/{a.id}")):
+              client.get(f"/api/v1/receipts/{s.id}"), client.delete(f"/api/v1/secrets/{s.id}")):
         assert r.status_code == 404, r.request.url
     assert open_meta(bob, s)["views_left"] == 1
 
 
-def _token(client, scopes=("send", "request")):
-    r = client.post("/api/v1/me/tokens", json={"name": "ci", "scopes": list(scopes)})
-    assert r.status_code == 201, r.text
-    return r.json()["token"]
-
-
-def test_api_tokens_cannot_call_server_or_auth_even_for_owners(client):
-    """Rule 3."""
-    t = _token(client)
-    bob = anon(client)
-    h = {"Authorization": f"Bearer {t}"}
-    for path in ("/api/v1/server/overview", "/api/v1/server/access", "/api/v1/server/limits", "/api/v1/server/audit",
-                 "/api/v1/server/tokens", "/api/v1/me/tokens", "/api/v1/me/receipts"):
-        assert bob.get(path, headers=h).status_code == 404, path
-    assert bob.post("/api/v1/auth/reauth", json={"password": OWNER["password"]}, headers=h).status_code == 404
-    assert bob.post("/api/v1/me/tokens", json={"name": "x", "scopes": ["send"]}, headers=h).status_code == 404
-
-
-def test_api_token_scopes(client):
-    t = _token(client, scopes=("send",))
-    bob = anon(client)
-    h = {"Authorization": f"Bearer {t}"}
-    send(bob, headers=h)
-    r = bob.post("/api/v1/requests", json={"public_key": "x", "expires_in": 3600, "keep_answer_s": 3600}, headers=h)
-    assert r.status_code == 403
-
-
-def test_api_token_manages_its_own_receipts(client):
-    t = _token(client)
-    bob = anon(client)
-    h = {"Authorization": f"Bearer {t}"}
-    s = send(bob, headers=h)
-    assert bob.get(f"/api/v1/receipts/{s.id}", headers=h).json()["status"] == "waiting"
-
-
-def test_revoked_or_bad_token_is_rejected(client):
-    t = _token(client)
-    tid = client.get("/api/v1/me/tokens").json()["items"][0]["id"]
-    assert client.delete(f"/api/v1/tokens/{tid}").status_code == 204
-    bob = anon(client)
-    r = bob.post("/api/v1/secrets", json={}, headers={"Authorization": f"Bearer {t}"})
-    assert r.status_code == 401
-
-
 def test_members_get_404_for_server_tab(client):
-    bob = anon(client)
-    for path in ("/api/v1/server/overview", "/api/v1/server/access", "/api/v1/server/limits"):
-        assert bob.get(path).status_code == 404
+    """A signed-in member, not a visitor: the role is what's checked, and the answer is the uniform 404."""
+    url = client.post("/api/v1/server/users", json={"username": "lisa", "role": "member"}).json()["invite_url"]
+    lisa = anon(client)
+    r = lisa.post("/api/v1/auth/invite/accept", json={"token": url.split("#", 1)[1], **creds("lisa's long passphrase")})
+    assert r.status_code == 200 and r.json()["user"]["role"] == "member"
+    lisa.headers["X-CSRF"] = r.json()["csrf"]
+    for path in ("/api/v1/server/overview", "/api/v1/server/access", "/api/v1/server/limits", "/api/v1/server/language",
+                 "/api/v1/server/users", "/api/v1/server/branding", "/api/v1/server/audit"):
+        r = lisa.get(path)
+        assert (r.status_code, r.json()) == (404, NOT_FOUND), path
+    me = client.get("/api/v1/auth/session").json()["user"]["id"]
+    for method, path in (("PUT", "/api/v1/server/access"), ("PUT", "/api/v1/server/limits"), ("PATCH", f"/api/v1/server/users/{me}"),
+                         ("DELETE", f"/api/v1/server/users/{me}"), ("POST", "/api/v1/server/users")):
+        assert lisa.request(method, path, json={"mode": "anyone", "role": "member", "username": "eve"}).status_code == 404, path
 
 
 def test_role_changes_need_reauth_and_last_owner_stays(client):
@@ -152,8 +103,9 @@ def test_role_changes_need_reauth_and_last_owner_stays(client):
     db.run("UPDATE sessions SET reauth_until = 0")
     r = client.patch(f"/api/v1/server/users/{me}", json={"role": "member"})
     assert r.status_code == 403 and r.json()["error"]["code"] == "reauth_required"
-    assert client.post("/api/v1/auth/reauth", json={"password": "wrong"}).status_code == 401
-    assert client.post("/api/v1/auth/reauth", json={"password": OWNER["password"]}).status_code == 204
+    assert client.post("/api/v1/auth/reauth", json={"auth_key": auth_key("wrong", OWNER_SALT), "code": totp_code()}).status_code == 401
+    assert client.post("/api/v1/auth/reauth", json={"auth_key": auth_key(OWNER["password"], OWNER_SALT), "code": "000000"}).status_code == 401
+    reauth(client)
     r = client.patch(f"/api/v1/server/users/{me}", json={"role": "member"})
     assert r.status_code == 409
 
@@ -162,14 +114,14 @@ def test_access_change_needs_reauth(client):
     from cryptex import db
     db.run("UPDATE sessions SET reauth_until = 0")
     assert client.put("/api/v1/server/access", json={"mode": "signed_in"}).status_code == 403
-    client.post("/api/v1/auth/reauth", json={"password": OWNER["password"]})
+    reauth(client)
     assert client.put("/api/v1/server/access", json={"mode": "signed_in"}).status_code == 204
     assert client.get("/api/v1/config").json()["mode"] == "signed_in"
 
 
 def test_csrf_required_for_session_writes(client):
     csrf = client.headers.pop("X-CSRF")
-    r = client.post("/api/v1/me/tokens", json={"name": "x", "scopes": ["send"]})
+    r = client.delete("/api/v1/me/receipts/k7Qp2vR9mL")
     assert r.status_code == 403
     client.headers["X-CSRF"] = csrf
 
@@ -179,6 +131,6 @@ def test_demo_has_no_server_tab_and_no_sign_in(server, path):
     """Rule 4: in DEMO=true nobody can sign in."""
     c = server(DEMO="true")
     assert c.get(path).status_code == 404
-    r = c.post("/api/v1/auth/login", json={"email": OWNER["email"], "password": OWNER["password"]})
+    r = c.post("/api/v1/auth/login", json={"username": OWNER["username"], "auth_key": "A" * 43})
     assert r.status_code == 403 and r.json()["error"]["code"] == "demo_locked"
-    assert c.post("/api/v1/setup/owner", json={"setup_code": "TEST-CODE-0001", **OWNER}).status_code == 409
+    assert c.post("/api/v1/setup", json=SETUP).status_code == 409

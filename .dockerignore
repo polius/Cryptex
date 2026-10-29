@@ -3,10 +3,17 @@
 **/__pycache__
 **/.pytest_cache
 **/.ruff_cache
+**/.mypy_cache
+**/.DS_Store
 web/dist
 e2e
-cli
-design
 .git
+.github
+.claude
 *.md
-!api/requirements.txt
+# Local runs (deploy/ compose files, or from the repository root): data, backups and key never go into an image.
+data
+deploy
+backups
+.env
+*.key

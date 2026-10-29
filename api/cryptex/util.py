@@ -4,6 +4,7 @@ from __future__ import annotations
 import base64
 import binascii
 import hashlib
+import hmac
 import secrets
 import string
 import time
@@ -51,6 +52,11 @@ def token_hash(token: str) -> str | None:
     return sha256_hex(raw) if len(raw) == 32 else None
 
 
+def same(a: str | None, b: str | None) -> bool:
+    """Constant-time string comparison that never raises (hmac.compare_digest refuses non-ASCII str)."""
+    return a is not None and b is not None and hmac.compare_digest(a.encode(), b.encode())
+
+
 def now() -> int:
     return int(time.time())
 
@@ -62,14 +68,12 @@ def iso(ts: int | float | None) -> str | None:
 
 
 def from_iso(s: str) -> int:
-    return int(datetime.fromisoformat(s.replace("Z", "+00:00")).timestamp())
+    """ISO 8601 date or date-time; UTC unless it says otherwise. Raises ValueError."""
+    d = datetime.fromisoformat(s.strip().replace("Z", "+00:00"))
+    return int((d if d.tzinfo else d.replace(tzinfo=timezone.utc)).timestamp())
 
 
 def is_id(s: str) -> bool:
     return isinstance(s, str) and len(s) == 10 and all(ch in BASE62 for ch in s)
 
 
-def mask_email(email: str) -> str:
-    """'lisa@globex.example' -> 'l•••@globex.example'."""
-    local, _, domain = email.partition("@")
-    return f"{local[:1]}•••@{domain}"

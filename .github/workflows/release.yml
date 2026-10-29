@@ -4,66 +4,120 @@ on:
   release:
     types: [published]
 
-permissions:
-  contents: write      # attach CLI binaries to the release
-  packages: write
-  id-token: write
-  attestations: write
+permissions: {}
 
+# Actions are pinned by commit SHA; Dependabot keeps the SHAs and the version comments current.
 jobs:
+  ci:
+    name: Full CI on the release commit
+    permissions: { contents: read }
+    uses: ./.github/workflows/ci.yml
+
   image:
     name: Push the container image
+    needs: [ci]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write       # signs the provenance attestation
+      attestations: write
+    outputs:
+      digest: ${{ steps.push.outputs.digest }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: docker/login-action@v4
+      # Release tags are vX.Y.Z. Anything else fails here, before anything is pushed. Only a release marked as a
+      # prerelease may add a suffix (v3.1.0-rc.1): a final release with one would get only its own tag.
+      - name: Version from the release tag
+        id: version
+        env:
+          TAG: ${{ github.event.release.tag_name }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          re='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
+          if ! [[ "$TAG" =~ $re ]]; then
+            echo "::error::Release tag $TAG isn't vX.Y.Z"; exit 1
+          fi
+          if [ -n "${BASH_REMATCH[4]}" ] && [ "$PRERELEASE" != true ]; then
+            echo "::error::Release tag $TAG has a suffix but the release isn't marked as a prerelease"; exit 1
+          fi
+          version="${TAG#v}"
+          { echo "version=$version"; echo "major=${BASH_REMATCH[1]}"; echo "minor=${BASH_REMATCH[2]}"; } >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
         with:
           username: poliuscorp
           password: ${{ secrets.DOCKER_ACCESS_TOKEN }}
       - id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
         with:
           images: poliuscorp/cryptex
+          # A release marked as a prerelease gets only its own version tag, whatever its tag looks like: semver alone
+          # would still move {{major}}, {{major}}.{{minor}} and latest for a plain tag.
+          flavor: latest=false
           tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=raw,value=latest
-      - uses: docker/setup-qemu-action@v4
-      - uses: docker/setup-buildx-action@v4
+            type=semver,pattern={{version}},value=${{ steps.version.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ steps.version.outputs.version }},enable=${{ !github.event.release.prerelease }}
+            type=semver,pattern={{major}},value=${{ steps.version.outputs.version }},enable=${{ !github.event.release.prerelease }}
+            type=raw,value=latest,enable=${{ !github.event.release.prerelease }}
+      # metadata-action only warns when it can't read a version, and would push whatever is left.
+      - name: Check the image tags (X.Y.Z, plus X.Y, X and latest unless a prerelease)
+        env:
+          TAGS: ${{ steps.meta.outputs.tags }}
+          VERSION: ${{ steps.version.outputs.version }}
+          MAJOR: ${{ steps.version.outputs.major }}
+          MINOR: ${{ steps.version.outputs.minor }}
+          PRERELEASE: ${{ github.event.release.prerelease }}
+        run: |
+          want=("poliuscorp/cryptex:$VERSION")
+          if [ "$PRERELEASE" != true ]; then want+=("poliuscorp/cryptex:$MAJOR.$MINOR" "poliuscorp/cryptex:$MAJOR" "poliuscorp/cryptex:latest"); fi
+          if ! diff <(printf '%s\n' "${want[@]}" | sort) <(printf '%s\n' "$TAGS" | grep . | sort); then
+            echo "::error::The image tags aren't the expected ones (diff above: < expected, > generated)"; exit 1
+          fi
+      - uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4.4.0
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
       - id: push
-        uses: docker/build-push-action@v7
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
           push: true
           platforms: linux/amd64,linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-      - uses: actions/attest-build-provenance@v4
+          sbom: true
+          provenance: mode=max
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:
           subject-name: index.docker.io/poliuscorp/cryptex
           subject-digest: ${{ steps.push.outputs.digest }}
           push-to-registry: true
 
-  cli:
-    name: Build and attach the CLI
+  web-hashes:
+    name: Publish SHA256SUMS of the web files
+    needs: [image]
     runs-on: ubuntu-latest
-    defaults: { run: { working-directory: cli } }
+    permissions:
+      contents: write       # uploads the release asset
+      id-token: write
+      attestations: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with: { go-version: "1.25", cache-dependency-path: cli/go.sum }
-      - name: Build
+      - name: Hash the web files of the pushed image (both platforms must match)
+        env:
+          IMAGE: poliuscorp/cryptex@${{ needs.image.outputs.digest }}
         run: |
-          mkdir -p dist
-          for os in linux darwin windows; do for arch in amd64 arm64; do
-            ext=""; [ "$os" = windows ] && ext=".exe"
-            CGO_ENABLED=0 GOOS=$os GOARCH=$arch go build -trimpath -ldflags "-s -w -X github.com/polius/cryptex/cli/internal/app.Version=${GITHUB_REF_NAME#v}" \
-              -o "dist/cryptex-${os}-${arch}${ext}" ./cmd/cryptex
-          done; done
-          cd dist && sha256sum -- * > SHA256SUMS
-      - uses: actions/attest-build-provenance@v4
-        with: { subject-path: "cli/dist/cryptex-*" }
+          for platform in linux/amd64 linux/arm64; do
+            docker pull -q --platform "$platform" "$IMAGE"
+            cid=$(docker create --platform "$platform" "$IMAGE")
+            rm -rf web && docker cp "$cid:/usr/share/cryptex/web" web && docker rm "$cid"
+            (cd web && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "SHA256SUMS.${platform#linux/}"
+          done
+          cmp SHA256SUMS.amd64 SHA256SUMS.arm64
+          mv SHA256SUMS.amd64 SHA256SUMS
+          cat SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: SHA256SUMS
       - name: Attach to the release
-        env: { GH_TOKEN: "${{ github.token }}" }
-        run: gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: gh release upload "$TAG" SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"

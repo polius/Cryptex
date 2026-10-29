@@ -16,7 +16,10 @@ from typing import Any
 
 _local = threading.local()
 _path: Path | None = None
-_generation = 0  # bumped by reset() so threads drop connections to an old file
+_generation = 0  # bumped by configure() and close_all() so threads drop connections to an old file
+_open: list[sqlite3.Connection] = []  # every thread's connection, for close_all()
+_open_lock = threading.Lock()
+CHECKPOINT_WAIT = 0.5  # seconds close_all waits for a busy database before leaving the WAL for the next start
 
 
 def configure(path: Path) -> None:
@@ -34,7 +37,32 @@ def _connect() -> sqlite3.Connection:
     c.execute("PRAGMA synchronous = NORMAL")
     c.execute("PRAGMA foreign_keys = ON")
     c.execute("PRAGMA busy_timeout = 30000")
+    with _open_lock:
+        _open.append(c)
     return c
+
+
+def close_all() -> None:
+    """At shutdown: fold the write-ahead log into the database file and close every connection, so a copy of
+    DATA_DIR taken after the server stopped is the whole database (no cryptex.db-wal it depends on) and an old -wal
+    file can never be replayed onto a restored one (README.md, Backups)."""
+    global _generation
+    with _open_lock:
+        conns, _open[:] = list(_open), []
+        _generation += 1
+    for c in conns:
+        c.close()  # a transaction some request left open (it can't commit any more) is rolled back
+    if _path is not None and _path.exists():
+        # Briefly: `docker stop` kills the container 10 s after asking it to stop, and uvicorn may have used 5 of them
+        # ending open requests (--timeout-graceful-shutdown). A checkpoint has nothing to wait for unless some other
+        # process (a `cryptex backup` in progress) is reading the database.
+        c = sqlite3.connect(_path, isolation_level=None, timeout=CHECKPOINT_WAIT)
+        try:
+            c.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        except sqlite3.Error:
+            pass  # busy: the WAL stays, and SQLite folds it in at the next start
+        finally:
+            c.close()  # the last connection to close also deletes cryptex.db-wal and -shm
 
 
 def conn() -> sqlite3.Connection:

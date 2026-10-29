@@ -1,303 +1,342 @@
-"""Email, webhooks, OIDC, 2FA, live updates, branding and audit, against real local services."""
-import hashlib
-import hmac
+"""Sign-in, invites, 2FA, branding and audit, against real local services."""
 import json
-import threading
-import time
-from http.server import BaseHTTPRequestHandler, HTTPServer
-from urllib.parse import parse_qs, urlparse
+import logging
 
-import httpx
 import pyotp
-import pytest
-from aiosmtpd.controller import Controller
-from conftest import OWNER, anon
-from helpers import answer, ask, open_meta, reveal, send
-from joserfc import jwt
-from joserfc.jwk import RSAKey
+from conftest import OWNER, OWNER_SALT, SETUP, SETUP_CODE, anon, auth_key, creds, login_body, reauth, sign_in, totp_code
+from helpers import reveal, send
 
-from cryptex import db, mailer, webhooks
-from cryptex.routes import auth as auth_routes
-from cryptex.routes import receipts as receipts_routes
-from cryptex.util import now
+from cryptex import account, db, manage, state
+from cryptex.util import b64u, now
 
 
-# ------------------------------------------------------------------ SMTP
-class Inbox:
-    def __init__(self):
-        self.messages = []
-
-    async def handle_DATA(self, server, session, envelope):  # noqa: N802
-        self.messages.append(envelope)
-        return "250 OK"
-
-
-@pytest.fixture
-def smtp():
-    import socket
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        port = sock.getsockname()[1]
-    inbox = Inbox()
-    ctl = Controller(inbox, hostname="127.0.0.1", port=port)
-    ctl.start()
-    inbox.port = port
-    yield inbox
-    ctl.stop()
-
-
-def wait_mail(inbox, n=1):
-    mailer.flush()
-    end = time.time() + 5
-    while len(inbox.messages) < n and time.time() < end:
-        time.sleep(0.05)
-    return inbox.messages
-
-
-def test_email_only_link_with_code(server, smtp):
-    c = server(SMTP_URL=f"smtp://127.0.0.1:{smtp.port}", SMTP_FROM="Acme <no-reply@acme.example>")
-    s = send(c, access="email", email="lisa@globex.example")
-    bob = anon(c)
-    m = open_meta(bob, s)
-    assert m["access"] == "email" and m["email_hint"] == "l•••@globex.example"
-    r = bob.post(f"/api/v1/secrets/{s.id}/reveal", headers=s.reveal_headers())
-    assert r.status_code == 403 and r.json()["error"]["code"] == "code_required"
-    assert bob.post(f"/api/v1/secrets/{s.id}/verify/start", headers=s.reveal_headers()).status_code == 204
-    msgs = wait_mail(smtp)
-    assert msgs[-1].rcpt_tos == ["lisa@globex.example"]
-    body = msgs[-1].content.decode()
-    code = body.split("Subject: ")[1][:6]
-    assert code.isdigit() and "Staging database" not in body and s.fragment not in body
-    r = bob.post(f"/api/v1/secrets/{s.id}/verify", json={"code": "000000" if code != "000000" else "111111"}, headers=s.reveal_headers())
-    assert r.status_code == 403 and r.json()["error"]["tries_left"] == 4
-    grant = bob.post(f"/api/v1/secrets/{s.id}/verify", json={"code": code}, headers=s.reveal_headers()).json()["grant"]
-    manifest, _ = reveal(bob, s, grant=grant)
-    assert manifest["items"]
-    # the encrypted address is deleted with the secret
-    assert db.val("SELECT count(*) FROM secrets") == 0
-
-
-def test_five_wrong_codes_destroy(server, smtp):
-    c = server(SMTP_URL=f"smtp://127.0.0.1:{smtp.port}")
-    s = send(c, access="email", email="lisa@globex.example")
-    bob = anon(c)
-    bob.post(f"/api/v1/secrets/{s.id}/verify/start", headers=s.reveal_headers())
-    code = wait_mail(smtp)[-1].content.decode().split("Subject: ")[1][:6]
-    wrong = "123456" if code != "123456" else "654321"
-    for _ in range(4):
-        bob.post(f"/api/v1/secrets/{s.id}/verify", json={"code": wrong}, headers=s.reveal_headers())
-    r = bob.post(f"/api/v1/secrets/{s.id}/verify", json={"code": wrong}, headers=s.reveal_headers())
-    assert r.status_code == 410 and r.json()["error"]["reason"] == "too_many_tries"
-
-
-def test_email_only_needs_smtp(client):
+# ------------------------------------------------------------------ access rules
+def test_email_only_links_are_gone(client):
     r = client.post("/api/v1/secrets", json={"policy": {"views": 1, "expires_in": 3600, "access": "email", "email": "a@b.example"},
                                              "streams": [{"stream": 0, "prefix": "AAAAAAAAAA", "chunks": 1, "size": 20}]})
-    assert r.status_code == 400 and r.json()["error"]["field"] == "policy.access"
+    assert r.status_code == 400 and r.json()["error"]["code"] == "invalid"
 
 
-def test_open_and_answer_notifications(server, smtp):
-    c = server(SMTP_URL=f"smtp://127.0.0.1:{smtp.port}")
-    s = send(c, notify=True)
-    reveal(anon(c), s)
-    msg = wait_mail(smtp)[-1]
-    assert msg.rcpt_tos == [OWNER["email"]]
-    text = msg.content.decode()
-    assert "was opened" in text and f"/r/{s.id}" in text and "Staging database" not in text
-    a = ask(c, notify=True)
-    answer(anon(c), a, {"Access key ID": "x", "Secret access key": "y"})
-    assert "answered" in wait_mail(smtp, 2)[-1].content.decode()
-
-
-def test_test_email(server, smtp):
-    c = server(SMTP_URL=f"smtp://127.0.0.1:{smtp.port}")
-    assert c.post("/api/v1/server/notifications/test-email", json={}).status_code == 204
-    assert "Email is working" in wait_mail(smtp)[-1].content.decode()
-
-
-# ------------------------------------------------------------------ webhooks
-class Receiver(BaseHTTPRequestHandler):
-    got: list = []
-    status = 200
-
-    def do_POST(self):  # noqa: N802
-        body = self.rfile.read(int(self.headers["Content-Length"]))
-        Receiver.got.append((dict(self.headers), body))
-        self.send_response(Receiver.status)
-        self.end_headers()
-
-    def log_message(self, *a):
-        pass
-
-
-@pytest.fixture
-def receiver():
-    Receiver.got, Receiver.status = [], 200
-    srv = HTTPServer(("127.0.0.1", 0), Receiver)
-    t = threading.Thread(target=srv.serve_forever, daemon=True)
-    t.start()
-    yield f"http://127.0.0.1:{srv.server_address[1]}/hook"
-    srv.shutdown()
-
-
-def test_webhook_signed_delivery(client, receiver):
-    r = client.post("/api/v1/server/webhooks", json={"url": receiver, "events": ["secret.revealed"]})
-    assert r.status_code == 201
-    secret = r.json()["signing_secret"]
-    s = send(client)
-    reveal(anon(client), s)
-    assert webhooks.run() == 1
-    headers, body = Receiver.got[-1]
-    assert headers["Cryptex-Event"] == "secret.revealed"
-    ts, sig = headers["Cryptex-Signature"].split(",")
-    t = ts.split("=")[1]
-    assert sig == "v1=" + hmac.new(secret.encode(), f"{t}.".encode() + body, hashlib.sha256).hexdigest()
-    p = json.loads(body)
-    assert p["item"] == {"kind": "secret", "id": s.id} and p["actor"] == "link" and p["detail"]["views_left"] == 0
-    hooks = client.get("/api/v1/server/notifications").json()["webhooks"]
-    assert hooks[0]["last_status"] == 200
-
-
-def test_webhook_retries_then_gives_up(client, receiver):
-    Receiver.status = 500
-    client.post("/api/v1/server/webhooks", json={"url": receiver})
-    send(client)
-    for _ in range(6):
-        db.run("UPDATE webhook_deliveries SET next_attempt_at = 0")
-        webhooks.run()
-    assert db.val("SELECT count(*) FROM events WHERE type = 'webhook.failed'") >= 1
-
-
-def test_webhook_needs_https(client):
-    assert client.post("/api/v1/server/webhooks", json={"url": "http://hooks.example.com/x"}).status_code == 400
-
-
-def test_slack_gets_text_only():
-    seen = {}
-
-    def handler(req):
-        seen["body"] = json.loads(req.content)
-        return httpx.Response(200)
-    hook = {"url": "https://hooks.slack.com/services/T/B/x", "secret_ct": None}
-    ev = {"id": 1, "type": "secret.revealed", "at": now(), "secret_id": "k7Qp2vR9mL", "request_id": None, "actor": "link", "detail": "{}"}
-    orig = webhooks.security.unseal
-    webhooks.security.unseal = lambda *_: b"whsec_x"
-    try:
-        ok, _, _ = webhooks.deliver_one(hook, ev, httpx.Client(transport=httpx.MockTransport(handler)))
-    finally:
-        webhooks.security.unseal = orig
-    assert ok and seen["body"] == {"text": "A link was opened (k7Qp…)"}
-
-
-# ------------------------------------------------------------------ OIDC
-@pytest.fixture
-def idp():
-    key = RSAKey.generate_key(2048, parameters={"kid": "k1"})
-    issuer = "https://idp.example"
-    state = {"claims": {}}
-
-    def handler(req):
-        if req.url.path == "/.well-known/openid-configuration":
-            return httpx.Response(200, json={"issuer": issuer, "authorization_endpoint": f"{issuer}/authorize",
-                                             "token_endpoint": f"{issuer}/token", "jwks_uri": f"{issuer}/jwks"})
-        if req.url.path == "/jwks":
-            return httpx.Response(200, json={"keys": [key.as_dict(private=False)]})
-        if req.url.path == "/token":
-            form = parse_qs(req.content.decode())
-            assert form["code_verifier"][0]
-            claims = {"iss": issuer, "aud": "client-1", "exp": now() + 300, "iat": now(), **state["claims"]}
-            return httpx.Response(200, json={"id_token": jwt.encode({"alg": "RS256", "kid": "k1"}, claims, key)})
-        return httpx.Response(404)
-    auth_routes.http_client = httpx.Client(transport=httpx.MockTransport(handler))
-    auth_routes._discovery.clear()
-    auth_routes._jwks.clear()
-    yield state
-    auth_routes.http_client = None
-
-
-def oidc_env(**extra):
-    return {"OIDC_ISSUER": "https://idp.example", "OIDC_CLIENT_ID": "client-1", "OIDC_CLIENT_SECRET": "s",
-            "OIDC_ALLOWED_DOMAINS": "acme.example", "OIDC_NAME": "Acme SSO", **extra}
-
-
-def sso_sign_in(c, idp, email, sub="u1", return_to="/links"):
-    r = c.get(f"/api/v1/auth/oidc/start?return_to={return_to}", follow_redirects=False)
-    assert r.status_code == 302
-    q = parse_qs(urlparse(r.headers["location"]).query)
-    assert q["code_challenge_method"] == ["S256"] and q["redirect_uri"] == ["http://localhost:8080/api/v1/auth/oidc/callback"]
-    idp["claims"] = {"sub": sub, "email": email, "email_verified": True, "nonce": q["nonce"][0], "name": "Lisa"}
-    return c.get(f"/api/v1/auth/oidc/callback?code=abc&state={q['state'][0]}", follow_redirects=False)
-
-
-def test_oidc_sign_in_creates_a_member(server, idp):
-    c = server(**oidc_env())
-    bob = anon(c)
-    r = sso_sign_in(bob, idp, "lisa@acme.example")
-    assert r.status_code == 302 and r.headers["location"] == "/links"
-    me = bob.get("/api/v1/auth/session").json()
-    assert me["user"]["email"] == "lisa@acme.example" and me["user"]["role"] == "member"
-    assert bob.get("/api/v1/server/overview").status_code == 404
-
-
-def test_oidc_rejects_other_domains_and_bad_nonce(server, idp):
-    c = server(**oidc_env())
-    r = sso_sign_in(anon(c), idp, "eve@evil.example")
-    assert r.headers["location"] == "/signin?error=domain"
-    bob = anon(c)
-    r = bob.get("/api/v1/auth/oidc/start", follow_redirects=False)
-    q = parse_qs(urlparse(r.headers["location"]).query)
-    idp["claims"] = {"sub": "x", "email": "a@acme.example", "nonce": "wrong"}
-    r = bob.get(f"/api/v1/auth/oidc/callback?code=abc&state={q['state'][0]}", follow_redirects=False)
-    assert r.headers["location"] == "/signin?error=provider"
-    # replaying the state fails
-    r = bob.get(f"/api/v1/auth/oidc/callback?code=abc&state={q['state'][0]}", follow_redirects=False)
-    assert r.headers["location"] == "/signin?error=expired"
-
-
-def test_oidc_owner_emails_and_org_only_links(server, idp):
-    c = server(**oidc_env(OIDC_OWNER_EMAILS="dana@acme.example"))
-    dana = anon(c)
-    sso_sign_in(dana, idp, "dana@acme.example", sub="d1")
-    assert dana.get("/api/v1/auth/session").json()["user"]["role"] == "owner"
-    csrf = dana.get("/api/v1/auth/session").json()["csrf"]
-    dana.headers["X-CSRF"] = csrf
-    s = send(dana, access="org")
-    # a visitor needs to sign in; someone from the org can open it
-    visitor = anon(c)
-    assert open_meta(visitor, s)["org_name"] == "Acme"
-    r = visitor.post(f"/api/v1/secrets/{s.id}/reveal", headers=s.reveal_headers())
-    assert r.status_code == 401 and r.json()["error"]["code"] == "sign_in_required"
-    lisa = anon(c)
-    sso_sign_in(lisa, idp, "lisa@acme.example", sub="l1")
-    lisa.headers["X-CSRF"] = lisa.get("/api/v1/auth/session").json()["csrf"]
-    manifest, _ = reveal(lisa, s)
-    assert manifest["items"]
-
-
-def test_org_only_needs_a_signed_in_sender_with_sso(server, idp):
-    c = server(**oidc_env())
-    r = anon(c).post("/api/v1/secrets", json={"policy": {"views": 1, "expires_in": 3600, "access": "org"},
-                                              "streams": [{"stream": 0, "prefix": "AAAAAAAAAA", "chunks": 1, "size": 20}]})
-    assert r.status_code == 400
-
-
-# ------------------------------------------------------------------ owner 2FA
-def test_password_owner_with_totp(client):
-    secret = client.post("/api/v1/me/totp").json()["secret"]
-    assert client.put("/api/v1/me/totp", json={"secret": secret, "code": pyotp.TOTP(secret).now()}).status_code == 204
+# ------------------------------------------------------------------ sign-in: password, plus the code when 2FA is on
+def test_sign_in_with_2fa_needs_a_code_and_codes_cant_be_replayed(client):
     bob = anon(client)
-    r = bob.post("/api/v1/auth/login", json={"email": OWNER["email"], "password": OWNER["password"]})
+    r = bob.post("/api/v1/auth/login", json=login_body(bob, OWNER["username"], OWNER["password"]))
     ticket = r.json()["mfa_ticket"]
     assert ticket and "cx_session" not in r.cookies
-    # the code used to enable is a replay now; wait for the next step only if needed
-    code = pyotp.TOTP(secret).at(time.time() + 30)
+    code = totp_code()
     r = bob.post("/api/v1/auth/login/totp", json={"mfa_ticket": ticket, "code": code})
-    assert r.status_code == 200 and bob.get("/api/v1/auth/session").json()["user"]["mfa"] is True
-    # replaying the same code fails (another browser, so no session cookie)
+    assert r.status_code == 200 and bob.get("/api/v1/auth/session").json()["user"]["username"] == OWNER["username"]
     eve = anon(client)
-    r = eve.post("/api/v1/auth/login", json={"email": OWNER["email"], "password": OWNER["password"]})
+    r = eve.post("/api/v1/auth/login", json=login_body(eve, OWNER["username"], OWNER["password"]))
     r = eve.post("/api/v1/auth/login/totp", json={"mfa_ticket": r.json()["mfa_ticket"], "code": code})
     assert r.status_code == 401
+
+
+def test_2fa_moves_to_a_new_app_by_turning_it_off_and_on(client):
+    new = client.post("/api/v1/me/totp").json()["secret"]
+    assert client.put("/api/v1/me/totp", json={"secret": new, "code": pyotp.TOTP(new).now()}).status_code == 409  # still on
+    assert client.delete("/api/v1/me/totp").status_code == 204
+    assert client.put("/api/v1/me/totp", json={"secret": new, "code": "000000"}).status_code == 400
+    assert client.put("/api/v1/me/totp", json={"secret": new, "code": pyotp.TOTP(new).now()}).status_code == 204
+    sign_in(anon(client), secret=new)
+
+
+def test_setup_is_done_at_once_and_the_owner_is_signed_in(server):
+    """Finish: owner, name and access together. 2FA is off until the owner turns it on."""
+    c = server(setup=False)
+    assert c.post("/api/v1/setup/check", json={"setup_code": "WRONG"}).status_code == 400
+    assert c.post("/api/v1/setup/check", json={"setup_code": SETUP_CODE}).status_code == 204
+    assert c.get("/api/v1/config").json()["setup_needed"] is True  # checking the code changes nothing
+    r = c.post("/api/v1/setup", json={**SETUP, "brand_name": " Globex ", "access": "signed_in"})
+    assert r.status_code == 200 and r.json()["user"]["totp"] is False and r.json()["user"]["role"] == "owner"
+    cfg = anon(c).get("/api/v1/config").json()
+    assert cfg["setup_needed"] is False and cfg["brand"]["name"] == "Globex" and cfg["mode"] == "signed_in"
+    c.headers["X-CSRF"] = r.json()["csrf"]
+    assert c.get("/api/v1/server/overview").status_code == 200
+    assert c.post("/api/v1/setup/check", json={"setup_code": SETUP_CODE}).status_code == 409
+
+
+def test_2fa_is_optional_and_can_be_turned_on_and_off(server):
+    c = server(setup=False)
+    r = c.post("/api/v1/setup", json=SETUP)
+    assert r.status_code == 200 and r.json()["user"]["totp"] is False
+    c.headers["X-CSRF"] = r.json()["csrf"]
+
+    def login() -> dict:
+        b = anon(c)
+        r = b.post("/api/v1/auth/login", json=login_body(b, OWNER["username"], OWNER["password"]))
+        assert r.status_code == 200, r.text
+        return r.json()
+
+    assert set(login()) == {"user", "csrf", "vault", "shared"}  # no 2FA: the password signs in
+    assert c.post("/api/v1/auth/reauth", json={"auth_key": auth_key(OWNER["password"], OWNER_SALT)}).status_code == 204
+    secret = c.post("/api/v1/me/totp").json()["secret"]
+    assert c.put("/api/v1/me/totp", json={"secret": secret, "code": pyotp.TOTP(secret).now()}).status_code == 204
+    assert c.get("/api/v1/config").json()["user"]["totp"] is True
+    assert set(login()) == {"mfa_ticket"}  # now the code is needed too
+    assert c.post("/api/v1/auth/reauth", json={"auth_key": auth_key(OWNER["password"], OWNER_SALT)}).status_code == 401
+    db.run("UPDATE sessions SET reauth_until = 0")
+    assert c.delete("/api/v1/me/totp").status_code == 403  # turning it off needs a fresh confirmation
+    assert c.post("/api/v1/auth/reauth", json={"auth_key": auth_key(OWNER["password"], OWNER_SALT),
+                                              "code": totp_code(secret=secret)}).status_code == 204
+    assert c.delete("/api/v1/me/totp").status_code == 204
+    assert set(login()) == {"user", "csrf", "vault", "shared"}
+
+
+# ------------------------------------------------------------------ forgot password: a temporary one, read on the server
+def test_temporary_password_auth_key_matches_the_browser():
+    # From hash-wasm with the browser's settings (web/src/store/vault.ts deriveAccount).
+    assert account.derive_auth_key("abcd-efgh-jkmn-pqrs", b"owner-test-salt!", account.KDF) == "ikOv8ImqirdUUjvk2xg1Cl1i5AanRRRj3BhSDSULm6E"
+
+
+def cli(monkeypatch, *args: str) -> int:
+    """`cryptex ...` as whoever runs the server would, on this test server's data."""
+    e = state.env()
+    monkeypatch.setenv("DATA_DIR", str(e.data_dir))
+    try:
+        return manage.main(list(args))
+    finally:
+        state.init(e)  # the command loads its own settings from the environment
+
+
+def read_temp(monkeypatch, capsys, username=OWNER["username"]) -> str:
+    assert cli(monkeypatch, "temp-password", username) == 0
+    return capsys.readouterr().out.strip().splitlines()[-1]
+
+
+def test_forgot_password_leaves_a_temporary_one_that_must_be_replaced(server, monkeypatch, capsys):
+    client = server(RATE_AUTH="20/15m")
+    monkeypatch.setattr(account, "derive_auth_key", lambda pw, salt, kdf: auth_key(pw, b64u(salt)))  # the tests' stand-in KDF
+    bob = anon(client)
+    nobody = bob.post("/api/v1/auth/forgot", json={"username": "nobody"})
+    r = bob.post("/api/v1/auth/forgot", json={"username": OWNER["username"]})
+    assert r.status_code == nobody.status_code == 200 and set(r.json()) == set(nobody.json()) == {"command", "hours"}
+    folder = state.env().data_dir / "temp-passwords"
+    assert [p.name for p in folder.iterdir()] == [OWNER["username"]]
+    assert (folder / OWNER["username"]).stat().st_mode & 0o777 == 0o600
+
+    # Asking changes nothing: the current password still signs in, and then the temporary one is dropped.
+    sign_in(anon(client))
+    assert list(folder.iterdir()) == []
+    assert cli(monkeypatch, "temp-password", OWNER["username"]) == 1 and "No temporary password" in capsys.readouterr().err
+
+    bob.post("/api/v1/auth/forgot", json={"username": OWNER["username"]})
+    temp = read_temp(monkeypatch, capsys)
+    r = bob.post("/api/v1/auth/login", json=login_body(bob, OWNER["username"], temp))
+    assert set(r.json()) == {"reset_ticket"} and "cx_session" not in r.cookies  # no 2FA code; not signed in until a new password
+    ticket = r.json()["reset_ticket"]
+    assert bob.post("/api/v1/auth/login/totp", json={"mfa_ticket": ticket, "code": totp_code()}).status_code == 401
+    r = bob.post("/api/v1/auth/password/reset", json={"reset_ticket": ticket, **creds("new password")})
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["totp"] is False  # 2FA turned off with it
+    assert r.json()["vault"]["vault_pw"] is None  # the old vault went with the old password: the browser makes a new one
+    assert anon(client).post("/api/v1/auth/password/reset", json={"reset_ticket": ticket, **creds("again")}).status_code == 401
+    assert client.get("/api/v1/auth/session").json()["user"] is None  # other sessions signed out
+    assert list(folder.iterdir()) == []
+
+    for old in (OWNER["password"], temp):
+        eve = anon(client)
+        assert eve.post("/api/v1/auth/login", json=login_body(eve, OWNER["username"], old)).status_code == 401
+    eve = anon(client)
+    r = eve.post("/api/v1/auth/login", json=login_body(eve, OWNER["username"], "new password"))
+    assert set(r.json()) == {"user", "csrf", "vault", "shared"}  # the new password alone signs in now
+    eve.headers["X-CSRF"] = r.json()["csrf"]
+    types = [e["type"] for e in eve.get("/api/v1/server/audit").json()["items"]]
+    assert "user.temp_password" in types and "user.password_reset" in types
+
+
+def test_temporary_password_expires_and_yields_to_an_owner_reset(server, monkeypatch, capsys):
+    monkeypatch.setattr(account, "derive_auth_key", lambda pw, salt, kdf: auth_key(pw, b64u(salt)))
+    c = server(setup=False)
+    c.headers["X-CSRF"] = c.post("/api/v1/setup", json=SETUP).json()["csrf"]
+    bob = anon(c)
+    bob.post("/api/v1/auth/forgot", json={"username": OWNER["username"]})
+    temp = read_temp(monkeypatch, capsys)
+    r = bob.post("/api/v1/auth/login", json=login_body(bob, OWNER["username"], temp))
+    assert set(r.json()) == {"reset_ticket"}
+
+    path = state.env().data_dir / "temp-passwords" / OWNER["username"]
+    db.run("UPDATE users SET temp_expires_at = ?", now() - 1)  # a day old
+    assert bob.post("/api/v1/auth/login", json=login_body(bob, OWNER["username"], temp)).status_code == 401
+    assert cli(monkeypatch, "temp-password", OWNER["username"]) == 1 and not path.exists()  # never handed out
+
+    bob.post("/api/v1/auth/forgot", json={"username": OWNER["username"]})
+    temp = read_temp(monkeypatch, capsys)
+    db.run("UPDATE users SET password_hash = NULL")  # an owner reset: only the invite link gets in now
+    assert bob.post("/api/v1/auth/login", json=login_body(bob, OWNER["username"], temp)).status_code == 401
+
+
+# ------------------------------------------------------------------ invites
+def accept(c, url, password="lisa's long passphrase", totp=True):
+    token = url.split("#", 1)[1]
+    info = c.post("/api/v1/auth/invite", json={"token": token}).json()
+    mfa = {"totp_secret": info["secret"], "totp_code": pyotp.TOTP(info["secret"]).now()} if totp else {}
+    r = c.post("/api/v1/auth/invite/accept", json={"token": token, **creds(password), **mfa})
+    if r.status_code == 200:
+        c.headers["X-CSRF"] = r.json()["csrf"]
+    return r, info
+
+
+def test_invite_sets_a_password_and_2fa_once(client):
+    r = client.post("/api/v1/server/users", json={"username": "Lisa", "role": "member"})
+    assert r.status_code == 201
+    url = r.json()["invite_url"]
+    assert url.startswith("/invite#")
+    lisa = anon(client)
+    token = url.split("#", 1)[1]
+    info = lisa.post("/api/v1/auth/invite", json={"token": token}).json()
+    assert info["username"] == "lisa" and "name" not in info and info["reset"] is False
+    bad = lisa.post("/api/v1/auth/invite/accept", json={"token": token, "salt": "x", "auth_key": "not a key", "totp_secret": info["secret"],
+                                                        "totp_code": pyotp.TOTP(info["secret"]).now()})
+    assert bad.status_code == 400  # the browser sends a derived key, never the password itself
+    bad = lisa.post("/api/v1/auth/invite/accept", json={"token": token, **creds("lisa's long passphrase"),
+                                                        "totp_secret": info["secret"], "totp_code": "000000"})
+    assert bad.status_code == 400 and bad.json()["error"]["field"] == "totp_code"
+    r, info = accept(lisa, url)
+    assert r.status_code == 200 and r.json()["user"]["role"] == "member"
+    assert lisa.get("/api/v1/server/overview").status_code == 404  # members don't get the Server tab
+    again = anon(client).post("/api/v1/auth/invite", json={"token": token})
+    assert again.status_code == 410
+    sign_in(anon(client), "lisa", "lisa's long passphrase", info["secret"])
+    people = {p["username"]: p for p in client.get("/api/v1/server/access").json()["people"]}
+    assert people["lisa"]["status"] == "active"
+    types = [e["type"] for e in client.get("/api/v1/server/audit").json()["items"]]
+    assert "user.invited" in types and "user.joined" in types
+
+
+def test_invite_can_skip_2fa(client):
+    url = client.post("/api/v1/server/users", json={"username": "lisa", "role": "member"}).json()["invite_url"]
+    r, _ = accept(anon(client), url, totp=False)
+    assert r.status_code == 200 and r.json()["user"]["totp"] is False
+    b = anon(client)
+    assert set(b.post("/api/v1/auth/login", json=login_body(b, "lisa", "lisa's long passphrase")).json()) == {"user", "csrf", "vault", "shared"}
+
+
+def test_people_management_rules(client):
+    from cryptex import db
+    r = client.post("/api/v1/server/users", json={"username": OWNER["username"]})
+    assert r.status_code == 400 and r.json()["error"]["field"] == "username"
+    assert client.post("/api/v1/server/users", json={"username": " SAM "}).status_code == 400  # same, once folded
+    for bad in ["a", "with space", "lee@acme.example", "-lee", "x" * 33]:
+        r = client.post("/api/v1/server/users", json={"username": bad})
+        assert r.status_code == 400 and r.json()["error"]["field"] == "username", bad
+    uid = client.post("/api/v1/server/users", json={"username": "lee"}).json()["id"]
+    me = client.get("/api/v1/auth/session").json()["user"]["id"]
+    assert client.post(f"/api/v1/server/users/{me}/invite").status_code == 400
+    assert client.delete(f"/api/v1/server/users/{me}").status_code == 400
+    db.run("UPDATE sessions SET reauth_until = 0")
+    assert client.delete(f"/api/v1/server/users/{uid}").status_code == 403  # re-auth first
+    reauth(client)
+    assert client.delete(f"/api/v1/server/users/{uid}").status_code == 204
+    assert client.delete(f"/api/v1/server/users/{uid}").status_code == 404
+
+
+def test_authenticator_label_names_the_server_once(client):
+    db.run("UPDATE settings SET value = '\"\"' WHERE key = 'brand_name'")
+    state.invalidate()
+    reauth(client)
+    uri = client.post("/api/v1/me/totp").json()["uri"]
+    assert uri.startswith("otpauth://totp/Cryptex:sam?") and "issuer=Cryptex&" in uri + "&"
+
+
+def lisa_joined(client, totp=True):
+    """Lisa, a member who joined (with 2FA unless totp=False), signed in on her own client."""
+    url = client.post("/api/v1/server/users", json={"username": "lisa"}).json()["invite_url"]
+    lisa = anon(client)
+    _, info = accept(lisa, url, totp=totp)
+    return lisa, lisa.get("/api/v1/auth/session").json()["user"]["id"], info
+
+
+def reset_accept(c, link, code=None, password="a different passphrase", **mfa):
+    return c.post("/api/v1/auth/reset/accept", json={"token": link["reset_url"].split("#", 1)[1], "code": code or link["code"],
+                                                     **creds(password), **mfa})
+
+
+def test_reset_link_needs_the_code_keeps_the_old_password_until_used_and_turns_2fa_off(client):
+    lisa, uid, _ = lisa_joined(client)
+    assert client.post(f"/api/v1/server/users/{uid}/invite").status_code == 400  # joined: a reset link, not an invite
+    link = client.post(f"/api/v1/server/users/{uid}/reset", json={}).json()
+    token = link["reset_url"].split("#", 1)[1]
+    assert link["reset_url"].startswith("/reset#") and len(token) == 43  # 256 bits
+    assert len(link["code"]) == 9 and link["code"][4] == "-"
+    people = {p["username"]: p for p in client.get("/api/v1/server/access").json()["people"]}
+    assert people["lisa"]["status"] == "reset" and people["lisa"]["reset_expires_at"]
+
+    # Nothing changes for Lisa until the link is used, but she hears about it.
+    me = lisa.get("/api/v1/config").json()["user"]
+    assert me["notice"]["by"] == OWNER["username"] and me["notice"]["pending"] is True
+    b = anon(client)
+    assert set(b.post("/api/v1/auth/login", json=login_body(b, "lisa", "lisa's long passphrase")).json()) == {"mfa_ticket"}
+
+    info = anon(client).post("/api/v1/auth/reset", json={"token": token}).json()
+    assert info["username"] == "lisa" and info["by"] == OWNER["username"] and info["tries_left"] == 5 and info["secret"]
+    r = reset_accept(anon(client), link, code="AAAA-AAAA")
+    assert r.status_code == 400 and r.json()["error"]["code"] == "wrong_code" and r.json()["error"]["tries_left"] == 4
+    r = reset_accept(anon(client), link, code=" " + link["code"].replace("-", "").lower())  # typed loosely
+    assert r.status_code == 200, r.text
+    assert r.json()["user"]["totp"] is False and r.json()["user"]["notice"] is None  # 2FA off; it can be set up again
+    assert r.json()["vault"]["vault_pw"] is None  # a new vault, made by the browser
+    assert lisa.get("/api/v1/auth/session").json()["user"] is None  # signed out everywhere else
+    assert reset_accept(anon(client), link).status_code == 410  # once
+    b = anon(client)
+    assert b.post("/api/v1/auth/login", json=login_body(b, "lisa", "lisa's long passphrase")).status_code == 401
+    assert set(b.post("/api/v1/auth/login", json=login_body(b, "lisa", "a different passphrase")).json()) == {"user", "csrf", "vault", "shared"}
+    types = [e["type"] for e in client.get("/api/v1/server/audit").json()["items"]]
+    assert "user.reset_link" in types and "user.password_reset" in types
+
+
+def test_reset_link_can_lock_the_account_and_dies_after_five_wrong_codes(server):
+    client = server(RATE_AUTH="30/15m")
+    lisa, uid, _ = lisa_joined(client, totp=False)
+    link = client.post(f"/api/v1/server/users/{uid}/reset", json={"lock": True}).json()
+    assert lisa.get("/api/v1/auth/session").json()["user"] is None  # locked: signed out now
+    b = anon(client)
+    assert b.post("/api/v1/auth/login", json=login_body(b, "lisa", "lisa's long passphrase")).status_code == 401
+    for left in (4, 3, 2, 1):
+        assert reset_accept(anon(client), link, code="AAAA-AAAA").json()["error"]["tries_left"] == left
+    r = reset_accept(anon(client), link, code="AAAA-AAAA")
+    assert r.status_code == 410 and r.json()["error"]["reason"] == "reset_tries"
+    assert reset_accept(anon(client), link).status_code == 410  # the right code is too late now
+    people = {p["username"]: p for p in client.get("/api/v1/server/access").json()["people"]}
+    assert people["lisa"]["status"] == "locked"
+    # A new link, and this time Lisa sets up 2FA on the reset page.
+    link = client.post(f"/api/v1/server/users/{uid}/reset", json={}).json()
+    secret = anon(client).post("/api/v1/auth/reset", json={"token": link["reset_url"].split("#", 1)[1]}).json()["secret"]
+    assert reset_accept(anon(client), link, totp_secret=secret, totp_code="000000").status_code == 400
+    r = reset_accept(anon(client), link, totp_secret=secret, totp_code=pyotp.TOTP(secret).now())
+    assert r.status_code == 200 and r.json()["user"]["totp"] is True
+
+
+def test_reset_link_rules_and_cancelling_it(client):
+    me = client.get("/api/v1/auth/session").json()["user"]["id"]
+    assert client.post(f"/api/v1/server/users/{me}/reset", json={}).status_code == 400  # not yourself
+    pending = client.post("/api/v1/server/users", json={"username": "lee"}).json()["id"]
+    assert client.post(f"/api/v1/server/users/{pending}/reset", json={}).status_code == 400  # not joined: a new invite
+    lisa, uid, _ = lisa_joined(client, totp=False)
+    assert lisa.post(f"/api/v1/server/users/{me}/reset", json={}).status_code == 404  # members don't get the Server tab
+
+    client.post(f"/api/v1/server/users/{uid}/reset", json={})
+    assert lisa.delete("/api/v1/me/notice").status_code == 204  # "I asked for it": the link stays
+    assert lisa.get("/api/v1/config").json()["user"]["notice"] is None
+    assert client.get("/api/v1/server/access").json()["people"][-1]["status"] == "reset"
+
+    link = client.post(f"/api/v1/server/users/{uid}/reset", json={}).json()  # replaces the first one
+    assert lisa.get("/api/v1/config").json()["user"]["notice"]["pending"] is True
+    assert lisa.delete("/api/v1/me/reset-link").status_code == 204  # "I didn't ask for it"
+    assert anon(client).post("/api/v1/auth/reset", json={"token": link["reset_url"].split("#", 1)[1]}).status_code == 410
+    assert lisa.get("/api/v1/config").json()["user"]["notice"] is None
+    assert "user.reset_cancelled" in [e["type"] for e in client.get("/api/v1/server/audit").json()["items"]]
+    # removing someone ends their sessions too
+    assert client.delete(f"/api/v1/server/users/{uid}").status_code == 204
+    assert lisa.get("/api/v1/auth/session").json()["user"] is None
+
+
+# ------------------------------------------------------------------ account-only links
+def test_account_only_links_are_gone(client):
+    """An old client asking for one gets an error, never a link anyone could open."""
+    r = client.post("/api/v1/secrets", json={"policy": {"views": 1, "expires_in": 3600, "access": "account"},
+                                             "streams": [{"stream": 0, "prefix": "AAAAAAAAAA", "chunks": 1, "size": 20}]})
+    assert r.status_code == 400 and r.json()["error"]["code"] == "invalid"
 
 
 def test_logout(client):
@@ -305,37 +344,37 @@ def test_logout(client):
     assert client.get("/api/v1/auth/session").json()["user"] is None
 
 
-# ------------------------------------------------------------------ live updates
-def test_subscribe_ticket_and_events(client):
-    s = send(client)
-    other = send(client)
-    bob = anon(client)
-    t = bob.post("/api/v1/receipts/subscribe", json={"items": [{"id": s.id, "manage_token": s.manage_token},
-                                                               {"id": other.id, "manage_token": "wrong"}]}).json()["ticket"]
-    secrets, requests = receipts_routes._ticket(t)
-    assert secrets == [s.id] and requests == []
-    start = db.val("SELECT max(id) FROM events")
-    reveal(anon(client), s)
-    reveal(anon(client), other)
-    evs = receipts_routes._new_events(secrets, requests, start)
-    assert [(e["data"]["id"], e["data"]["status"]) for e in evs] == [(s.id, "opened")]
-    assert bob.get("/api/v1/receipts/events?ticket=nope").status_code == 404
-
-
 def test_receipts_lookup_omits_wrong_pairs(client):
     s = send(client)
-    a = ask(client)
+    other = send(client)
     r = anon(client).post("/api/v1/receipts/lookup", json={"items": [
-        {"id": s.id, "manage_token": s.manage_token}, {"id": a.id, "manage_token": a.manage_token},
-        {"id": s.id, "manage_token": a.manage_token}]}).json()
-    assert sorted((i["id"], i["kind"]) for i in r["items"]) == sorted([(s.id, "secret"), (a.id, "request")])
+        {"id": s.id, "manage_token": s.manage_token}, {"id": other.id, "manage_token": other.manage_token},
+        {"id": s.id, "manage_token": other.manage_token}]}).json()
+    assert sorted(i["id"] for i in r["items"]) == sorted([s.id, other.id])
 
 
-def test_attach_receipt_to_account(client):
-    s = send(anon(client))
-    assert client.post("/api/v1/me/receipts", json={"id": s.id, "manage_token": "bad", "kind": "secret"}).status_code == 404
-    assert client.post("/api/v1/me/receipts", json={"id": s.id, "manage_token": s.manage_token, "kind": "secret"}).status_code == 204
-    assert s.id in [i["id"] for i in client.get("/api/v1/me/receipts").json()["items"]]
+def test_links_made_before_signing_in_join_the_account_only_with_their_manage_token(client):
+    """Audit Q1: links a browser adopted after signing in had no receipt in the account, so "Start fresh" (a new
+    vault) lost them. POST /me/receipts saves them to the account, each proven with its manage token."""
+    mine, theirs = send(anon(client)), send(anon(client))
+    failed = lambda: db.val("SELECT coalesce(sum(count), 0) FROM rate_limits WHERE bucket LIKE 'failed:%'")  # noqa: E731
+    r = client.post("/api/v1/me/receipts", json={"items": [{"id": mine.id, "manage_token": mine.manage_token},
+                                                           {"id": theirs.id, "manage_token": mine.manage_token},
+                                                           {"id": "Zz00000000", "manage_token": "x"}]})
+    assert r.status_code == 200 and r.json() == {"attached": [mine.id]}
+    assert failed() == 1  # the wrong token for an ID that exists; an unknown ID isn't a guess
+    listed = [i["id"] for i in client.get("/api/v1/me/receipts").json()["items"]]
+    assert mine.id in listed and theirs.id not in listed
+    again = client.post("/api/v1/me/receipts", json={"items": [{"id": mine.id, "manage_token": mine.manage_token}]})
+    assert again.json() == {"attached": [mine.id]} and db.val("SELECT count(*) FROM user_receipts WHERE secret_id = ?", mine.id) == 1
+    item = {"id": mine.id, "manage_token": mine.manage_token}
+    assert anon(client).post("/api/v1/me/receipts", json={"items": [item]}).status_code == 401
+    assert client.post("/api/v1/me/receipts", json={"items": [item]}, headers={"X-CSRF": "nope"}).status_code == 403
+    assert client.post("/api/v1/me/receipts", json={"items": [item] * 201}).status_code == 400
+    assert client.post("/api/v1/me/receipts", json={"items": []}).status_code == 400
+    from cryptex import manage
+    assert manage.owner_reset(None) == 0  # a password reset: the vault goes, the receipts stay
+    assert db.val("SELECT count(*) FROM user_receipts WHERE secret_id = ?", mine.id) == 1
 
 
 # ------------------------------------------------------------------ server tab
@@ -343,13 +382,14 @@ def test_overview(client):
     send(client)
     o = client.get("/api/v1/server/overview").json()
     assert o["live"]["secrets"] == 1 and o["week"]["created"] == 1 and o["week"]["senders"] == 1
-    assert {a["code"] for a in o["attention"]} >= {"smtp", "2fa"}
+    assert o["attention"] == []
     assert o["recent"][0]["type"] == "secret.created"
 
 
 def test_branding_and_logo_sanitizing(client):
-    assert client.put("/api/v1/server/branding", json={"name": "Globex"}).status_code == 204
-    assert client.get("/api/v1/config").json()["brand"]["name"] == "Globex"
+    assert client.put("/api/v1/server/branding", json={"name": "Globex", "public_url": "https://evil.example"}).status_code == 204
+    brand = client.get("/api/v1/config").json()["brand"]
+    assert brand["name"] == "Globex" and "public_url" not in brand  # links take the browser's address, never a stored one
     evil = b'<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"><script>alert(2)</script><rect width="10" height="10" onclick="x()"/><foreignObject/></svg>'
     r = client.put("/api/v1/server/branding/logo", content=evil, headers={"Content-Type": "image/svg+xml"})
     assert r.status_code == 204
@@ -359,8 +399,38 @@ def test_branding_and_logo_sanitizing(client):
     assert b"<rect" in logo.content and "sandbox" in logo.headers["content-security-policy"]
     r = client.put("/api/v1/server/branding/logo", content=b"<!DOCTYPE x><svg/>", headers={"Content-Type": "image/svg+xml"})
     assert r.status_code == 400
+    png = b"\x89PNG\r\n\x1a\n" + b"\0\0\0\rIHDR" + (128).to_bytes(4, "big") * 2
+    big = png + b"\0" * (1024 * 1024 - len(png))  # logos may be up to 1 MiB
+    assert client.put("/api/v1/server/branding/logo", content=big, headers={"Content-Type": "image/png"}).status_code == 204
+    r = client.put("/api/v1/server/branding/logo", content=big + b"\0", headers={"Content-Type": "image/png"})
+    assert r.status_code == 413 or r.json()["error"]["code"] == "too_large"
     assert client.delete("/api/v1/server/branding/logo").status_code == 204
     assert client.get("/api/v1/config").json()["brand"]["logo_url"] is None
+
+
+def test_language_setting(client):
+    assert client.get("/api/v1/config").json()["language"] == "auto"
+    assert client.get("/api/v1/server/language").json() == {"language": "auto", "locked_by": None}
+    assert client.put("/api/v1/server/language", json={"language": "ca"}).status_code == 204
+    assert anon(client).get("/api/v1/config").json()["language"] == "ca"
+    r = client.put("/api/v1/server/language", json={"language": "xx"})
+    assert r.status_code == 400 and r.json()["error"]["field"] == "language"
+    audit = client.get("/api/v1/server/audit?type=setting.changed").json()["items"]
+    assert audit[0]["detail"] == {"key": "language", "from": "auto", "to": "ca"}
+
+
+def test_language_locked_by_env(server):
+    locked = server(DEFAULT_LANGUAGE="es")
+    assert locked.get("/api/v1/server/language").json() == {"language": "es", "locked_by": "DEFAULT_LANGUAGE"}
+    assert locked.put("/api/v1/server/language", json={"language": "en"}).status_code == 400
+
+
+def test_every_language_has_a_copy_deck():
+    from pathlib import Path
+
+    from cryptex.config import LANGUAGES
+    copy = Path(__file__).resolve().parents[2] / "web" / "src" / "copy"
+    assert sorted(LANGUAGES) == sorted(p.stem for p in copy.glob("*.json"))
 
 
 def test_audit_filters_and_csv(client):
@@ -368,15 +438,113 @@ def test_audit_filters_and_csv(client):
     reveal(anon(client), s)
     items = client.get("/api/v1/server/audit").json()["items"]
     assert [i["type"] for i in items][:2] == ["secret.revealed", "secret.created"]
-    assert items[1]["actor_email"] == OWNER["email"]
+    assert items[1]["actor_username"] == OWNER["username"]
     only = client.get(f"/api/v1/server/audit?q={s.id}&type=secret.revealed").json()["items"]
     assert len(only) == 1 and only[0]["actor"] == "link"
     r = client.get("/api/v1/server/audit.csv")
     assert r.headers["content-type"].startswith("text/csv") and "secret.revealed" in r.text
 
 
-def test_tokens_shown_once_and_listed_for_owners(client):
-    r = client.post("/api/v1/me/tokens", json={"name": "CI deploys", "scopes": ["send"]}).json()
-    assert r["token"].startswith("cx_live_") and r["hint"].endswith(r["token"][-4:])
-    listed = client.get("/api/v1/server/tokens").json()["items"]
-    assert listed[0]["name"] == "CI deploys" and "token" not in listed[0]
+
+def test_audit_events_are_logged_as_json(client, caplog):
+    from cryptex.app import JsonFormatter
+    caplog.set_level(logging.INFO, logger="cryptex.events")
+    s = send(client)
+    reveal(anon(client), s)
+    lines = [json.loads(JsonFormatter().format(r)) for r in caplog.records if r.name == "cryptex.events"]
+    assert [x["event"] for x in lines] == ["secret.created", "secret.revealed"]  # secret.sealed isn't audited
+    assert lines[1]["secret_id"] == s.id and lines[1]["actor"] == "link" and lines[1]["detail"]["views_left"] == 0
+
+
+# ------------------------------------------------------------------ backups without the sqlite3 CLI
+def test_backup_command_copies_the_database_and_chunks_while_running(client, monkeypatch, tmp_path, capsys):
+    import sqlite3
+    s = send(client, files=[("a.txt", b"abc")])
+    dest = tmp_path / "backup-1"
+    assert cli(monkeypatch, "backup", str(dest)) == 0
+    assert sorted(p.name for p in dest.iterdir()) == ["brand", "chunks", "cryptex.db", "enc.key"]  # audit N2: no -wal or -shm beside it
+    assert (dest / "enc.key").read_bytes() == (state.env().data_dir / "enc.key").read_bytes()
+    assert (dest / "enc.key").stat().st_mode & 0o777 == 0o600
+    copy = sqlite3.connect(dest / "cryptex.db")
+    assert copy.execute("SELECT count(*) FROM secrets WHERE id = ?", (s.id,)).fetchone()[0] == 1
+    keys = [r[0] for r in copy.execute("SELECT blob_key FROM chunks")]
+    assert keys and all((dest / "chunks" / k[:2] / k).is_file() for k in keys)
+    assert (dest / "cryptex.db").stat().st_mode & 0o777 == 0o600
+    assert cli(monkeypatch, "backup", str(dest)) == 1  # never overwrites
+    assert cli(monkeypatch, "backup", str(state.env().data_dir / "inside")) == 1
+
+
+def test_backup_finishes_when_chunks_are_deleted_while_it_copies(client, monkeypatch, tmp_path, capsys):
+    """Audit P-B2: a chunk deleted mid-copy (cleanup purging a secret) made copytree raise: no "Backed up", a
+    traceback, the 0600/0700 modes never applied, and a retry into the same folder refused."""
+    import os
+    import shutil
+    import sqlite3
+    gone, kept = send(client, files=[("a.txt", b"abc")]), send(client, files=[("b.txt", b"def")])
+    data = state.env().data_dir
+    for p in (data / "chunks").rglob("*"):
+        p.chmod(0o755 if p.is_dir() else 0o644)  # as a restore may have left them
+    doomed = {r["blob_key"] for r in db.all("SELECT blob_key FROM chunks WHERE secret_id = ?", gone.id)}
+    real = shutil.copyfile
+
+    def racing_copy(src, dst, **kw):  # cleanup purges `gone` between the folder listing and the copy
+        if os.path.basename(src) in doomed:
+            os.unlink(src)
+        return real(src, dst, **kw)
+    monkeypatch.setattr(shutil, "copyfile", racing_copy)
+    old = os.umask(0o022)
+    try:
+        assert cli(monkeypatch, "backup", str(tmp_path / "b1")) == 0
+    finally:
+        os.umask(old)
+    out = capsys.readouterr().out
+    assert "Backed up to" in out and f"{len(doomed)} chunk(s) went while the copy ran" in out
+    copy = sqlite3.connect(tmp_path / "b1" / "cryptex.db")
+    for sid, present in ((kept.id, True), (gone.id, False)):
+        keys = [r[0] for r in copy.execute("SELECT blob_key FROM chunks WHERE secret_id = ?", (sid,))]
+        assert keys and all((tmp_path / "b1" / "chunks" / k[:2] / k).is_file() == present for k in keys)
+    for p in [tmp_path / "b1", *(tmp_path / "b1").rglob("*")]:
+        assert p.stat().st_mode & 0o777 == (0o700 if p.is_dir() else 0o600), (p, oct(p.stat().st_mode))
+
+
+def test_a_backup_that_fails_part_way_leaves_nothing_behind(client, monkeypatch, tmp_path, capsys):
+    import shutil
+    import sqlite3
+    send(client, files=[("a.txt", b"abc")])
+
+    def disk_full(src, dst, **kw):
+        raise OSError(28, "No space left on device")
+    real = shutil.copyfile
+    monkeypatch.setattr(shutil, "copyfile", disk_full)
+    (tmp_path / "mounted").mkdir()  # a folder that was there before (a mounted /backups) stays
+    for dest in (tmp_path / "new", tmp_path / "mounted"):
+        assert cli(monkeypatch, "backup", str(dest)) == 1
+        assert "No space left on device" in capsys.readouterr().err
+    assert not (tmp_path / "new").exists() and list((tmp_path / "mounted").iterdir()) == []
+    monkeypatch.setattr(shutil, "copyfile", real)
+
+    def fails_reading_the_copy(out):  # SQLite left its side files, then the check failed
+        for side in ("-wal", "-shm"):
+            (out / f"cryptex.db{side}").write_bytes(b"x")
+        raise sqlite3.OperationalError("disk I/O error")
+    real_check = manage._missing_chunks
+    monkeypatch.setattr(manage, "_missing_chunks", fails_reading_the_copy)
+    assert cli(monkeypatch, "backup", str(tmp_path / "mounted")) == 1
+    assert list((tmp_path / "mounted").iterdir()) == []
+    monkeypatch.setattr(manage, "_missing_chunks", real_check)
+    assert cli(monkeypatch, "backup", str(tmp_path / "mounted")) == 0  # the same folder again, once fixed
+
+
+def test_cleanup_deletes_temporary_passwords_nobody_read_after_a_day(client, monkeypatch, capsys):
+    import os as _os
+
+    from cryptex import jobs
+    monkeypatch.setattr(account, "derive_auth_key", lambda pw, salt, kdf: auth_key(pw, b64u(salt)))
+    anon(client).post("/api/v1/auth/forgot", json={"username": OWNER["username"]})
+    path = state.env().data_dir / "temp-passwords" / OWNER["username"]
+    jobs.cleanup()
+    assert path.exists()
+    _os.utime(path, (0, now() - state.TEMP_TTL - 1))
+    db.run("UPDATE users SET temp_expires_at = ?", now() - 1)
+    jobs.cleanup()
+    assert not path.exists() and db.val("SELECT temp_key_hash FROM users WHERE username = ?", OWNER["username"]) is None

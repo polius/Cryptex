@@ -1,0 +1,4 @@
+yourdomain.com {
+	encode zstd gzip
+	reverse_proxy cryptex:8080
+}

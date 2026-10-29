@@ -2,20 +2,19 @@
 """
 Cryptex crypto format v1 — reference implementation.
 
-This file is normative together with crypto-v1.md: when the two disagree,
-fix the document. Run it to regenerate vectors.json and to self-test:
+This file is normative together with docs/crypto.md: when the two disagree,
+fix the document. Run it to regenerate docs/vectors.json and to self-test:
 
     pip install cryptography argon2-cffi
-    python reference.py            # writes vectors.json and verifies it
+    python tests/reference.py      # writes docs/vectors.json and verifies it
 
-Implementations (browser module, CLI, server legacy path) must reproduce
+Implementations (the browser module) must reproduce
 every value in vectors.json and must reject every "must_fail" case.
 """
 import base64, hashlib, hmac, json, os, struct, sys
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from cryptography.hazmat.primitives.kdf.hkdf import HKDFExpand
-from cryptography.hazmat.primitives import hashes, serialization
-from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives import hashes
 from cryptography.exceptions import InvalidTag
 from argon2.low_level import hash_secret_raw, Type
 
@@ -71,30 +70,77 @@ def stream_encrypt(key, secret_id, stream, prefix, plaintext: bytes, chunk_size=
     g = AESGCM(key); aad = stream_aad(secret_id, stream)
     return [g.encrypt(nonce_for(prefix, i, i == len(parts) - 1), p, aad) for i, p in enumerate(parts)]
 def stream_decrypt(key, secret_id, stream, prefix, chunks):
-    """Raises on tampering, reordering, truncation or extension."""
+    """Raises on tampering, reordering, truncation or extension, and on an empty chunk list."""
+    if not chunks:
+        raise ValueError("a stream has at least one chunk")  # an empty stream is one empty chunk with the last flag
     g = AESGCM(key); aad = stream_aad(secret_id, stream); out = []
     for i, c in enumerate(chunks):
         last = i == len(chunks) - 1
         out.append(g.decrypt(nonce_for(prefix, i, last), c, aad))  # final chunk must carry the last flag
     return b"".join(out)
 
+def is_int(v) -> bool: return isinstance(v, int) and not isinstance(v, bool)
+B64U = set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+
+def check_streams(streams):
+    """The stream list a server returns on reveal: exactly 0..n-1, each once, each with at least one chunk, a size
+    and a 7-byte nonce prefix (base64url, 10 characters)."""
+    def ok(s):
+        return (isinstance(s, dict) and is_int(s.get("stream")) and is_int(s.get("chunks")) and is_int(s.get("size"))
+                and s["size"] >= 0 and isinstance(s.get("prefix"), str) and len(s["prefix"]) == 10
+                and all(ch in B64U for ch in s["prefix"]))
+    if not streams or not all(ok(s) for s in streams):
+        raise ValueError("stream list is not a list of streams")
+    if sorted(s["stream"] for s in streams) != list(range(len(streams))) or any(s["chunks"] < 1 for s in streams):
+        raise ValueError("stream list is not 0..n-1 with at least one chunk each")
+
+def check_files(manifest, plain):
+    """The manifest is an object whose items are objects; every stream n >= 1 is exactly one file of the manifest,
+    and decrypts to the size the manifest gives. `plain` maps stream number to decrypted bytes."""
+    if not isinstance(manifest, dict) or not isinstance(manifest.get("items"), list):
+        raise ValueError("not a manifest")
+    used = set()
+    for it in manifest["items"]:
+        if not isinstance(it, dict):
+            raise ValueError("a manifest item isn't an object")
+        if it.get("t") != "file":
+            continue
+        n = it.get("stream")
+        if not is_int(n) or n < 1 or n not in plain or n in used or it.get("size") != len(plain[n]):
+            raise ValueError("file streams don't match the manifest")
+        used.add(n)
+    if used != set(plain) - {0}:
+        raise ValueError("a stream isn't in the manifest")
+
 # ---------------------------------------------------------------- §4 requests
-def p256_from_scalar(d: int): return ec.derive_private_key(d, ec.SECP256R1())
-def spki(pub) -> bytes:
-    return pub.public_bytes(serialization.Encoding.DER, serialization.PublicFormat.SubjectPublicKeyInfo)
-def request_link(secret_id: str, P: bytes, requester_pub):
-    fp = hashlib.sha256(spki(requester_pub)).digest()[:8]
-    prk = extract(salt_for(secret_id), P)
-    at = expand(prk, "answer-token")
-    return {"fragment": b64u(P + fp), "fingerprint": fp.hex(), "prompt_key": expand(prk, "prompt"),
-            "answer_token": at, "answer_token_hash": sha256_hex(at)}
-def parse_request_fragment(fragment: str):
-    raw = unb64u(fragment)
-    if len(raw) != 24: raise ValueError("incomplete link")
-    return raw[:16], raw[16:]
-def answer_key(secret_id: str, own_priv, peer_pub) -> bytes:
-    shared = own_priv.exchange(ec.ECDH(), peer_pub)
-    return expand(extract(salt_for(secret_id), shared), "answer")
+from cryptography.hazmat.primitives.asymmetric import ec
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+def derive_ask(request_id: str, R: bytes):
+    assert len(R) == 16
+    prk = extract(VERSION + b"/ask/" + request_id.encode(), R)
+    token = expand(prk, "answer")
+    return {"ask_key": expand(prk, "ask"), "answer_token": token, "answer_hash": sha256_hex(token)}
+
+def raw_public(key) -> bytes:
+    return key.public_key().public_bytes(Encoding.X962, PublicFormat.UncompressedPoint)
+
+def _answer_key(request_id: str, secret_id: str, z: bytes, E: bytes, Q: bytes) -> bytes:
+    return expand(extract(VERSION + b"/answer/" + f"{request_id}/{secret_id}".encode(), z + E + Q), "answer")
+
+def wrap_answer(request_id: str, secret_id: str, K: bytes, Q: bytes, e=None, nonce: bytes | None = None) -> str:
+    """The answer's link key K, encrypted to the requester's public key Q (65 bytes, uncompressed)."""
+    e = e or ec.generate_private_key(ec.SECP256R1()); E = raw_public(e)
+    z = e.exchange(ec.ECDH(), ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), Q))
+    nonce = nonce or os.urandom(12)
+    aad = VERSION + b"|answer|" + f"{request_id}|{secret_id}".encode()
+    return b64u(E + nonce + AESGCM(_answer_key(request_id, secret_id, z, E, Q)).encrypt(nonce, K, aad))
+
+def unwrap_answer(request_id: str, secret_id: str, d, answer_ct: str) -> bytes:
+    raw = unb64u(answer_ct); E, nonce, ct = raw[:65], raw[65:77], raw[77:]
+    z = d.exchange(ec.ECDH(), ec.EllipticCurvePublicKey.from_encoded_point(ec.SECP256R1(), E))
+    aad = VERSION + b"|answer|" + f"{request_id}|{secret_id}".encode()
+    return AESGCM(_answer_key(request_id, secret_id, z, E, raw_public(d))).decrypt(nonce, ct, aad)
 
 # ---------------------------------------------------------------- vectors
 def det(label: str, n: int) -> bytes:
@@ -110,7 +156,7 @@ def build():
         "content_key": d["content_key"].hex(), "meta_key": d["meta_key"].hex(),
         "reveal_token_b64u": b64u(d["reveal_token"]), "reveal_hash": d["reveal_hash"]}
 
-    meta_pt = json.dumps({"title": "Staging database", "from": "Sam Rivera"}, separators=(",", ":")).encode()
+    meta_pt = json.dumps({"title": "Staging database", "from": None, "fields": 2, "notes": 0}, separators=(",", ":")).encode()
     mn = det("meta-nonce", 12)
     V["cases"]["meta"] = {"id": sid, "meta_key": d["meta_key"].hex(), "nonce": mn.hex(),
         "plaintext": meta_pt.decode(), "meta_ct_b64u": seal_blob(d["meta_key"], "meta", sid, meta_pt, mn)}
@@ -133,7 +179,8 @@ def build():
           {"name": "truncated: last chunk dropped", "stream": 1, "prefix": p1.hex(), "chunks": [c.hex() for c in s1[:-1]]},
           {"name": "reordered: chunks 0 and 1 swapped", "stream": 1, "prefix": p1.hex(), "chunks": [s1[1].hex(), s1[0].hex()] + [c.hex() for c in s1[2:]]},
           {"name": "stream index swapped (file decrypted as stream 0)", "stream": 0, "prefix": p1.hex(), "chunks": [c.hex() for c in s1]},
-          {"name": "extended: chunk appended after final", "stream": 1, "prefix": p1.hex(), "chunks": [c.hex() for c in s1] + [s1[0].hex()]}]}
+          {"name": "extended: chunk appended after final", "stream": 1, "prefix": p1.hex(), "chunks": [c.hex() for c in s1] + [s1[0].hex()]},
+          {"name": "empty: no chunks at all", "stream": 1, "prefix": p1.hex(), "chunks": []}]}
 
     salt = det("argon-salt", 16)
     pp = derive_passphrase(sid, K, "copper-lantern-river-42", salt)
@@ -143,34 +190,50 @@ def build():
         "passcheck_hash": pp["passcheck_hash"],
         "note": "meta_key and reveal_token do not change when a passphrase is set, so the title shows before the passphrase is asked."}
 
-    rid = "7hk2Vn4pXa"; P = det("P", 16)
-    req_priv = p256_from_scalar(int.from_bytes(det("requester-d", 32), "big") % (2**256 - 2**224) + 1)
-    rl = request_link(rid, P, req_priv.public_key())
-    prompt_pt = json.dumps({"title": "AWS read-only keys", "from": "Sam Rivera",
-        "message": "Read-only on the billing account is enough. Thanks!", "fields": ["Access key ID", "Secret access key"], "files": False},
-        separators=(",", ":")).encode()
-    pn = det("prompt-nonce", 12)
-    eph = p256_from_scalar(int.from_bytes(det("responder-e", 32), "big") % (2**256 - 2**224) + 1)
-    ak = answer_key(rid, eph, req_priv.public_key()); ak2 = answer_key(rid, req_priv, eph.public_key())
-    assert ak == ak2
-    answer_pt = json.dumps({"v": 1, "items": [{"t": "field", "k": "Access key ID", "v": "AKIAIOSFODNN7EXAMPLE", "secret": False},
-        {"t": "field", "k": "Secret access key", "v": "wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY", "secret": True}]},
-        separators=(",", ":")).encode()
-    ap = det("answer-prefix", 7)
-    ans = stream_encrypt(ak, rid, 0, ap, answer_pt, chunk_size=64)
-    V["cases"]["request"] = {"id": rid, "P": P.hex(),
-        "requester_private_scalar": format(req_priv.private_numbers().private_value, "064x"),
-        "requester_spki_b64u": b64u(spki(req_priv.public_key())),
-        "fragment_b64u": rl["fragment"], "link": f"https://vault.example/q/{rid}#{rl['fragment']}",
-        "fingerprint": rl["fingerprint"], "prompt_key": rl["prompt_key"].hex(),
-        "answer_token_b64u": b64u(rl["answer_token"]), "answer_token_hash": rl["answer_token_hash"],
-        "prompt": {"nonce": pn.hex(), "plaintext": prompt_pt.decode(), "prompt_ct_b64u": seal_blob(rl["prompt_key"], "prompt", rid, prompt_pt, pn)},
-        "answer": {"responder_ephemeral_private_scalar": format(eph.private_numbers().private_value, "064x"),
-                   "responder_ephemeral_spki_b64u": b64u(spki(eph.public_key())), "answer_key": ak.hex(),
-                   "stream": 0, "prefix": ap.hex(), "chunk_size": 64, "plaintext": answer_pt.decode(), "chunks": [c.hex() for c in ans]},
-        "must_fail": [{"name": "fragment cut to 20 characters", "fragment_b64u": rl["fragment"][:20]},
-                      {"name": "server swapped the public key (fingerprint mismatch)",
-                       "spki_b64u": b64u(spki(p256_from_scalar(12345).public_key())), "expected_fingerprint": rl["fingerprint"]}]}
+    # §3.4 checks on reveal. Only stream numbers and chunk counts matter in a stream list; `sizes` gives each file
+    # stream's decrypted size (the bytes themselves don't matter to these checks).
+    f = lambda stream, size=70, name="vpn.ovpn": {"t": "file", "name": name, "type": "application/x-openvpn-profile", "size": size, "stream": stream}
+    m = lambda *items: {"v": 1, "items": list(items)}
+    S = lambda *chunks: [{"stream": i, "prefix": "AAAAAAAAAA", "chunks": c, "size": 16} for i, c in enumerate(chunks)]
+    V["cases"]["reveal"] = {
+        "note": "Checks on reveal (crypto-v1 §3.4): the server's stream list, and the manifest against the decrypted streams. sizes maps each stream n >= 1 to its decrypted size.",
+        "stream_list_must_fail": [
+            {"name": "empty list", "streams": []},
+            {"name": "doesn't start at 0", "streams": [{**S(1)[0], "stream": 1}]},
+            {"name": "a gap", "streams": [S(1)[0], {**S(1)[0], "stream": 2}]},
+            {"name": "a stream twice", "streams": S(1, 1) + [S(1, 1)[1]]},
+            {"name": "a stream with no chunks", "streams": S(1, 0)},
+            {"name": "not a list of streams", "streams": [None]},
+            {"name": "no nonce prefix", "streams": [{k: v for k, v in S(1)[0].items() if k != "prefix"}]},
+            {"name": "a nonce prefix that isn't 7 bytes", "streams": [{**S(1)[0], "prefix": "AAAA"}]},
+            {"name": "a nonce prefix that isn't base64url", "streams": [{**S(1)[0], "prefix": "AAAAAAAA+/"}]},
+            {"name": "a size that isn't a whole number", "streams": [{**S(1)[0], "size": "16"}]}],
+        "manifest_must_fail": [
+            {"name": "a file points to stream 0", "manifest": m(f(0)), "sizes": {}},
+            {"name": "a file points to a stream that isn't there", "manifest": m(f(2)), "sizes": {"1": 70}},
+            {"name": "two files share a stream", "manifest": m(f(1), f(1, name="b.txt")), "sizes": {"1": 70}},
+            {"name": "a stream no item uses", "manifest": m({"t": "note", "v": "hi"}), "sizes": {"1": 70}},
+            {"name": "a file emptied", "manifest": m(f(1)), "sizes": {"1": 0}},
+            {"name": "a file truncated", "manifest": m(f(1)), "sizes": {"1": 69}},
+            {"name": "a stream number that isn't an integer", "manifest": m(f("1")), "sizes": {"1": 70}},
+            {"name": "an item that isn't an object", "manifest": m(None), "sizes": {}},
+            {"name": "items isn't a list", "manifest": {"v": 1, "items": {}}, "sizes": {}},
+            {"name": "not an object", "manifest": None, "sizes": {}}]}
+
+    rid = "Rq7Bn2xK4m"; R = det("R", 16); a = derive_ask(rid, R)
+    d_req = ec.derive_private_key(int.from_bytes(det("requester", 32), "big"), ec.SECP256R1())
+    e_eph = ec.derive_private_key(int.from_bytes(det("ephemeral", 32), "big"), ec.SECP256R1())
+    Q = raw_public(d_req); an = det("ask-nonce", 12); wn = det("answer-nonce", 12)
+    ask_pt = json.dumps({"key": b64u(Q)}, separators=(",", ":")).encode()
+    nums = d_req.private_numbers()
+    V["cases"]["request"] = {"id": rid, "R": R.hex(), "link": f"https://vault.example/a/{rid}#{b64u(R)}",
+        "ask_key": a["ask_key"].hex(), "answer_token_b64u": b64u(a["answer_token"]), "answer_hash": a["answer_hash"],
+        "ask_nonce": an.hex(), "ask_plaintext": ask_pt.decode(), "ask_ct_b64u": seal_blob(a["ask_key"], "ask", rid, ask_pt, an),
+        "requester_jwk": {"kty": "EC", "crv": "P-256", "d": b64u(nums.private_value.to_bytes(32, "big")),
+                          "x": b64u(nums.public_numbers.x.to_bytes(32, "big")), "y": b64u(nums.public_numbers.y.to_bytes(32, "big"))},
+        "answer_id": sid, "answer_K": K.hex(), "answer_nonce": wn.hex(),
+        "answer_ct_b64u": wrap_answer(rid, sid, K, Q, e_eph, wn)}
+
     V["cases"]["link_must_fail"] = [{"name": "key cut by a chat app", "fragment": b64u(K)[:14], "reason": "not 22 base64url characters"},
                                     {"name": "missing fragment", "fragment": "", "reason": "no key"}]
     return V
@@ -183,32 +246,41 @@ def verify(V):
     for st in c["stream"]["streams"]:
         pt = stream_decrypt(d["content_key"], sid, st["stream"], bytes.fromhex(st["prefix"]), [bytes.fromhex(x) for x in st["chunks"]])
         assert pt == (st["plaintext"].encode() if "plaintext" in st else bytes.fromhex(st["plaintext_hex"]))
+    plain = {st["stream"]: stream_decrypt(d["content_key"], sid, st["stream"], bytes.fromhex(st["prefix"]), [bytes.fromhex(x) for x in st["chunks"]])
+             for st in c["stream"]["streams"]}
+    check_streams([{"stream": st["stream"], "prefix": b64u(bytes.fromhex(st["prefix"])), "chunks": len(st["chunks"]), "size": 0}
+                   for st in c["stream"]["streams"]])
+    check_files(json.loads(plain[0]), plain)
     for f in c["stream"]["must_fail"]:
         try:
             stream_decrypt(d["content_key"], sid, f["stream"], bytes.fromhex(f["prefix"]), [bytes.fromhex(x) for x in f["chunks"]])
             raise AssertionError("must fail: " + f["name"])
-        except InvalidTag:
+        except (InvalidTag, ValueError):
             pass
-    r = c["request"]; priv = p256_from_scalar(int(r["requester_private_scalar"], 16))
-    P, fp = parse_request_fragment(r["fragment_b64u"])
-    assert hashlib.sha256(spki(priv.public_key())).digest()[:8] == fp
-    rl = request_link(r["id"], P, priv.public_key())
-    assert open_blob(rl["prompt_key"], "prompt", r["id"], r["prompt"]["prompt_ct_b64u"]).decode() == r["prompt"]["plaintext"]
-    eph_pub = serialization.load_der_public_key(unb64u(r["answer"]["responder_ephemeral_spki_b64u"]))
-    ak = answer_key(r["id"], priv, eph_pub)
-    pt = stream_decrypt(ak, r["id"], 0, bytes.fromhex(r["answer"]["prefix"]), [bytes.fromhex(x) for x in r["answer"]["chunks"]])
-    assert pt.decode() == r["answer"]["plaintext"]
-    try: parse_request_fragment(r["must_fail"][0]["fragment_b64u"]); raise AssertionError("short fragment accepted")
-    except ValueError: pass
-    bad = serialization.load_der_public_key(unb64u(r["must_fail"][1]["spki_b64u"]))
-    assert hashlib.sha256(spki(bad)).digest()[:8].hex() != r["must_fail"][1]["expected_fingerprint"]
+    for f in c["reveal"]["stream_list_must_fail"]:
+        try:
+            check_streams(f["streams"])
+            raise AssertionError("must fail: " + f["name"])
+        except ValueError:
+            pass
+    for f in c["reveal"]["manifest_must_fail"]:
+        try:
+            check_files(f["manifest"], {0: b"", **{int(n): bytes(size) for n, size in f["sizes"].items()}})
+            raise AssertionError("must fail: " + f["name"])
+        except ValueError:
+            pass
+    q = c["request"]; a = derive_ask(q["id"], bytes.fromhex(q["R"]))
+    assert a["ask_key"].hex() == q["ask_key"] and a["answer_hash"] == q["answer_hash"]
+    assert open_blob(a["ask_key"], "ask", q["id"], q["ask_ct_b64u"]).decode() == q["ask_plaintext"]
+    d_req = ec.derive_private_key(int.from_bytes(unb64u(q["requester_jwk"]["d"]), "big"), ec.SECP256R1())
+    assert unwrap_answer(q["id"], q["answer_id"], d_req, q["answer_ct_b64u"]).hex() == q["answer_K"]
     pp = c["passphrase"]
     got = derive_passphrase(sid, K, pp["passphrase"], bytes.fromhex(pp["salt"]))
     assert got["passcheck_hash"] == pp["passcheck_hash"] and got["content_key"].hex() == pp["content_key"]
     return True
 
 if __name__ == "__main__":
-    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "vectors.json")
+    out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "docs", "vectors.json")
     V = build()
     with open(out, "w") as f: json.dump(V, f, indent=2)
     with open(out) as f: assert verify(json.load(f))

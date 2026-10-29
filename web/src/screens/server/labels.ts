@@ -1,29 +1,37 @@
 /** Human text for audit events (E1 recent events, E7 audit log). Events never hold content. */
-import { bytes, duration } from '../../lib/format';
-import { t } from '../../lib/i18n';
+import { bytes, duration, num } from '../../lib/format';
+import { LANGUAGES, locale, t } from '../../lib/i18n';
 
 export interface AuditRow {
   id: number;
   type: string;
   at: string;
   detail: Record<string, unknown>;
-  actor: 'user' | 'link' | 'system' | 'token';
-  actor_email: string | null;
+  actor: 'user' | 'link' | 'system';
+  actor_username: string | null;
   item: string | null;
-  item_kind: 'secret' | 'request' | null;
 }
 
-const KEY_NAMES: Record<string, string> = {
-  max_expiration: 'longest expiry', max_views: 'most opens', max_file_size: 'file size', max_files: 'files per link',
-  max_message_length: 'message length', request_max_expiration: 'request link lifetime', request_max_keep: 'answer kept',
-  audit_retention_days: 'audit retention', access: 'who can create links', brand_name: 'name', brand_logo: 'logo', public_url: 'address', webhook: 'webhook',
-};
+/** Settings that have a name in the copy deck (events.key_<setting>); others show their raw key. */
+const KEY_NAMES = new Set([
+  'max_expiration', 'max_file_size', 'max_files', 'max_message_length',
+  'audit_retention_days', 'access', 'brand_name', 'brand_logo', 'language',
+]);
 
+/** Limits in the units the Limits page uses; a logo is only ever "uploaded" (the event holds no file name). */
 function settingValue(key: string, v: unknown): string {
-  if (v === null || v === undefined) return '—';
-  if (/expiration|keep/.test(key) && typeof v === 'number') return duration(v);
-  if (key === 'max_file_size' && typeof v === 'number') return bytes(v);
-  if (key === 'access') return v === 'anyone' ? 'anyone' : 'people who sign in';
+  if (v === null || v === undefined || v === '') return '—';
+  if (typeof v === 'number') {
+    if (/expiration/.test(key)) return duration(v);
+    if (key === 'max_file_size') return bytes(v);
+    if (key === 'max_files') return t('limits.n_files', { n: v });
+    if (key === 'max_message_length') return t('limits.n_characters', { n: v });
+    if (key === 'audit_retention_days') return t('limits.n_days', { n: v });
+    return num(v);
+  }
+  if (key === 'brand_logo') return t('events.value_uploaded');
+  if (key === 'access') return v === 'anyone' ? t('events.value_anyone') : t('events.value_signed_in');
+  if (key === 'language') return v === 'auto' ? t('events.value_browser_language') : LANGUAGES.find((l) => l.code === v)?.name ?? String(v);
   return String(v);
 }
 
@@ -31,71 +39,72 @@ export function eventText(e: Pick<AuditRow, 'type' | 'detail'>): string {
   const d = e.detail as Record<string, never>;
   switch (e.type) {
     case 'secret.created': {
-      const views = Number(d.views) === 1 ? 'opens once' : `opens ${d.views} times`;
-      const who = d.access === 'email' ? ', one email' : d.access === 'org' ? ', org only' : '';
-      return `Link created · ${views}, ${duration(Number(d.expires_in))}${who}${d.passphrase ? ', passphrase' : ''}${Number(d.files) ? `, ${d.files} file${Number(d.files) > 1 ? 's' : ''}` : ''}`;
+      const parts = [d.views === 1 ? t('events.part_once') : t('events.part_until_expiry'), duration(Number(d.expires_in))];
+      if (d.passphrase) parts.push(t('events.part_passphrase'));
+      if (Number(d.files)) parts.push(t('events.part_files', { n: Number(d.files) }));
+      return t('events.created', { details: new Intl.ListFormat(locale.value, { type: 'unit', style: 'short' }).format(parts) });
     }
     case 'secret.revealed':
-      return Number(d.views_left) === 0 ? 'Link revealed and destroyed' : `Link revealed · ${d.views_left} opens left`;
+      return d.views_left === 0 ? t('events.revealed_destroyed') : t('events.revealed_still_works'); // one-time, or until it expires
     case 'secret.passphrase_failed':
-      return `Passphrase failed · ${d.tries_left} tries left`;
-    case 'secret.code_sent':
-      return 'Email code sent';
-    case 'secret.code_failed':
-      return `Wrong email code · ${d.tries_left} tries left`;
+      return t('events.passphrase_failed', { n: Number(d.tries_left) });
     case 'secret.destroyed':
-      return d.reason === 'too_many_tries' ? 'Destroyed after too many wrong tries' : d.reason === 'reported' ? 'Removed after a report' : 'Link destroyed by the sender';
+      return d.reason === 'too_many_tries' ? t('events.destroyed_tries') : d.reason === 'reported' ? t('events.destroyed_reported') : t('events.destroyed_sender');
+    case 'secret.requested':
+      return t('events.requested', { duration: duration(Number(d.expires_in)) });
+    case 'secret.request_answered':
+      return t('events.request_answered');
     case 'secret.expired':
-      return Number(d.views_used) ? 'Link expired' : 'Link expired, never opened';
-    case 'request.created':
-      return `Request created · link ${duration(Number(d.expires_in))}, answer kept ${duration(Number(d.keep_answer_s))}`;
-    case 'request.answered':
-      return 'Request answered';
-    case 'request.answer_read':
-      return 'Answer opened by the requester';
-    case 'request.cancelled':
-      return 'Request cancelled';
-    case 'request.expired':
-      return d.answered ? 'Kept answer deleted' : 'Request expired without an answer';
+      return Number(d.views_used) ? t('events.expired') : t('events.expired_unopened');
     case 'user.signed_in':
-      return d.method === 'oidc' ? 'Signed in with single sign-on' : 'Signed in with a password';
+      return t('events.signed_in');
+    case 'user.invited':
+      return d.reset ? t('events.invite_reset') : t('events.invited', { role: d.role });
+    case 'user.joined':
+      return t('events.joined');
+    case 'user.temp_password':
+      return t('events.temp_password');
+    case 'user.password_reset':
+      return d.via === 'link' ? t('events.password_reset_link') : t('events.password_reset');
+    case 'user.reset_link':
+      return d.lock ? t('events.reset_link_locked') : t('events.reset_link');
+    case 'user.reset_cancelled':
+      return t('events.reset_cancelled');
+    case 'user.removed':
+      return t('events.removed', { role: d.role });
     case 'user.sign_in_failed':
-      return d.method === 'totp' ? 'Sign-in failed · wrong 2FA code' : 'Sign-in failed · wrong password';
+      return d.method === 'totp' ? t('events.sign_in_failed_totp') : d.method === 'reset_code' ? t('events.sign_in_failed_reset_code') : t('events.sign_in_failed_password');
+    case 'user.password_changed':
+      return t('events.password_changed');
+    case 'user.totp_on':
+      return t('events.totp_on');
+    case 'user.totp_off':
+      return t('events.totp_off');
     case 'user.role_changed':
-      return `Role changed to ${d.role}`;
-    case 'token.created':
-      return `API token created · ${(d.scopes as unknown as string[] | undefined)?.join(', ') ?? ''}`;
-    case 'token.revoked':
-      return 'API token revoked';
+      return t('events.role_changed', { role: d.role });
     case 'setting.changed': {
       const key = String(d.key);
-      return `Setting changed · ${KEY_NAMES[key] ?? key} ${settingValue(key, d.from)} → ${settingValue(key, d.to)}`;
+      return t('events.setting_changed', { name: KEY_NAMES.has(key) ? t(`events.key_${key}`) : key, from: settingValue(key, d.from), to: settingValue(key, d.to) });
     }
     case 'setup.completed':
-      return 'Setup finished';
-    case 'webhook.failed':
-      return `Webhook gave up after retries${d.status ? ` · HTTP ${d.status}` : ''}`;
+      return t('events.setup_completed');
     case 'demo.breaker_tripped':
-      return `Demo breaker tripped · ${d.rule}`;
+      return t('events.demo_breaker', { rule: d.rule });
     default:
       return e.type;
   }
 }
 
 export function actorText(e: AuditRow): string {
-  if (e.actor === 'link') {
-    const check = (e.detail as { access_check?: string }).access_check;
-    return t('server.link_holder') + (check === 'email' ? ' · email confirmed' : check === 'org' ? ' · signed in' : '');
-  }
-  if (e.actor === 'system') return 'System';
-  return e.actor_email ? `${e.actor_email}${e.actor === 'token' ? ' (API token)' : ''}` : 'Someone';
+  if (e.actor === 'link') return t('server.link_holder');
+  if (e.actor === 'system') return t('events.actor_system');
+  return e.actor_username ?? t('events.actor_someone');
 }
 
+/** Audit log filter groups; `label` is a copy key. */
 export const EVENT_GROUPS: Array<{ value: string; label: string }> = [
-  { value: '', label: 'All events' },
-  { value: 'secret.*', label: 'Links' },
-  { value: 'request.*', label: 'Requests' },
-  { value: 'user.*', label: 'Sign-in and roles' },
-  { value: 'token.*', label: 'API tokens' },
-  { value: 'setting.changed', label: 'Settings' },
+  { value: '', label: 'events.group_all' },
+  { value: 'secret.*', label: 'events.group_links' },
+  { value: 'user.*', label: 'events.group_people' },
+  { value: 'setting.changed', label: 'events.group_settings' },
 ];

@@ -1,8 +1,8 @@
 // Forwards localhost ports to the services, so the browser sees secure origins (http://localhost)
-// and WebCrypto is available without flags: 8080 → cryptex, 8081 → cryptex-demo, 8025 → mailpit.
+// and WebCrypto is available without flags: 8080 → cryptex, 8081 → cryptex-demo.
 import net from 'node:net';
 
-const routes = { 8080: ['cryptex', 80], 8081: ['cryptex-demo', 80], 8025: ['mailpit', 8025] };
+const routes = { 8080: ['cryptex', 8080], 8081: ['cryptex-demo', 8080] };
 for (const [port, [host, target]] of Object.entries(routes)) {
   net.createServer((client) => {
     const upstream = net.connect(target, host);

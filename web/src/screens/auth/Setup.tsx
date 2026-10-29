@@ -1,54 +1,85 @@
-/** /setup (F1): claim a fresh server with the code from its log, name it, choose who can create links. */
-import { useEffect, useState } from 'preact/hooks';
-import { api, setCsrf } from '../../api/client';
+/** /setup (F1): claim a fresh server with the code from its log, name it, choose who can create links, review and
+ *  finish. The steps only ask: Finish does it all at once (POST /setup), so going back can change anything and a setup
+ *  is never half done. The logo goes up right after, with the owner's new session, then the home page. 2FA is for later, in Your account. */
+import type { ComponentChildren } from 'preact';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { api, setCsrf, type User } from '../../api/client';
+import { PASSWORD_MIN, USERNAME } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
-import { config, loadConfig } from '../../lib/state';
-import { Btn, ErrMsg, H1, Radio } from '../../ui/bits';
-import { Brand } from '../../ui/chrome';
+import { config, loadConfig, toast } from '../../lib/state';
+import { Banner, Btn, Command, ErrMsg, H1, Radio, useViewFocus } from '../../ui/bits';
+import { BrandLockup, LanguagePicker, ThemePicker } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
+import { LogoDrop } from '../../ui/logo';
 import { errorText } from '../errors';
+import type { Bundle } from '../../store/vault';
 
 interface SetupInfo {
   needed: boolean;
-  step: 1 | 2 | 3;
-  detected_url: string;
-  https: boolean;
-  public_url_locked: boolean;
   brand_locked: boolean;
-  sso: { enabled: boolean; name: string };
+  access_locked: boolean;
+  /** How to show the setup code on this server (the official image), or null: then it's only in the log. */
+  code_command: string | null;
 }
+
+type Step = 1 | 2 | 3 | 4;
 
 export function Setup() {
   const [info, setInfo] = useState<SetupInfo | null>(null);
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [f, setF] = useState({ code: '', name: '', email: '', password: '', org: '', url: '', mode: 'signed_in' as 'anyone' | 'signed_in', sso: false });
+  const [step, setStep] = useState<Step>(1);
+  const [f, setF] = useState({ code: '', username: '', password: '', org: '', mode: 'signed_in' as 'anyone' | 'signed_in' });
+  // The logo stays in this browser until Finish: a file and its preview.
+  const [logo, setLogo] = useState<{ file: File; url: string } | null>(null);
+  const [pwShown, setPwShown] = useState(false);
+  const inFlight = useRef(false);
   const [err, setErr] = useState<{ field?: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
+    setLoadErr(null);
     api<SetupInfo>('GET', '/setup').then((i) => {
       if (!i.needed) {
         navigate('/', { replace: true });
         return;
       }
       setInfo(i);
-      setStep(i.step);
-      setF((x) => ({ ...x, url: i.detected_url, org: config.value?.brand.name ?? '', sso: i.sso.enabled }));
-    });
-  }, []);
+      const c = config.value;
+      setF((x) => ({ ...x, org: c?.brand.name ?? '', ...(i.access_locked && c ? { mode: c.mode } : {}) }));
+    }, (e) => setLoadErr(errorText(e)));
+  }, [attempt]);
+  useEffect(() => () => { if (logo) URL.revokeObjectURL(logo.url); }, [logo]);
+  // Each step replaces the last (a new <main>): the heading once loaded, then each step's first field.
+  useViewFocus(info ? String(step) : loadErr && 'error');
 
+  /** The steps sit in the middle of the header, so the step itself starts at the top of the page. */
+  const header = (steps?: ComponentChildren) => (
+    <header class="hd wizard-hd"><span class="brand"><Mark /><span class="wordmark">cryptex</span></span>{steps}<span class="sp" /><span class="hd-picks"><ThemePicker /><LanguagePicker /></span></header>
+  );
+  if (!info && loadErr) {
+    return (
+      <>
+        {header()}
+        <main class="main narrow" id="main" style="padding-top:72px">
+          <H1>{t('boot.offline_title')}</H1>
+          <Banner kind="danger" icon="alert">{loadErr}</Banner>
+          <div class="row"><Btn kind="secondary" icon="refresh" onClick={() => setAttempt((n) => n + 1)}>{t('send.try_again')}</Btn></div>
+        </main>
+      </>
+    );
+  }
   if (!info) return <main class="wizard" id="main" aria-busy="true" />;
   const set = (p: Partial<typeof f>) => setF({ ...f, ...p });
-  const host = (() => {
-    try {
-      return new URL(f.url).host;
-    } catch {
-      return f.url;
-    }
-  })();
+  const go = (to: Step) => {
+    setErr(null);
+    setStep(to);
+  };
 
   const run = async (fn: () => Promise<void>) => {
+    if (inFlight.current) return; // Enter in the code field also submits the form
+    inFlight.current = true;
     setErr(null);
     setBusy(true);
     try {
@@ -57,112 +88,145 @@ export function Setup() {
       const ae = e as { field?: string };
       setErr({ field: ae.field, text: errorText(e) });
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   };
 
-  const submitOwner = () => run(async () => {
-    const r = await api<{ next: string | null; csrf?: string }>('POST', '/setup/owner', {
-      body: { setup_code: f.code.trim(), name: f.name.trim(), email: f.email.trim(), ...(f.sso ? { oidc: true } : { password: f.password }) },
-    });
-    if (r.next) {
-      location.href = r.next;
+  const submitOwner = () => {
+    const problem = !f.code.trim() ? { field: 'setup_code', text: t('setup.err_code') }
+      : !USERNAME.test(f.username.trim()) ? { field: 'username', text: t('setup.err_username') }
+        : f.password.length < PASSWORD_MIN ? { field: 'password', text: t('setup.password_short') } : null;
+    if (problem) {
+      setErr(problem);
+      document.getElementById(problem.field === 'setup_code' ? 'code' : problem.field)?.focus();
       return;
     }
+    // The code is checked now, so a wrong one is caught before the rest is asked. Nothing is saved yet.
+    return run(async () => {
+      await api('POST', '/setup/check', { body: { setup_code: f.code.trim() } });
+      setStep(2);
+    });
+  };
+  const finish = () => run(async () => {
+    const v = await import('../../store/vault');
+    const pw = await v.newPassword(f.password); // the password itself is never sent
+    const r = await api<{ csrf: string; user: User; vault: Bundle }>('POST', '/setup', {
+      body: { setup_code: f.code.trim(), username: f.username.trim(), salt: pw.salt, auth_key: pw.authKey, brand_name: f.org.trim(), access: f.mode },
+    }).catch((e: { field?: string }) => {
+      if (e.field === 'setup_code' || e.field === 'username') setStep(1); // show it on the field it's about
+      throw e;
+    });
     setCsrf(r.csrf);
+    await v.openAfterSignIn(r.user.id, pw.wrap, r.vault, { shared: false, authKey: pw.authKey });
+    if (logo) {
+      // Setup is done either way: a logo the server refuses can be added again in the Server tab.
+      await api('PUT', '/server/branding/logo', { bytes: new Uint8Array(await logo.file.arrayBuffer()), headers: { 'Content-Type': logo.file.type, 'X-File-Name': logo.file.name } })
+        .catch((e) => toast(errorText(e), 'error'));
+    }
     await loadConfig();
-    setStep(2);
-  });
-  const submitBrand = () => run(async () => {
-    await api('POST', '/setup/brand', { body: { name: f.org.trim(), ...(info.public_url_locked ? {} : { public_url: f.url.trim() }) } });
-    await loadConfig();
-    setStep(3);
-  });
-  const submitAccess = () => run(async () => {
-    await api('POST', '/setup/access', { body: { mode: f.mode } });
-    await loadConfig();
-    navigate('/server', { replace: true });
+    navigate('/', { replace: true });
   });
 
-  const steps = [t('setup.owner'), t('setup.brand'), t('setup.access')];
+  const steps = [t('setup.owner'), t('setup.brand'), t('setup.access'), t('setup.overview')];
+  const back = (to: Step) => (
+    <button type="button" class="btn ghost" aria-label={t('setup.back')} onClick={() => go(to)}>
+      <Icon name="back" size="sm" /><span class="hide-m">{t('setup.back')}</span></button>
+  );
+  const change = (to: Step) => <button type="button" class="btn sm ghost" onClick={() => go(to)}>{t('policy.change')}</button>;
   const fieldErr = (name: string) => (err?.field === name || err?.field === `body.${name}` ? err.text : null);
+  const accessLocked = info.access_locked ? ' ' : undefined;
 
   return (
     <>
-      <header class="hd"><a class="brand" href="/"><Mark /><span class="wordmark">cryptex</span></a><span class="sp" /><span class="domain"><Icon name="lock" />Setting up {host}</span></header>
-      <div class="wizard">
-        <ol class="steps" style="align-content:start" aria-label="Setup steps">
+      {header(
+        <ol class="stepper" aria-label={t('setup.steps_label')}>
           {steps.map((s, i) => {
             const n = i + 1;
             const state = n < step ? 'done' : n === step ? 'now' : 'todo';
-            return <li class={`step ${state}`} key={s} aria-current={state === 'now' ? 'step' : undefined}>
-              <span class="s">{state === 'done' ? <Icon name="check" /> : n}</span>{state === 'now' ? <b>{s}</b> : <span>{s}</span>}<span />
+            return <li class={state} key={s} aria-current={state === 'now' ? 'step' : undefined}>
+              <span class="s" aria-hidden="true">{state === 'done' ? <Icon name="check" /> : n}</span><span class="l">{s}</span>
             </li>;
           })}
-        </ol>
-        <main class="stack" id="main" style="gap:20px">
+        </ol>,
+      )}
+      <div class="wizard">
+        <main class="wizard-main" id="main" key={step}>
           {step === 1 && (
-            <form class="stack" style="gap:20px" onSubmit={(e) => { e.preventDefault(); void submitOwner(); }} noValidate>
-              <div class="stack" style="gap:6px"><span class="eyebrow">{t('setup.step', { n: 1 })}</span><H1>Create the owner account</H1>
-                <p class="lede">Owners can open the Server tab. Nobody can create links until an owner exists.</p></div>
+            <Panel n={1} title={t('setup.owner_title')} lede={t('setup.owner_lede')} onSubmit={() => void submitOwner()}
+              next={<Btn type="submit" kind="primary" class="lg" loading={busy}>{t('setup.continue')}</Btn>}>
               <div><label class="label" for="code">{t('setup.setup_code')}</label>
-                <input id="code" class={`input mono${fieldErr('setup_code') ? ' err' : ''}`} value={f.code} autoComplete="off" spellcheck={false} data-autofocus placeholder="XXXX-XXXX-XXXX"
-                  onInput={(e) => set({ code: (e.target as HTMLInputElement).value })} />
-                {fieldErr('setup_code') ? <ErrMsg>{fieldErr('setup_code')}</ErrMsg> : <p class="help">{t('setup.setup_code_help')} Look for “setup code” in <span class="mono">docker logs</span>.</p>}</div>
-              <div><label class="label" for="name">Your name</label>
-                <input id="name" class="input" value={f.name} autoComplete="name" onInput={(e) => set({ name: (e.target as HTMLInputElement).value })} /></div>
-              <div><label class="label" for="email">{t('signin.email')}</label>
-                <input id="email" class={`input${fieldErr('email') ? ' err' : ''}`} type="email" value={f.email} autoComplete="username" onInput={(e) => set({ email: (e.target as HTMLInputElement).value })} />
-                {fieldErr('email') && <ErrMsg>{fieldErr('email')}</ErrMsg>}</div>
-              {info.sso.enabled && (
-                <div class="radios" role="radiogroup" aria-label="How you sign in">
-                  <Radio name="how" on={f.sso} onSelect={() => set({ sso: true })} title={`Sign in with ${info.sso.name}`} help="Recommended. You’ll confirm with your account next." />
-                  <Radio name="how" on={!f.sso} onSelect={() => set({ sso: false })} title="Use a password" help="For servers without single sign-on." />
+                <input id="code" class={`input mono${fieldErr('setup_code') ? ' err' : ''}`} value={f.code} autoComplete="off" autoCapitalize="characters" spellcheck={false} data-autofocus placeholder="XXXX-XXXX-XXXX"
+                  aria-invalid={!!fieldErr('setup_code')} aria-describedby={fieldErr('setup_code') ? 'code-err' : 'code-help'} onInput={(e) => set({ code: (e.target as HTMLInputElement).value })} />
+                {fieldErr('setup_code') ? <ErrMsg id="code-err">{fieldErr('setup_code')}</ErrMsg> : <p class="help" id="code-help">{info.code_command ? t('setup.setup_code_run') : t('setup.setup_code_help')}</p>}
+                {info.code_command && <Command text={info.code_command} skipTab />}</div>
+              <div><label class="label" for="username">{t('signin.username')}</label>
+                <input id="username" class={`input${fieldErr('username') ? ' err' : ''}`} value={f.username} autoComplete="username" autoCapitalize="none" autoCorrect="off" spellcheck={false} maxLength={32}
+                  aria-invalid={!!fieldErr('username')} aria-describedby={fieldErr('username') ? 'username-err' : 'username-help'} onInput={(e) => set({ username: (e.target as HTMLInputElement).value })} />
+                {fieldErr('username') ? <ErrMsg id="username-err">{fieldErr('username')}</ErrMsg> : <p class="help" id="username-help">{t('signin.username_help')}</p>}</div>
+              <div><label class="label" for="password">{t('signin.password')}</label>
+                <div class={`input${fieldErr('password') ? ' err' : ''}`}>
+                  <input id="password" class="bare" type={pwShown ? 'text' : 'password'} value={f.password} autoComplete="new-password" minLength={PASSWORD_MIN} spellcheck={false}
+                    aria-invalid={!!fieldErr('password')} aria-describedby={fieldErr('password') ? 'password-err' : 'password-help'} onInput={(e) => set({ password: (e.target as HTMLInputElement).value })} />
+                  <button type="button" class="btn icon sm ghost" aria-label={pwShown ? t('reveal.hide') : t('reveal.show')} title={pwShown ? t('reveal.hide') : t('reveal.show')}
+                    aria-pressed={pwShown} onClick={() => setPwShown(!pwShown)}><Icon name={pwShown ? 'eyeoff' : 'eye'} size="sm" /></button>
                 </div>
-              )}
-              {!f.sso && (
-                <div><label class="label" for="password">{t('signin.password')}</label>
-                  <input id="password" class={`input${fieldErr('password') ? ' err' : ''}`} type="password" value={f.password} autoComplete="new-password" minLength={12}
-                    onInput={(e) => set({ password: (e.target as HTMLInputElement).value })} />
-                  {fieldErr('password') ? <ErrMsg>{fieldErr('password')}</ErrMsg> : <p class="help">At least 12 characters. Turn on 2FA afterwards in the Server tab.</p>}</div>
-              )}
+                {fieldErr('password') ? <ErrMsg id="password-err">{fieldErr('password')}</ErrMsg> : <p class="help" id="password-help">{t('setup.password_help')}</p>}</div>
               {err && !err.field && <ErrMsg>{err.text}</ErrMsg>}
-              <div class="actions-m between"><span /><Btn type="submit" kind="primary" class="lg" loading={busy}>{t('setup.continue')}</Btn></div>
-            </form>
+            </Panel>
           )}
           {step === 2 && (
-            <form class="stack" style="gap:20px" onSubmit={(e) => { e.preventDefault(); void submitBrand(); }} noValidate>
-              <div class="stack" style="gap:6px"><span class="eyebrow">{t('setup.step', { n: 2 })}</span><H1>{t('setup.brand_title')}</H1><p class="lede">{t('setup.brand_lede')}</p></div>
-              <div><label class="label" for="org">{t('setup.org_name')}</label>
-                <input id="org" class="input" value={f.org} maxLength={40} disabled={info.brand_locked} data-autofocus placeholder="Acme" onInput={(e) => set({ org: (e.target as HTMLInputElement).value })} /></div>
-              <div><label class="label" for="url">{t('setup.address')}</label>
-                <input id="url" class={`input mono${fieldErr('public_url') ? ' err' : ''}`} value={f.url} disabled={info.public_url_locked} onInput={(e) => set({ url: (e.target as HTMLInputElement).value })} />
-                {fieldErr('public_url') ? <ErrMsg>{fieldErr('public_url')}</ErrMsg> : (
-                  <p class={`help${f.url.startsWith('https://') ? '' : ' warn'}`}><Icon name={f.url.startsWith('https://') ? 'check' : 'alert'} size="sm" /> {f.url.startsWith('https://') ? t('setup.https_ok') : t('setup.https_missing')}</p>
-                )}</div>
+            <Panel n={2} title={t('setup.brand_title')} lede={t('setup.brand_lede')} onSubmit={() => go(3)} back={back(1)}
+              next={<Btn type="submit" kind="primary" class="lg">{t('setup.continue')}</Btn>}>
+              <div><label class="label" for="org">{t('setup.org_name')}<span class="opt-tag">{t('common.optional')}</span></label>
+                <input id="org" class="input" value={f.org} maxLength={40} disabled={info.brand_locked} data-autofocus placeholder={t('setup.org_placeholder')} onInput={(e) => set({ org: (e.target as HTMLInputElement).value })} /></div>
+              <div><span class="label" id="logo-label">{t('branding.logo')}<span class="opt-tag">{t('common.optional')}</span></span>
+                <LogoDrop logoUrl={logo?.url ?? null} logoName={logo?.file.name ?? null} onPick={(file) => setLogo(file && { file, url: URL.createObjectURL(file) })} />
+                <p class="help">{t('branding.logo_help')}</p></div>
               <div class="preview">
-                <header class="hd">{f.org.trim() ? <a class="brand"><span class="op-logo">{f.org.trim()[0].toUpperCase()}</span><span class="op-name">{f.org.trim()}</span><span class="op-sub">{t('app.brand_suffix')}</span></a> : <Brand />}<span class="sp" /><span class="domain"><Icon name="lock" />{host}</span></header>
-                <div style="padding:16px 18px" class="muted small">This is the top of every page your recipients see.</div>
+                <header class="hd"><span class="brand"><BrandLockup name={f.org.trim()} logoUrl={logo?.url ?? null} /></span></header>
+                <div class="preview-note muted small">{t('setup.preview_note')}</div>
               </div>
-              {err && !err.field && <ErrMsg>{err.text}</ErrMsg>}
-              <div class="actions-m between"><span /><Btn type="submit" kind="primary" class="lg" loading={busy}>{t('setup.continue')}</Btn></div>
-            </form>
+            </Panel>
           )}
           {step === 3 && (
-            <form class="stack" style="gap:20px" onSubmit={(e) => { e.preventDefault(); void submitAccess(); }}>
-              <div class="stack" style="gap:6px"><span class="eyebrow">{t('setup.step', { n: 3 })}</span><H1>Who can create links?</H1>
-                <p class="lede">Opening a link and answering a request never need an account. You can change this later in the Server tab.</p></div>
+            <Panel n={3} title={t('setup.access_title')} lede={t('setup.access_lede')} onSubmit={() => go(4)} validate back={back(2)}
+              next={<Btn type="submit" kind="primary" class="lg">{t('setup.continue')}</Btn>}>
               <div class="radios" role="radiogroup" aria-label={t('setup.access')}>
-                <Radio name="mode" on={f.mode === 'anyone'} onSelect={() => set({ mode: 'anyone' })} title="Anyone who visits" help="Good on a private network. Rate limits still apply." />
-                <Radio name="mode" on={f.mode === 'signed_in'} onSelect={() => set({ mode: 'signed_in' })} title="People who sign in" help="Recommended on the internet. People without an account can still answer requests." />
+                <Radio name="mode" on={f.mode === 'anyone'} onSelect={() => set({ mode: 'anyone' })} title={t('setup.access_anyone')} help={t('setup.access_anyone_help')} disabled={accessLocked} />
+                <Radio name="mode" on={f.mode === 'signed_in'} onSelect={() => set({ mode: 'signed_in' })} title={t('setup.access_signed_in')} help={t('setup.access_signed_in_help')} disabled={accessLocked} />
               </div>
+            </Panel>
+          )}
+          {step === 4 && (
+            <Panel n={4} title={t('setup.review_title')} lede={t('setup.review_lede')} onSubmit={() => void finish()} back={back(3)}
+              next={<Btn type="submit" kind="primary" class="lg" loading={busy}>{t('setup.finish')}</Btn>}>
+              <dl class="summary">
+                <div><dt>{t('setup.owner')}</dt><dd>{f.username.trim().toLowerCase()}</dd>{change(1)}</div>
+                <div><dt>{t('setup.brand')}</dt><dd><span class="brand summary-brand"><BrandLockup name={f.org.trim()} logoUrl={logo?.url ?? null} /></span></dd>{change(2)}</div>
+                <div><dt>{t('setup.access')}</dt><dd>{f.mode === 'anyone' ? t('setup.access_anyone') : t('setup.access_signed_in')}</dd>{change(3)}</div>
+              </dl>
               {err && <ErrMsg>{err.text}</ErrMsg>}
-              <div class="actions-m between"><button type="button" class="btn ghost" onClick={() => setStep(2)}><Icon name="back" size="sm" />{t('setup.back')}</button>
-                <Btn type="submit" kind="primary" class="lg" loading={busy}>Finish setup</Btn></div>
-            </form>
+            </Panel>
           )}
         </main>
       </div>
+    </>
+  );
+}
+
+/** One step: the heading centred over a card that holds the fields, with Back and Continue in the card's footer
+ *  (a bar pinned to the bottom of the screen on phones). */
+function Panel({ n, title, lede, onSubmit, validate, back, next, children }: {
+  n: number; title: string; lede: string; onSubmit: () => void; validate?: boolean; back?: ComponentChildren; next: ComponentChildren; children: ComponentChildren;
+}) {
+  return (
+    <>
+      <div class="wizard-head"><span class="sr">{t('setup.step', { n })}</span><H1>{title}</H1><p class="lede">{lede}</p></div>
+      <form class="wizard-card" onSubmit={(e) => { e.preventDefault(); onSubmit(); }} noValidate={!validate}>
+        <div class="wizard-b">{children}</div>
+        <div class="wizard-f actions-m">{back}{next}</div>
+      </form>
     </>
   );
 }

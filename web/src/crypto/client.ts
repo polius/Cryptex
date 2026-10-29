@@ -1,10 +1,20 @@
 /** Main-thread side of the crypto worker: a small promise-based RPC. */
-import { unb64u, type Bytes } from './format';
+import { unb64u, type Bytes, type Kdf } from './format';
 import type { Job } from './worker';
 
 let worker: Worker | null = null;
 let seq = 0;
 const pending = new Map<number, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
+
+/** The worker failed to load or crashed, or a message couldn't be read: every call waiting on it fails (nothing
+ *  hangs on "Opening…"), and the next call starts a fresh worker. */
+function fail(message: string): void {
+  worker?.terminate();
+  worker = null;
+  const waiting = [...pending.values()];
+  pending.clear();
+  for (const p of waiting) p.reject(new Error(message));
+}
 
 function get(): Worker {
   if (!worker) {
@@ -16,6 +26,11 @@ function get(): Worker {
       if (e.data.ok) p.resolve(e.data.result);
       else p.reject(new Error(e.data.error));
     };
+    worker.onerror = (e) => {
+      e.preventDefault();
+      fail('worker');
+    };
+    worker.onmessageerror = () => fail('worker');
   }
   return worker;
 }
@@ -36,8 +51,8 @@ export async function decrypt(key: Uint8Array, id: string, stream: number, prefi
   return new Uint8Array(await call<ArrayBuffer>({ op: 'decrypt', key, id, stream, prefix, i, last, data }, [data]));
 }
 
-export async function argon2(password: string, salt: Uint8Array): Promise<Bytes> {
-  return unb64u(await call<string>({ op: 'argon2', password, salt }));
+export async function argon2(password: string, salt: Uint8Array, kdf?: Kdf): Promise<Bytes> {
+  return unb64u(await call<string>({ op: 'argon2', password, salt, kdf }));
 }
 
 export function pow(challenge: string, bits: number): Promise<string> {

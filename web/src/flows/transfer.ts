@@ -1,4 +1,4 @@
-/** Chunk upload and download with retries (frontend.md §9): 5 retries at 1, 2, 4, 8, 16 s; offline pauses. */
+/** Chunk upload and download with retries: 5 retries at 1, 2, 4, 8, 16 s; offline pauses. */
 import { ApiError, apiBytes, request } from '../api/client';
 import * as worker from '../crypto/client';
 import { CHUNK, TAG, type Bytes } from '../crypto/format';
@@ -73,30 +73,33 @@ export async function uploadStream(o: {
   }
 }
 
-/** Download and decrypt one stream. Throws Error('tampered') if any chunk fails authentication. */
+/** Download and decrypt one stream into `parts`, from the first chunk it doesn't have yet, so a retry continues
+ *  where a failure stopped it. Each decrypted chunk becomes its own Blob at once and the bytes are dropped: the
+ *  browser keeps Blobs outside the page's memory (on disk when they're large), so a big file never sits in the
+ *  JavaScript heap. Throws Error('tampered') if any chunk fails authentication. */
 export async function downloadStream(o: {
   path: (n: number) => string; headers: Record<string, string>; key: Uint8Array; id: string; stream: number;
-  prefix: Uint8Array; chunks: number; onBytes?: (n: number) => void; signal?: AbortSignal;
-}): Promise<Bytes[]> {
-  const parts: Bytes[] = [];
-  for (let i = 0; i < o.chunks; i++) {
+  prefix: Uint8Array; chunks: number; parts: Blob[]; onBytes?: (n: number) => void; signal?: AbortSignal;
+}): Promise<void> {
+  for (let i = o.parts.length; i < o.chunks; i++) {
     const ct = await withRetry(() => apiBytes(o.path(i), o.headers, o.signal), o.signal);
-    const pt = await worker.decrypt(o.key, o.id, o.stream, o.prefix, i, i === o.chunks - 1, ct.buffer as ArrayBuffer);
-    parts.push(pt);
+    const pt: Bytes = await worker.decrypt(o.key, o.id, o.stream, o.prefix, i, i === o.chunks - 1, ct.buffer as ArrayBuffer);
+    o.parts.push(new Blob([pt]));
     o.onBytes?.(pt.length);
   }
-  return parts;
 }
 
-/** POST a seal, retrying network failures. A 409 after a retry means an earlier attempt already sealed it. */
-export async function sealWithRetry(path: string, body: unknown, uploadToken: string, signal?: AbortSignal): Promise<void> {
+/** POST a seal, retrying network failures. A 409 after a retry means an earlier attempt already sealed it (then
+ *  there's no answer to read: null). */
+export async function sealWithRetry(path: string, body: unknown, uploadToken: string, signal?: AbortSignal): Promise<{ expires_at?: string } | null> {
   let attempt = 0;
-  await withRetry(async () => {
+  return withRetry(async () => {
     attempt++;
     try {
-      await request('POST', path, { body, headers: { Authorization: `Upload ${uploadToken}` }, signal });
+      const res = await request('POST', path, { body, headers: { Authorization: `Upload ${uploadToken}` }, signal });
+      return (res.headers.get('content-type') ?? '').includes('json') ? ((await res.json()) as { expires_at?: string }) : null;
     } catch (e) {
-      if (attempt > 1 && e instanceof ApiError && (e.code === 'already_sealed' || e.code === 'already_answered')) return;
+      if (attempt > 1 && e instanceof ApiError && e.code === 'already_sealed') return null;
       throw e;
     }
   }, signal);

@@ -1,6 +1,5 @@
 User-agent: *
 Allow: /$
 Disallow: /s/
-Disallow: /q/
 Disallow: /r/
 Disallow: /api/

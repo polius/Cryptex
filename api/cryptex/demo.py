@@ -1,6 +1,6 @@
 """DEMO=true: a public instance that shows every feature but is useless to abusers.
 
-Four layers (design/v3, "Public demo"): no action works with an ID alone (everywhere),
+Four layers: no action works with an ID alone (everywhere),
 per-person limits (IPv4 or IPv6 /64), global circuit breakers, and proof of work
 instead of a third-party CAPTCHA.
 """
@@ -22,6 +22,7 @@ from .util import b64u, iso, now, sha256_hex
 
 DAY = 86400
 CHALLENGE_TTL = 300
+POW_BITS = 18  # about 260,000 hashes for the browser on average: a moment on a phone, a real cost for a bot
 
 
 def _pow_key() -> bytes:
@@ -33,7 +34,7 @@ def challenge() -> dict[str, Any]:
     exp = now() + CHALLENGE_TTL
     body = f"{rnd}.{exp}"
     sig = hmac.new(_pow_key(), body.encode(), hashlib.sha256).hexdigest()[:32]
-    return {"challenge": f"{body}.{sig}", "bits": state.env().demo_pow_bits, "expires_in": CHALLENGE_TTL}
+    return {"challenge": f"{body}.{sig}", "bits": POW_BITS, "expires_in": CHALLENGE_TTL}
 
 
 def leading_zero_bits(digest: bytes) -> int:
@@ -60,7 +61,7 @@ def check_pow(header: str | None) -> None:
     want = hmac.new(_pow_key(), f"{rnd}.{exp}".encode(), hashlib.sha256).hexdigest()[:32]
     if not hmac.compare_digest(want, sig) or exp < now() or len(nonce) > 32:
         raise bad
-    if leading_zero_bits(hashlib.sha256(header.encode()).digest()) < state.env().demo_pow_bits:
+    if leading_zero_bits(hashlib.sha256(header.encode()).digest()) < POW_BITS:
         raise bad
     with db.tx() as c:
         if c.execute("SELECT 1 FROM pow_used WHERE challenge_hash = ?", (sha256_hex(chal),)).fetchone():
@@ -78,17 +79,17 @@ def before_create(c: Caller, request: Request, upload_bytes: int, files: int) ->
     t = now()
     if _readonly_until() > t:
         raise ratelimit.limited(_readonly_until() - t)
-    live = int(db.val("SELECT (SELECT count(*) FROM secrets) + (SELECT count(*) FROM requests)") or 0)
     used = items.stored_bytes()
-    if live >= e.demo_max_live_items or used + upload_bytes > e.demo_storage_cap:
+    if used + upload_bytes > e.demo_storage_cap:
         _trip("capacity")
         raise ApiError("rate_limited", "The demo is full right now. Links already sent keep working. Try again later.",
-                       headers={"Retry-After": "3600"}, reset_at=iso(t + 3600))
+                       headers={"Retry-After": "3600"}, reset_at=iso(t + 3600), reason="demo_full")
     if files and used >= 0.8 * e.demo_storage_cap:
-        raise ApiError("limit_exceeded", "Files are paused in the demo right now. Text still works.", field="streams", limit=0)
+        raise ApiError("limit_exceeded", "Files are paused in the demo right now. Text still works.", field="streams", limit=0,
+                       reason="demo_files_paused")
     check_pow(request.headers.get("x-pow"))
     ratelimit.hit("demo_min", Rate(5, 60), c.subject)
-    ratelimit.hit("demo_day", Rate(e.demo_seals_per_day, DAY), c.subject)
+    ratelimit.hit("demo_day", Rate(e.demo_seals_per_day, DAY), c.subject, reason="demo_day")  # the "today's links" page
     ratelimit.hit("demo_bytes", Rate(e.demo_upload_bytes_per_day, DAY), c.subject, cost=max(0, upload_bytes))
     hour = ratelimit.hit("demo_all", Rate(10**9, 3600), "global")
     if hour > e.demo_seals_per_hour_breaker:
@@ -112,42 +113,10 @@ def quota(c: Caller) -> dict[str, Any]:
 def wipe() -> int:
     """Nightly: delete every secret, request, event and receipt. Quotas stay (they reset by day)."""
     with db.tx() as c:
-        n = int(c.execute("SELECT (SELECT count(*) FROM secrets) + (SELECT count(*) FROM requests)").fetchone()[0])
-        for table in ("chunks", "streams", "read_sessions", "email_codes", "access_grants", "secrets", "requests",
-                      "tombstones", "user_receipts", "webhook_deliveries", "events", "sse_tickets", "pow_used"):
+        n = int(c.execute("SELECT count(*) FROM secrets").fetchone()[0])
+        for table in ("chunks", "streams", "read_sessions", "secrets", "requests",
+                      "tombstones", "user_receipts", "events", "pow_used"):
             c.execute(f"DELETE FROM {table}")
     from . import storage
     storage.get().wipe()
     return n
-
-
-def cron_matches(expr: str, ts: int) -> bool:
-    """Five-field cron (minute hour day month weekday) in UTC: *, numbers, lists, ranges, steps."""
-    import time as _t
-    tm = _t.gmtime(ts)
-    fields = expr.split()
-    if len(fields) != 5:
-        return False
-    values = [tm.tm_min, tm.tm_hour, tm.tm_mday, tm.tm_mon, (tm.tm_wday + 1) % 7]
-    ranges = [(0, 59), (0, 23), (1, 31), (1, 12), (0, 6)]
-    for f, v, (lo, hi) in zip(fields, values, ranges, strict=True):
-        if not _field_match(f, v, lo, hi):
-            return False
-    return True
-
-
-def _field_match(f: str, v: int, lo: int, hi: int) -> bool:
-    for part in f.split(","):
-        step = 1
-        if "/" in part:
-            part, s = part.split("/")
-            step = int(s)
-        if part == "*":
-            a, b = lo, hi
-        elif "-" in part:
-            a, b = (int(x) for x in part.split("-"))
-        else:
-            a = b = int(part)
-        if a <= v <= b and (v - a) % step == 0:
-            return True
-    return False

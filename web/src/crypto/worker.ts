@@ -1,15 +1,15 @@
 /// <reference lib="webworker" />
 /**
- * The crypto worker (frontend.md §4). Chunk encryption and decryption, Argon2id and the
+ * The crypto worker. Chunk encryption and decryption, Argon2id and the
  * demo proof of work run here, so the page never freezes on large files or slow hashing.
  * Keys arrive as raw bytes per call and are never kept between calls.
  */
-import { argon2id, b64u, decryptChunk, encryptChunk, streamKey } from './format';
+import { argon2id, b64u, decryptChunk, encryptChunk, streamKey, type Kdf } from './format';
 
 export type Job =
   | { op: 'encrypt'; key: Uint8Array; id: string; stream: number; prefix: Uint8Array; i: number; last: boolean; data: ArrayBuffer }
   | { op: 'decrypt'; key: Uint8Array; id: string; stream: number; prefix: Uint8Array; i: number; last: boolean; data: ArrayBuffer }
-  | { op: 'argon2'; password: string; salt: Uint8Array }
+  | { op: 'argon2'; password: string; salt: Uint8Array; kdf?: Kdf }
   | { op: 'pow'; challenge: string; bits: number };
 
 const ctx = self as unknown as DedicatedWorkerGlobalScope;
@@ -52,7 +52,7 @@ async function run(job: Job): Promise<unknown> {
       }
     }
     case 'argon2':
-      return b64u(await argon2id(job.password, job.salt));
+      return b64u(await argon2id(job.password, job.salt, job.kdf));
     case 'pow':
       return pow(job.challenge, job.bits);
   }

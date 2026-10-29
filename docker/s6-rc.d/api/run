@@ -1,5 +1,0 @@
-#!/command/with-contenv sh
-cd /app
-exec s6-setuidgid cryptex python -m uvicorn cryptex.app:create_app --factory \
-  --host 127.0.0.1 --port 8000 --no-proxy-headers \
-  --no-server-header --log-level warning --timeout-graceful-shutdown 10

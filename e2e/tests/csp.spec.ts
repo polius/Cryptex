@@ -14,8 +14,8 @@ test('no Content-Security-Policy violations and no third-party requests', async 
   const res = await page.goto('/');
   expect(res?.headers()['content-security-policy']).toContain("default-src 'self'");
   await paste(page, 'DB_HOST=db\nDB_PASSWORD=x');
-  await page.getByRole('button', { name: 'Change' }).click();
-  for (const path of ['/links', '/server', '/server/access', '/server/limits', '/server/branding', '/server/notifications', '/server/tokens', '/server/audit', '/tokens', '/privacy']) {
+  await page.getByRole('button', { name: 'Change', exact: true }).click();
+  for (const path of ['/links', '/server', '/server/access', '/server/limits', '/server/branding', '/server/audit', '/privacy']) {
     await page.goto(path);
     await page.waitForLoadState('networkidle');
   }

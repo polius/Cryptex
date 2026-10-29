@@ -1,22 +1,21 @@
 [project]
 name = "cryptex"
 version = "3.0.0"
-description = "Blind, two-way secret sharing"
+description = "Blind secret sharing with end-to-end-encrypted links"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
   "fastapi==0.162.0",
-  "uvicorn[standard]==0.54.0",
+  "uvicorn==0.54.0",
+  "uvloop==0.23.0",
+  "httptools==0.9.0",
   "cryptography==50.0.2",
   "argon2-cffi==25.1.0",
   "pyotp==2.10.0",
-  "joserfc==1.7.7",
-  "httpx==0.28.1",
-  "email-validator==2.3.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "aiosmtpd==1.4.6", "ruff==0.17.2", "mypy", "pyyaml==6.0.3", "openapi-spec-validator==0.9.0"]
+dev = ["pytest==9.1.1", "httpx==0.28.1", "ruff==0.17.2", "mypy"]
 
 [tool.setuptools]
 packages = ["cryptex", "cryptex.routes", "cryptex.migrations"]

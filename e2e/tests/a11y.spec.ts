@@ -16,16 +16,17 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.goto('/');
     await audit(page, 'send-empty');
     await paste(page, 'DB_HOST=db\nDB_PASSWORD=x');
-    await page.getByRole('button', { name: 'Change' }).click();
+    await page.getByRole('button', { name: 'Change', exact: true }).click();
     await audit(page, 'send-options');
-    await page.getByRole('button', { name: 'Done' }).first().click();
+    await page.getByRole('button', { name: 'Done', exact: true }).first().click();
     await createLink(page);
     await audit(page, 'send-sent');
-    await page.goto('/?mode=request');
-    await audit(page, 'request-new');
     await page.goto('/links');
     await audit(page, 'links');
-    for (const s of ['', '/access', '/limits', '/branding', '/notifications', '/tokens', '/audit']) {
+    await page.goto('/account');
+    await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
+    await audit(page, 'account');
+    for (const s of ['', '/access', '/limits', '/branding', '/language', '/audit']) {
       await page.goto(`/server${s}`);
       await expect(page.locator('.srv-main h1')).toBeVisible();
       await audit(page, `server${s || '/overview'}`);
@@ -40,5 +41,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await audit(r.page, 'reveal-open');
     await r.page.goto('/signin');
     await audit(r.page, 'signin');
+    await r.page.goto('/privacy');
+    await audit(r.page, 'privacy');
   });
 }

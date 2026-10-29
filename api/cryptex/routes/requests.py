@@ -1,262 +1,204 @@
-"""Requests: ask someone for a secret. The answer is encrypted to the requester's
-P-256 public key (crypto-v1.md §4), so the server can't read it."""
+"""Ask for a secret: whoever can create links makes a request link, and whoever opens it sends them a secret, with or
+without an account. The answer is an ordinary secret (secrets.py: chunks, seal, reveal) whose link key is encrypted to
+the requester's public key (docs/crypto.md §4), so neither the server nor anyone else holding the request link can read
+it. One answer per request. The requester holds a manage token, like a link's sender: in the account vault when signed
+in, else in this browser."""
 from __future__ import annotations
 
 import sqlite3
 from typing import Any
 
-from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.hazmat.primitives.serialization import load_der_public_key
 from fastapi import APIRouter, Request, Response
-from fastapi.concurrency import run_in_threadpool
 from pydantic import Field
 
-from .. import db, demo, items, mailer, ratelimit, state
+from .. import db, demo, items, ratelimit, state
 from ..deps import Caller, caller, cap_hash, deny, matches
-from ..errors import ApiError, NotFound, gone, invalid
+from ..errors import ApiError, NotFound, invalid
 from ..events import emit
-from ..util import b64u, is_id, iso, new_token, now, unb64u
-from .common import B64U, HEX64, Body, check_create_allowed, read_body
-from .secrets import _unique_id, manage_allowed, manifest_cap
+from ..util import is_id, iso, new_token, now, token_hash, unb64u
+from .common import B64U, HEX64, Body, check_create_allowed
+from .receipts import Lookup, status_request
+from .secrets import manifest_cap, unique_id
 
 router = APIRouter()
-PROMPT_MAX = 8 * 1024
-
-
-def _p256(spki_b64u: str, field: str) -> bytes:
-    try:
-        der = unb64u(spki_b64u)
-        key = load_der_public_key(der)
-    except ValueError:
-        raise invalid(field, "Not a P-256 public key.") from None
-    if not isinstance(key, ec.EllipticCurvePublicKey) or key.curve.name != "secp256r1":
-        raise invalid(field, "Not a P-256 public key.")
-    return der
+ASK_MAX = 8 * 1024  # the encrypted note (1000 characters at most) and public key
 
 
 class CreateRequest(Body):
-    public_key: str
     expires_in: int = Field(ge=300)
-    keep_answer_s: int = Field(ge=300)
-    files: bool = False
-    notify: bool = False
 
 
 @router.post("/requests", status_code=201)
 def create_request(body: CreateRequest, request: Request) -> dict[str, Any]:
+    """Step one: the ID, which the link's key is bound to. Seal completes it. Who may ask is who may create links;
+    in the demo it counts as one of today's links."""
     c = caller(request)
-    check_create_allowed(c, "request")
-    if body.expires_in > state.setting("request_max_expiration"):
-        raise ApiError("limit_exceeded", field="expires_in", limit=state.setting("request_max_expiration"))
-    if body.keep_answer_s > state.setting("request_max_keep"):
-        raise ApiError("limit_exceeded", field="keep_answer_s", limit=state.setting("request_max_keep"))
-    if body.notify and (not state.env().smtp_enabled or c.user is None):
-        raise invalid("notify", "Notifications need email to be set up and a signed-in requester.")
-    der = _p256(body.public_key, "public_key")
+    check_create_allowed(c)
+    if body.expires_in > state.setting("max_expiration"):
+        raise ApiError("limit_exceeded", field="expires_in", limit=state.setting("max_expiration"))
     if state.env().demo:
-        demo.before_create(c, request, PROMPT_MAX, 0)
+        demo.before_create(c, request, 0, 0)
     manage, manage_h = new_token()
-    seal_tok, seal_h = new_token()
     t = now()
     with db.tx() as conn:
-        rid = _unique_id(conn, "requests")
-        conn.execute(
-            "INSERT INTO requests(id, owner_id, created_at, expires_at, keep_answer_s, allow_files, notify, public_key, "
-            "manage_hash, seal_hash) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (rid, c.user_id, t, t + body.expires_in, body.keep_answer_s, int(body.files), int(body.notify), der,
-             manage_h, seal_h),
-        )
-        if c.user_id:
-            conn.execute("INSERT OR IGNORE INTO user_receipts(user_id, kind, item_id, manage_hash, added_at) VALUES (?,?,?,?,?)",
-                         (c.user_id, "request", rid, manage_h, t))
-        emit("request.created", request_id=rid, actor=c.actor, user_id=c.user_id, c=conn, detail={
-            "expires_in": body.expires_in, "keep_answer_s": body.keep_answer_s, "files": body.files})
-    return {"id": rid, "manage_token": manage, "upload_token": seal_tok, "expires_at": iso(t + body.expires_in)}
+        rid = unique_id(conn)
+        conn.execute("INSERT INTO requests(id, owner_id, manage_hash, created_at, expires_at) VALUES (?,?,?,?,?)",
+                     (rid, c.user_id, manage_h, t, t + body.expires_in))
+    return {"id": rid, "manage_token": manage, "expires_at": iso(t + body.expires_in)}
 
 
 class SealRequest(Body):
-    """Values that depend on the ID, so they arrive after create (crypto-v1.md §4)."""
-    prompt_ct: str = Field(max_length=PROMPT_MAX)
-    answer_token_hash: str
+    ask_ct: str = Field(min_length=1, max_length=ASK_MAX)
+    answer_hash: str
+
+
+def _managed(request: Request, rid: str) -> tuple[Caller, sqlite3.Row]:
+    """The requester's Manage token checked. A wrong one counts toward the failed-token block only for a request that
+    exists: Your links can hold requests long gone."""
+    c = caller(request)
+    ratelimit.check_blocked(c.ip)
+    h = cap_hash(request, "Manage")
+    row = db.one("SELECT * FROM requests WHERE id = ?", rid) if is_id(rid) and h else None
+    if row is None or not matches(row["manage_hash"], h):
+        raise deny(c, presented=h is not None and row is not None)
+    return c, row
 
 
 @router.post("/requests/{rid}/seal", status_code=204)
 def seal_request(rid: str, body: SealRequest, request: Request) -> Response:
-    c = caller(request)
-    ratelimit.check_blocked(c.ip)
-    h = cap_hash(request, "Upload")
-    row = db.one("SELECT * FROM requests WHERE id = ?", rid) if is_id(rid) else None
-    if row is None or not matches(row["seal_hash"], h):
-        raise deny(c, presented=h is not None)
-    if row["sealed"]:
-        raise ApiError("already_sealed")
-    if not B64U.match(body.prompt_ct) or not HEX64.match(body.answer_token_hash):
-        raise invalid("prompt_ct")
-    db.run("UPDATE requests SET prompt_ct = ?, answer_token_hash = ?, sealed = 1 WHERE id = ?",
-           body.prompt_ct.encode(), body.answer_token_hash, rid)
+    c, row = _managed(request, rid)
+    if not B64U.match(body.ask_ct):
+        raise invalid("ask_ct")
+    if not HEX64.match(body.answer_hash):
+        raise invalid("answer_hash")
+    with db.tx() as conn:
+        if not conn.execute("UPDATE requests SET ask_ct = ?, answer_hash = ? WHERE id = ? AND ask_ct IS NULL AND closed_at IS NULL",
+                            (body.ask_ct.encode(), body.answer_hash, rid)).rowcount:
+            raise NotFound()
+        emit("secret.requested", secret_id=rid, actor="user" if row["owner_id"] else "link", user_id=row["owner_id"],
+             detail={"expires_in": row["expires_at"] - row["created_at"]}, c=conn)
     return Response(status_code=204)
 
 
-# ------------------------------------------------------------------ responder
+# ------------------------------------------------------------------ the requester (Your links)
+def _view(r: sqlite3.Row, answer: sqlite3.Row | None, tomb: sqlite3.Row | None) -> dict[str, Any]:
+    """waiting: no answer yet. answered: the answer can be opened (until the request expires). expired: no answer in
+    time, or not opened in time. destroyed: the answer was destroyed."""
+    t = now()
+    out: dict[str, Any] = {"id": r["id"], "created_at": iso(r["created_at"]), "expires_at": iso(r["expires_at"])}
+    if not r["answered_at"]:
+        out["status"] = "waiting" if r["expires_at"] > t else "expired"
+        if out["status"] == "expired":
+            out["ended_at"] = iso(r["expires_at"])
+        return out
+    out["answered_at"] = iso(r["answered_at"])
+    if answer is not None and answer["expires_at"] > t:
+        out.update(status="answered", views=answer["views"], answer={
+            "id": r["answer_id"], "key": r["answer_ct"].decode(), "expires_at": iso(answer["expires_at"]),
+            "files": items.file_count(r["answer_id"]), "passphrase": answer["passcheck_hash"] is not None})
+    else:
+        out["status"] = "destroyed" if tomb is not None and tomb["reason"] != "expired" else "expired"
+        out["views"] = answer["views"] if answer is not None else int(bool(tomb and tomb["opened"]))
+        out["ended_at"] = iso(tomb["at"] if tomb is not None else answer["expires_at"] if answer is not None else r["answered_at"])
+    return out
+
+
+@router.post("/requests/lookup")
+def lookup(body: Lookup, request: Request) -> dict[str, Any]:
+    """Statuses for Your links: each (id, manage token) pair that proves its token. Closed requests are left out (the
+    requester deleted them, or a password reset closed them)."""
+    c = caller(request)
+    status_request(c)
+    out, wrong = [], 0
+    for p in body.items:
+        r = db.one("SELECT * FROM requests WHERE id = ?", p.id) if is_id(p.id) else None
+        if r is None or not matches(r["manage_hash"], token_hash(p.manage_token)):
+            wrong += r is not None
+            continue
+        if r["closed_at"] or r["ask_ct"] is None:
+            continue
+        a = r["answer_id"]
+        answer = db.one("SELECT views, expires_at, passcheck_hash FROM secrets WHERE id = ?", a) if a else None
+        tomb = db.one("SELECT reason, opened, at FROM tombstones WHERE id = ?", a) if a and answer is None else None
+        out.append(_view(r, answer, tomb))
+    if wrong:
+        ratelimit.failed_token(c.ip, wrong)
+    return {"items": out}
+
+
+@router.delete("/requests/{rid}", status_code=204)
+def close_request(rid: str, request: Request) -> Response:
+    """Delete a request from Your links: its link stops taking answers, and an answer it has is destroyed."""
+    c, r = _managed(request, rid)
+    if r["closed_at"]:
+        return Response(status_code=204)
+    for s in db.all("SELECT id FROM secrets WHERE request_id = ? AND sealed = 0", rid):
+        items.drop_upload(s["id"])  # an answer on its way
+    if r["answer_id"]:
+        items.purge_secret(r["answer_id"], "destroyed", event=("secret.destroyed", {"reason": "sender"}),
+                           actor="user" if c.user else "link", user_id=c.user_id)
+    db.run("UPDATE requests SET closed_at = ?, ask_ct = NULL, answer_ct = NULL WHERE id = ?", now(), rid)
+    return Response(status_code=204)
+
+
+# ------------------------------------------------------------------ whoever holds the request link
 def _answerable(request: Request, rid: str) -> tuple[Caller, sqlite3.Row]:
+    """The Answer token checked, and the request still open. Changes nothing."""
     c = caller(request)
     ratelimit.check_blocked(c.ip)
     ratelimit.hit("reveal", state.env().rate_reveal, c.subject)
     h = cap_hash(request, "Answer")
-    if not is_id(rid) or h is None:
+    row = db.one("SELECT * FROM requests WHERE id = ?", rid) if is_id(rid) and h else None
+    if row is None or not matches(row["answer_hash"], h):
         raise deny(c, presented=h is not None)
-    row = db.one("SELECT * FROM requests WHERE id = ? AND sealed = 1", rid)
-    if row is not None and matches(row["answer_token_hash"], h):
-        if row["answered_at"]:
-            raise gone("answered", row["answered_at"])
-        if row["expires_at"] <= now():
-            items.purge_request(rid, "expired", event=("request.expired", {"answered": False}))
-            raise gone("expired", row["expires_at"])
-        return c, row
-    tomb = db.one("SELECT * FROM tombstones WHERE kind = 'request' AND id = ?", rid)
-    if tomb is not None and matches(tomb["token_hash"], h):
-        raise gone(tomb["reason"], tomb["at"])
-    raise deny(c)
+    if row["closed_at"] or row["answered_at"] or row["expires_at"] <= now():
+        raise items.request_ended(rid)
+    return c, row
 
 
-def _limits(row: sqlite3.Row) -> dict[str, Any]:
-    return {"max_files": int(state.setting("max_files")) if row["allow_files"] else 0,
-            "max_file_bytes": int(state.setting("max_file_size")),
-            "max_message_chars": int(state.setting("max_message_length"))}
-
-
-@router.get("/requests/{rid}/prompt")
-def prompt(rid: str, request: Request) -> dict[str, Any]:
+@router.get("/requests/{rid}")
+def get_request(rid: str, request: Request) -> dict[str, Any]:
     _, row = _answerable(request, rid)
-    return {"public_key": b64u(row["public_key"]), "prompt_ct": row["prompt_ct"].decode(), "files": bool(row["allow_files"]),
-            "expires_at": iso(row["expires_at"]), "limits": _limits(row)}
+    # Never who asks: a username is half of a sign-in, and the link may travel further than meant. The page shows the
+    # request's code instead, which the requester sees too.
+    return {"ask_ct": row["ask_ct"].decode(), "expires_at": iso(row["expires_at"])}
 
 
 class StartAnswer(Body):
-    ephemeral_key: str
     streams: list[dict[str, Any]]
+    passphrase_salt: str | None = None  # the answer asks for a passphrase (docs/crypto.md §3.2), chosen by who answers
 
 
 @router.post("/requests/{rid}/answer", status_code=201)
 def start_answer(rid: str, body: StartAnswer, request: Request) -> dict[str, Any]:
+    """Make the answer's secret, then upload and seal it as any other (PUT chunks, POST seal with answer_ct). It opens
+    any number of times until the request expires. A new start replaces an answer still on its way."""
     c, row = _answerable(request, rid)
-    eph = _p256(body.ephemeral_key, "ephemeral_key")
-    lim = _limits(row)
-    streams = items.check_streams(body.streams, max_files=lim["max_files"], max_file_size=lim["max_file_bytes"],
-                                  manifest_cap=manifest_cap())
+    salt = None
+    if body.passphrase_salt is not None:
+        try:
+            salt = unb64u(body.passphrase_salt)
+        except ValueError:
+            salt = b""
+        if len(salt) != 16:
+            raise invalid("passphrase_salt", "A passphrase needs a 16-byte salt.")
+    streams = items.check_streams(body.streams, max_files=int(state.setting("max_files")),
+                                  max_file_size=int(state.setting("max_file_size")), manifest_cap=manifest_cap())
     total = sum(s["size"] for s in streams)
-    key = f"user:{c.user_id}" if c.user_id else c.subject
-    ratelimit.hit("create", state.env().rate_create, key)
+    ratelimit.hit("create", state.env().rate_create, c.subject)
     if state.env().demo:
         demo.before_create(c, request, total, len(streams) - 1)
+    for s in db.all("SELECT id FROM secrets WHERE request_id = ? AND sealed = 0", rid):
+        items.drop_upload(s["id"])
+    items.check_disk(total)
     upload, upload_h = new_token()
-    with db.tx() as conn:
-        cur = conn.execute("SELECT answered_at FROM requests WHERE id = ?", (rid,)).fetchone()
-        if cur is None or cur["answered_at"]:
-            raise ApiError("already_answered")
-        old = items.purge_answer(conn, rid)  # a responder retrying replaces their unfinished upload
-        conn.execute("UPDATE requests SET answer_upload_hash = ?, answer_started_at = ?, ephemeral_key = ?, answer_size = ? WHERE id = ?",
-                     (upload_h, now(), eph, total, rid))
-        items.insert_streams(conn, "request_id", rid, streams)
-    items.delete_blobs(old)
-    return {"upload_token": upload}
-
-
-def _answer_upload(request: Request, rid: str) -> sqlite3.Row:
-    c = caller(request)
-    ratelimit.check_blocked(c.ip)
-    h = cap_hash(request, "Upload")
-    row = db.one("SELECT * FROM requests WHERE id = ?", rid) if is_id(rid) else None
-    if row is None or not matches(row["answer_upload_hash"], h):
-        raise deny(c, presented=h is not None)
-    if row["answered_at"]:
-        raise ApiError("already_answered")
-    if (row["answer_started_at"] or 0) < now() - items.UPLOAD_IDLE:
-        raise NotFound()
-    return row
-
-
-@router.put("/requests/{rid}/answer/chunks/{stream}/{n}", status_code=204)
-async def put_answer_chunk(rid: str, stream: int, n: int, request: Request) -> Response:
-    await run_in_threadpool(_answer_upload, request, rid)
-    data = await read_body(request, items.CHUNK + items.TAG)
-    await run_in_threadpool(items.store_chunk, "answer", "request_id", rid, stream, n, data)
-    await run_in_threadpool(db.run, "UPDATE requests SET answer_started_at = ? WHERE id = ?", now(), rid)
-    return Response(status_code=204)
-
-
-@router.post("/requests/{rid}/answer/seal", status_code=204)
-def seal_answer(rid: str, request: Request) -> Response:
-    row = _answer_upload(request, rid)
-    if not items.all_received("request_id", rid):
-        raise invalid("chunks", "Some chunks haven’t arrived yet.")
+    _, manage_h = new_token()  # nobody manages an answer by token: the requester deletes it with the request
     t = now()
     with db.tx() as conn:
-        conn.execute("UPDATE requests SET answered_at = ? WHERE id = ?", (t, rid))
-        emit("request.answered", request_id=rid, detail={"size": row["answer_size"]}, c=conn)
-    if row["notify"] and row["owner_id"]:
-        to = db.val("SELECT email FROM users WHERE id = ?", row["owner_id"])
-        if to:
-            mailer.answered(to, rid, t, t + row["keep_answer_s"])
-    return Response(status_code=204)
-
-
-# ------------------------------------------------------------------ requester
-def _managed(request: Request, rid: str) -> tuple[Caller, sqlite3.Row]:
-    c = caller(request)
-    ratelimit.check_blocked(c.ip)
-    row = db.one("SELECT * FROM requests WHERE id = ?", rid) if is_id(rid) else None
-    if row is not None and manage_allowed(request, "request", rid, row["manage_hash"]):
-        return c, row
-    tomb = db.one("SELECT * FROM tombstones WHERE kind = 'request' AND id = ?", rid) if is_id(rid) else None
-    if tomb is not None and manage_allowed(request, "request", rid, tomb["manage_hash"]):
-        raise gone(tomb["reason"], tomb["at"])
-    raise deny(c, presented=cap_hash(request, "Manage") is not None)
-
-
-@router.get("/requests/{rid}/answer")
-def get_answer(rid: str, request: Request) -> dict[str, Any]:
-    _, row = _managed(request, rid)
-    if not row["answered_at"]:
-        return {"answered_at": None, "expires_at": iso(row["expires_at"])}
-    return {"ephemeral_key": b64u(row["ephemeral_key"]), "streams": items.stream_list("request_id", rid),
-            "answered_at": iso(row["answered_at"]), "kept_until": iso(row["answered_at"] + row["keep_answer_s"])}
-
-
-def _answer_chunk(rid: str, stream: int, n: int, request: Request) -> bytes:
-    c, row = _managed(request, rid)
-    if not row["answered_at"]:
-        raise NotFound()
-    data = items.read_chunk("answer", rid, stream, n)
-    if data is None:
-        raise NotFound()
-    db.run("UPDATE chunks SET served = 1 WHERE owner_kind = 'answer' AND owner_id = ? AND stream = ? AND n = ?", rid, stream, n)
-    if not row["answer_read_at"] and not db.val("SELECT 1 FROM chunks WHERE owner_kind='answer' AND owner_id=? AND served=0 LIMIT 1", rid):
-        with db.tx() as conn:
-            conn.execute("UPDATE requests SET answer_read_at = ? WHERE id = ?", (now(), rid))
-            emit("request.answer_read", request_id=rid, actor=c.actor if c.user else "link", user_id=c.user_id, c=conn)
-    return data
-
-
-@router.get("/requests/{rid}/answer/chunks/{stream}/{n}")
-async def get_answer_chunk(rid: str, stream: int, n: int, request: Request) -> Response:
-    data = await run_in_threadpool(_answer_chunk, rid, stream, n, request)
-    return Response(data, media_type="application/octet-stream", headers={"Content-Disposition": "attachment", "Cache-Control": "no-store"})
-
-
-@router.delete("/requests/{rid}", status_code=204)
-def cancel(rid: str, request: Request) -> Response:
-    try:
-        c, row = _managed(request, rid)
-    except ApiError as e:
-        if e.code == "gone":
-            return Response(status_code=204)  # already gone: idempotent
-        raise
-    if row["answer_read_at"]:
-        items.purge_request(rid, "answered")  # read, then deleted: the receipt stays "revealed"
-    elif row["answered_at"]:
-        items.purge_request(rid, "destroyed", event=("request.cancelled", {"answered": True}), actor=c.actor if c.user else "link",
-                            user_id=c.user_id)
-    else:
-        items.purge_request(rid, "cancelled", event=("request.cancelled", {}), actor=c.actor if c.user else "link", user_id=c.user_id)
-    return Response(status_code=204)
+        sid = unique_id(conn)
+        conn.execute(
+            "INSERT INTO secrets(id, created_at, expires_at, max_views, passphrase_salt, manage_hash, upload_hash, upload_active_at, "
+            "size_bytes, request_id) VALUES (?,?,?,NULL,?,?,?,?,?,?)",
+            (sid, t, row["expires_at"], salt, manage_h, upload_h, t, total, rid))
+        items.insert_streams(conn, sid, streams)
+    return {"id": sid, "upload_token": upload}

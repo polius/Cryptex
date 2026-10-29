@@ -1,10 +1,8 @@
-/** Every value in vectors.json, and every must_fail case (crypto-v1.md). */
+/** Every value in vectors.json, and every must_fail case (docs/crypto.md). */
 import { describe, expect, it } from 'vitest';
-import V from './vectors.json';
-import {
-  answerKey, b64u, deriveLink, derivePassphrase, fingerprint, fromUtf8, hex, importPublic, openBlob, parseLinkFragment,
-  parseRequestFragment, privateJwk, requestLink, sealBlob, streamDecrypt, streamEncrypt, unb64u, unhex, utf8,
-} from './format';
+import { assemble, checkStreams } from '../flows/reveal';
+import V from '../../../docs/vectors.json';
+import { b64u, deriveAsk, deriveLink, derivePassphrase, fromUtf8, hex, newRequestKey, openBlob, parseLinkFragment, sealBlob, streamDecrypt, streamEncrypt, unb64u, unhex, unwrapAnswer, utf8, wrapAnswer } from './format';
 
 const c = V.cases;
 
@@ -55,6 +53,36 @@ describe('STREAM', () => {
   }
 });
 
+describe('reveal checks (§3.4)', () => {
+  const r = c.reveal;
+
+  it('the stream vector passes them, and gives back its fields and file', async () => {
+    const s = c.stream;
+    const list = checkStreams(s.streams.map((st) => ({ stream: st.stream, prefix: b64u(unhex(st.prefix)), chunks: st.chunks.length, size: 0 })));
+    const parts = await Promise.all(list.map(async (d) => {
+      const st = s.streams[d.stream];
+      return [new Blob([await streamDecrypt(unhex(s.content_key), s.id, d.stream, unhex(st.prefix), st.chunks.map(unhex))])];
+    }));
+    const out = await assemble(parts, null);
+    expect(out.items.map((i) => (i.t === 'field' ? i.k : i.t))).toEqual(['Host', 'Password']);
+    expect(out.files.map((f) => [f.name, f.size])).toEqual([['vpn.ovpn', 70]]);
+  });
+
+  for (const f of r.stream_list_must_fail) {
+    it(`rejects the stream list: ${f.name}`, () => {
+      expect(() => checkStreams(f.streams as never)).toThrow('tampered');
+    });
+  }
+  for (const f of r.manifest_must_fail) {
+    it(`rejects the manifest: ${f.name}`, async () => {
+      const sizes = f.sizes as Record<string, number>;
+      const parts: Blob[][] = [[new Blob([utf8(JSON.stringify(f.manifest))])]];
+      for (const [n, size] of Object.entries(sizes)) parts[Number(n)] = [new Blob([new Uint8Array(size)])];
+      await expect(assemble(parts, null)).rejects.toThrow('tampered');
+    });
+  }
+});
+
 describe('passphrase', () => {
   it('derives the Argon2id key, content key and passcheck', async () => {
     const p = c.passphrase;
@@ -67,41 +95,30 @@ describe('passphrase', () => {
   }, 20000);
 });
 
-describe('requests', () => {
-  const r = c.request;
-  it('builds the link fragment and tokens', async () => {
-    const k = await requestLink(r.id, unhex(r.P), unb64u(r.requester_spki_b64u));
-    expect(k.fragment).toBe(r.fragment_b64u);
-    expect(hex(k.promptKey)).toBe(r.prompt_key);
-    expect(b64u(k.answerToken)).toBe(r.answer_token_b64u);
-    expect(k.answerTokenHash).toBe(r.answer_token_hash);
-    expect(hex(await fingerprint(unb64u(r.requester_spki_b64u)))).toBe(r.fingerprint);
+describe('asking for a secret (§4)', () => {
+  const q = c.request;
+  it('derives the note key and answer token, and opens the note', async () => {
+    const a = await deriveAsk(q.id, unhex(q.R));
+    expect(hex(a.askKey)).toBe(q.ask_key);
+    expect(b64u(a.answerToken)).toBe(q.answer_token_b64u);
+    expect(a.answerHash).toBe(q.answer_hash);
+    expect(await sealBlob(a.askKey, 'ask', q.id, utf8(q.ask_plaintext), unhex(q.ask_nonce))).toBe(q.ask_ct_b64u);
+    expect(q.link.endsWith('#' + b64u(unhex(q.R)))).toBe(true);
   });
 
-  it('opens the prompt', async () => {
-    const pt = await openBlob(unhex(r.prompt_key), 'prompt', r.id, r.prompt.prompt_ct_b64u);
-    expect(fromUtf8(pt)).toBe(r.prompt.plaintext);
+  it("opens the reference's answer with the requester's key", async () => {
+    expect(hex(await unwrapAnswer(q.id, q.answer_id, q.requester_jwk, q.answer_ct_b64u))).toBe(q.answer_K);
   });
 
-  it('derives the same answer key on both sides and decrypts the answer', async () => {
-    const subtle = globalThis.crypto.subtle;
-    const reqSpki = unb64u(r.requester_spki_b64u);
-    const ephSpki = unb64u(r.answer.responder_ephemeral_spki_b64u);
-    const reqPriv = await subtle.importKey('jwk', privateJwk(unhex(r.requester_private_scalar), reqSpki), { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
-    const ephPriv = await subtle.importKey('jwk', privateJwk(unhex(r.answer.responder_ephemeral_private_scalar), ephSpki), { name: 'ECDH', namedCurve: 'P-256' }, false, ['deriveBits']);
-    const a1 = await answerKey(r.id, ephPriv, await importPublic(reqSpki));
-    const a2 = await answerKey(r.id, reqPriv, await importPublic(ephSpki));
-    expect(hex(a1)).toBe(r.answer.answer_key);
-    expect(hex(a2)).toBe(r.answer.answer_key);
-    const pt = await streamDecrypt(a2, r.id, 0, unhex(r.answer.prefix), r.answer.chunks.map(unhex));
-    expect(fromUtf8(pt)).toBe(r.answer.plaintext);
-  });
-
-  it('rejects a cut fragment and a swapped key', async () => {
-    expect(parseRequestFragment(r.must_fail[0].fragment_b64u as string)).toBeNull();
-    const parsed = parseRequestFragment(r.fragment_b64u)!;
-    expect(hex(parsed.fp)).toBe(r.fingerprint);
-    const swapped = await fingerprint(unb64u(r.must_fail[1].spki_b64u as string));
-    expect(hex(swapped)).not.toBe(r.must_fail[1].expected_fingerprint);
+  it('wraps for the requester alone, bound to the request and the answer', async () => {
+    const mine = await newRequestKey();
+    const other = await newRequestKey();
+    const K = unhex(q.answer_K);
+    const ct = await wrapAnswer(q.id, q.answer_id, K, mine.Q);
+    expect(await unwrapAnswer(q.id, q.answer_id, mine.jwk, ct)).toEqual(K);
+    await expect(unwrapAnswer(q.id, q.answer_id, other.jwk, ct)).rejects.toThrow();
+    await expect(unwrapAnswer(q.id, 'XXXXXXXXXX', mine.jwk, ct)).rejects.toThrow();
+    expect(mine.Q.length).toBe(65);
+    expect(unb64u(mine.jwk.d!).length).toBe(32);
   });
 });

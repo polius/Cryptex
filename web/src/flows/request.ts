@@ -1,147 +1,114 @@
-/** Requests (crypto-v1 §4): the answer is encrypted to the requester's P-256 key, which stays on their device. */
-import { api, type Config, type StreamDesc } from '../api/client';
-import {
-  answerKey, b64u, chunkCount, equalBytes, fingerprint, fromUtf8, importPublic, openBlob, P256, parseRequestFragment,
-  random, requestLink, sealBlob, spki, streamSize, unb64u, utf8,
-} from '../crypto/format';
-import { receipts, requestKeys } from '../store/db';
-import { assemble, type Revealed } from './reveal';
-import { proofOfWork, publicOrigin, type Item } from './send';
-import { bytesSource, downloadStream, fileSource, sealWithRetry, uploadStream, type Source } from './transfer';
+/** Asking for a secret (docs/crypto.md §4): the request link, answering it, and opening the answer. */
+import { signal } from '@preact/signals';
+import { api, cap, signedInUid, type Config, type Receipt } from '../api/client';
+import { b64u, deriveAsk, fromUtf8, newRequestKey, openBlob, random, sealBlob, unb64u, unwrapAnswer, utf8, wrapAnswer, type Bytes } from '../crypto/format';
+import { receipts, type StoredReceipt } from '../store/db';
+import { vaultItems } from '../store/vault';
+import { proofOfWork, uploadSecret, type Draft, type Progress } from './send';
 
-export interface Prompt {
-  title: string;
-  from: string | null;
-  message: string;
-  fields: string[];
-  files: boolean;
+/** The longest note a request can carry: who asks and what for. */
+export const NOTE_MAX = 1000;
+
+/** Make a request link. Its private key and manage token are kept before the link exists, so its answer can always
+ *  be opened: in the account vault when signed in (any device of the account), else in this browser, like the links
+ *  sent from it. `note` travels sealed with the link's key, beside the public key: only people with the link read it.
+ *  Throws Error('locked') while the vault is locked. */
+export async function createRequest(cfg: Config, expiresIn: number, note = ''): Promise<StoredReceipt> {
+  if (signedInUid() && !vaultItems.isOpen()) throw new Error('locked');
+  const { id, manage_token, expires_at } = await api<{ id: string; manage_token: string; expires_at: string }>('POST', '/requests', {
+    body: { expires_in: expiresIn }, headers: await proofOfWork(cfg),
+  });
+  const R = random(16);
+  const keys = await deriveAsk(id, R);
+  const { jwk, Q } = await newRequestKey();
+  const ask_ct = await sealBlob(keys.askKey, 'ask', id, utf8(JSON.stringify({ key: b64u(Q), ...(note.trim() ? { note: note.trim() } : {}) })));
+  const item: StoredReceipt = {
+    kind: 'request', id, key: jwk, manage_token, title: '',
+    created_at: new Date().toISOString(), expires_at, link: `${location.origin}/a/${id}#${b64u(R)}`, last_status: 'waiting',
+    fields: 0, files: 0,
+  };
+  await receipts.put(item);
+  try {
+    await api('POST', `/requests/${id}/seal`, { body: { ask_ct, answer_hash: keys.answerHash }, headers: cap('Manage', manage_token) });
+  } catch (e) {
+    await receipts.remove(id).catch(() => undefined); // never sealed: the server forgets it too
+    throw e;
+  }
+  return item;
 }
+
+/** A request's code, like KFX-49M: shown to whoever asks and on the answer page, so they can check it's the same
+ *  request without naming anyone. Made from the request's ID (a label, not a secret): 30 bits of FNV-1a, in Crockford's
+ *  base32, which has no I, L, O or U to misread. */
+export function requestCode(id: string): string {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < id.length; i++) h = Math.imul(h ^ id.charCodeAt(i), 0x01000193);
+  let s = '';
+  for (let i = 0; i < 6; i++) s += '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[(h >>> (i * 5)) & 31];
+  return `${s.slice(0, 3)}-${s.slice(3)}`;
+}
+
+/** The request just made, until its "ready" page is left: /r/:id shows that page instead of the request's status
+ *  (screens/links/Receipt.tsx), as a sent link's does. `copied`: the link went to the clipboard as it was made. */
+export const justAsked = signal<{ item: StoredReceipt; copied: boolean } | null>(null);
 
 export interface Asked {
   id: string;
-  link: string;
-  backup: string;      // /q/{id}/key#pkcs8.manage: shown on request, never stored
-  manage_token: string;
+  /** The requester's public key, sealed with the link's key: never taken from the server in the clear. */
+  key: Bytes;
+  /** What the person asking wrote, or null. Their own words: nobody vouches for them. */
+  note: string | null;
   expires_at: string;
+  token: string;
 }
 
-export async function createRequest(cfg: Config, p: Omit<Prompt, 'from'>, o: { expires_in: number; keep_answer_s: number; notify: boolean }): Promise<Asked> {
-  const subtle = globalThis.crypto.subtle;
-  const pair = (await subtle.generateKey(P256, true, ['deriveBits'])) as CryptoKeyPair;
-  const pub = await spki(pair.publicKey);
-  const created = await api<{ id: string; manage_token: string; upload_token: string; expires_at: string }>('POST', '/requests', {
-    body: { public_key: b64u(pub), expires_in: o.expires_in, keep_answer_s: o.keep_answer_s, files: p.files, notify: o.notify },
-    headers: await proofOfWork(cfg),
-  });
-  const P = random(16);
-  const rl = await requestLink(created.id, P, pub);
-  const prompt: Prompt = { ...p, from: cfg.user?.name || null };
-  const prompt_ct = await sealBlob(rl.promptKey, 'prompt', created.id, utf8(JSON.stringify(prompt)));
-  await api('POST', `/requests/${created.id}/seal`, {
-    body: { prompt_ct, answer_token_hash: rl.answerTokenHash }, headers: { Authorization: `Upload ${created.upload_token}` },
-  });
-  // Export once for the optional backup link, then keep only a non-extractable copy on this device.
-  const pkcs8 = new Uint8Array(await subtle.exportKey('pkcs8', pair.privateKey));
-  const stored = await subtle.importKey('pkcs8', pkcs8, P256, false, ['deriveBits']);
-  await requestKeys.put(created.id, stored);
-  const origin = publicOrigin(cfg);
-  const link = `${origin}/q/${created.id}#${rl.fragment}`;
-  await receipts.put({
-    kind: 'request', id: created.id, manage_token: created.manage_token, title: p.title, created_at: new Date().toISOString(),
-    expires_at: created.expires_at, link, last_status: 'waiting', fields: p.fields.length, files: p.files ? 1 : 0, keep_answer_s: o.keep_answer_s,
-  });
-  return { id: created.id, link, backup: `${origin}/q/${created.id}/key#${b64u(pkcs8)}.${created.manage_token}`, manage_token: created.manage_token, expires_at: created.expires_at };
-}
-
-/** /q/{id}/key#pkcs8.manage: import a backup key (and the receipt that goes with it) on another device. */
-export async function importBackupKey(id: string, fragment: string): Promise<void> {
-  const [pk, manage] = fragment.split('.');
-  const key = await globalThis.crypto.subtle.importKey('pkcs8', unb64u(pk), P256, false, ['deriveBits']);
-  await requestKeys.put(id, key);
-  if (manage && !(await receipts.get('request', id))) {
-    await receipts.put({ kind: 'request', id, manage_token: manage, title: '', created_at: new Date().toISOString(), last_status: 'waiting',
-      fields: 0, files: 0, other_device: true });
+/** The answer page: who asks, and the key to encrypt for. Throws ApiError (gone, not_found), or Error('broken') when
+ *  what the server holds doesn't open with this link's key. */
+export async function loadRequest(id: string, R: Uint8Array): Promise<Asked> {
+  const keys = await deriveAsk(id, R);
+  const token = b64u(keys.answerToken);
+  const r = await api<{ ask_ct: string; expires_at: string }>('GET', `/requests/${id}`, { headers: cap('Answer', token) });
+  let key: Bytes;
+  let note: unknown;
+  try {
+    const pt = JSON.parse(fromUtf8(await openBlob(keys.askKey, 'ask', id, r.ask_ct))) as { key?: unknown; note?: unknown };
+    key = unb64u(String(pt.key));
+    note = pt.note;
+  } catch {
+    throw new Error('broken');
   }
+  if (key.length !== 65 || (note !== undefined && (typeof note !== 'string' || note.length > NOTE_MAX))) throw new Error('broken');
+  return { id, key, note: note || null, expires_at: r.expires_at, token };
 }
 
-// ------------------------------------------------------------------ responder
-export interface LoadedPrompt {
-  prompt: Prompt;
-  publicKey: CryptoKey;
-  answerToken: string;
-  expires_at: string;
-  limits: { max_files: number; max_file_bytes: number; max_message_chars: number };
-}
-
-export class KeyMismatch extends Error {}
-
-export async function loadPrompt(id: string, fragment: string): Promise<LoadedPrompt> {
-  const parsed = parseRequestFragment(fragment);
-  if (!parsed) throw new Error('incomplete_link');
-  // The answer token and prompt key come from P; the fingerprint is checked against the key the server returns.
-  const prk = await requestLinkFromP(id, parsed.P);
-  const r = await api<{ public_key: string; prompt_ct: string; expires_at: string; limits: LoadedPrompt['limits'] }>('GET', `/requests/${id}/prompt`, {
-    headers: { Authorization: `Answer ${prk.answerToken}` },
+/** Send the answer: a secret like any other, its link key encrypted to the requester, with a passphrase if whoever
+ *  answers chose one (the requester then needs it to open it, docs/crypto.md §3.2). */
+export async function sendAnswer(cfg: Config, a: Asked, d: Draft, passphrase: string | null, onProgress: (p: Progress) => void,
+  signal?: AbortSignal, onCreated?: (id: string, uploadToken: string) => void): Promise<void> {
+  const salt = passphrase ? random(16) : null;
+  await uploadSecret(d, async (streams) => api<{ id: string; upload_token: string }>('POST', `/requests/${a.id}/answer`, {
+    body: { streams, ...(salt ? { passphrase_salt: b64u(salt) } : {}) }, headers: { ...cap('Answer', a.token), ...(await proofOfWork(cfg)) }, signal,
+  }), {
+    onProgress, signal, onCreated, passphrase: salt ? { value: passphrase!, salt } : null,
+    sealExtra: async (sid, K) => ({ answer_ct: await wrapAnswer(a.id, sid, K, a.key) }),
   });
-  const pubDer = unb64u(r.public_key);
-  if (!equalBytes(await fingerprint(pubDer), parsed.fp)) throw new KeyMismatch('key_mismatch');
-  const prompt = JSON.parse(fromUtf8(await openBlob(prk.promptKey, 'prompt', id, r.prompt_ct))) as Prompt;
-  return { prompt, publicKey: await importPublic(pubDer), answerToken: prk.answerToken, expires_at: r.expires_at, limits: r.limits };
 }
 
-async function requestLinkFromP(id: string, P: Uint8Array): Promise<{ answerToken: string; promptKey: Uint8Array }> {
-  // requestLink needs an SPKI only for the fingerprint; the tokens depend on P alone.
-  const rl = await requestLink(id, P, new Uint8Array(0));
-  return { answerToken: b64u(rl.answerToken), promptKey: rl.promptKey };
+/** The statuses of these requests (Your links), proven with their manage tokens. Closed ones aren't returned. */
+export async function lookupRequests(list: StoredReceipt[]): Promise<Receipt[]> {
+  if (!list.length) return [];
+  const r = await api<{ items: Receipt[] }>('POST', '/requests/lookup', { body: { items: list.map((x) => ({ id: x.id, manage_token: x.manage_token })) } });
+  return r.items.map((x) => ({ ...x, kind: 'request' as const }));
 }
 
-export async function sendAnswer(cfg: Config, id: string, lp: LoadedPrompt, items: Item[], files: File[], onProgress?: (done: number, total: number) => void): Promise<void> {
-  const subtle = globalThis.crypto.subtle;
-  const eph = (await subtle.generateKey(P256, true, ['deriveBits'])) as CryptoKeyPair;
-  const key = await answerKey(id, eph.privateKey, lp.publicKey);
-  const manifest = utf8(JSON.stringify({
-    v: 1, items: [...items, ...files.map((f, i) => ({ t: 'file', name: f.name, type: f.type || 'application/octet-stream', size: f.size, stream: i + 1 }))],
-  }));
-  const sources: Source[] = [bytesSource(manifest), ...files.map(fileSource)];
-  const prefixes = sources.map(() => random(7));
-  const streams: StreamDesc[] = sources.map((s, i) => ({ stream: i, prefix: b64u(prefixes[i]), chunks: chunkCount(s.size), size: streamSize(s.size) }));
-  const started = await api<{ upload_token: string }>('POST', `/requests/${id}/answer`, {
-    body: { ephemeral_key: b64u(await spki(eph.publicKey)), streams },
-    headers: { Authorization: `Answer ${lp.answerToken}`, ...(await proofOfWork(cfg)) },
-  });
-  const total = sources.reduce((n, s) => n + s.size, 0);
-  let done = 0;
-  for (let i = 0; i < sources.length; i++) {
-    await uploadStream({
-      base: `/requests/${id}/answer`, uploadToken: started.upload_token, key, id, stream: i, prefix: prefixes[i], src: sources[i],
-      onBytes: (n) => onProgress?.((done += n), total),
-    });
-  }
-  await sealWithRetry(`/requests/${id}/answer/seal`, undefined, started.upload_token);
+/** The answer's own link, opened with the request's private key. Throws when it can't be (no key: locked). */
+export async function answerLink(item: StoredReceipt | null, r: Receipt): Promise<string> {
+  if (!item?.key || !r.answer) throw new Error('locked');
+  const K = await unwrapAnswer(r.id, r.answer.id, item.key, r.answer.key);
+  return `/s/${r.answer.id}#${b64u(K)}`;
 }
 
-// ------------------------------------------------------------------ requester reads the answer
-export class NoKey extends Error {}
-
-export async function readAnswer(id: string, manageToken: string, onProgress?: (done: number, total: number) => void): Promise<Revealed & { kept_until: string }> {
-  const priv = await requestKeys.get(id);
-  if (!priv) throw new NoKey('no_key');
-  const h = { Authorization: `Manage ${manageToken}` };
-  const d = await api<{ ephemeral_key: string; streams: StreamDesc[]; answered_at: string | null; kept_until: string }>('GET', `/requests/${id}/answer`, { headers: h });
-  if (!d.answered_at) throw new Error('not_answered');
-  const key = await answerKey(id, priv, await importPublic(unb64u(d.ephemeral_key)));
-  const total = d.streams.reduce((n, s) => n + s.size, 0);
-  let done = 0;
-  const plain: Uint8Array[][] = [];
-  for (const s of d.streams) {
-    plain.push(await downloadStream({
-      path: (n) => `/requests/${id}/answer/chunks/${s.stream}/${n}`, headers: h, key, id, stream: s.stream, prefix: unb64u(s.prefix),
-      chunks: s.chunks, onBytes: (n) => onProgress?.((done += n), total),
-    }));
-  }
-  return { ...assemble(plain, 0), kept_until: d.kept_until };
-}
-
-export async function cancelRequest(id: string, manageToken: string): Promise<void> {
-  await api('DELETE', `/requests/${id}`, { headers: { Authorization: `Manage ${manageToken}` } });
+/** Delete a request: its link stops taking answers and an answer it has is destroyed, then it leaves Your links. */
+export async function closeRequest(id: string, manageToken: string): Promise<void> {
+  await api('DELETE', `/requests/${encodeURIComponent(id)}`, { headers: cap('Manage', manageToken) });
 }

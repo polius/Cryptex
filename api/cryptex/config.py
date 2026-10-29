@@ -2,16 +2,17 @@
 
 Precedence, strongest first: DEMO=true forced values, environment variables
 (which lock the setting in the Server tab), values saved in the Server tab,
-built-in defaults. See design/v3/spec/config.md.
+built-in defaults. README.md lists every variable.
 """
 from __future__ import annotations
 
 import base64
-import ipaddress
+import binascii
 import logging
 import os
 import re
 import secrets
+import sqlite3
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -20,7 +21,9 @@ from typing import Any
 log = logging.getLogger("cryptex.config")
 
 KB, MB, GB = 1024, 1024**2, 1024**3
-HARD_MAX_FILE = 10 * GB
+MAX_LIFETIME = 100 * 365 * 86400  # longest link lifetime: its expiry must stay a valid date
+MAX_WINDOW = 86400          # rate-limit windows: counters (they hold addresses) are purged after a day
+_BIG = 2**53                # no size, duration or count is near this; larger input is a typo, not a setting
 
 _SIZE = re.compile(r"^\s*(\d+(?:\.\d+)?)\s*(b|kb|mb|gb)?\s*$", re.I)
 _DUR = re.compile(r"^\s*(\d+)\s*(s|m|h|d)?\s*$", re.I)
@@ -28,31 +31,48 @@ _RATE = re.compile(r"^\s*(\d+)\s*/\s*(\d*)\s*(s|m|h|d)\s*$", re.I)
 _UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400}
 
 
-def parse_size(v: str | int) -> int:
-    if isinstance(v, int):
-        return v
-    m = _SIZE.match(v)
+def _bounded(n: float) -> int:
+    if not n < _BIG:  # also catches inf and nan
+        raise ValueError("is far too large")
+    return int(n)
+
+
+def parse_int(v: Any) -> int:
+    """A whole number, as a JSON number or a string of digits (1.7, true or "1e3" are refused, not rounded)."""
+    if isinstance(v, bool) or not isinstance(v, int | str):
+        raise ValueError("must be a whole number")
+    if isinstance(v, str):
+        if not v.strip().isdigit() or len(v.strip()) > 15:
+            raise ValueError("must be a whole number" if not v.strip().isdigit() else "is far too large")
+        v = int(v.strip())
+    return _bounded(v)
+
+
+def parse_size(v: Any) -> int:
+    if isinstance(v, int) and not isinstance(v, bool):
+        return _bounded(v)
+    m = _SIZE.match(v) if isinstance(v, str) and len(v) <= 32 else None
     if not m:
-        raise ValueError(f"not a size: {v!r} (use 500kb, 10mb, 1gb)")
+        raise ValueError(f"isn't a size: use a number with kb, mb or gb, like 500kb or 10mb ({str(v)[:32]!r})")
     mult = {"b": 1, "kb": KB, "mb": MB, "gb": GB}[(m.group(2) or "b").lower()]
-    return int(float(m.group(1)) * mult)
+    return _bounded(float(m.group(1)) * mult)
 
 
-def parse_duration(v: str | int) -> int:
-    if isinstance(v, int):
-        return v
-    m = _DUR.match(v)
+def parse_duration(v: Any) -> int:
+    if isinstance(v, int) and not isinstance(v, bool):
+        return _bounded(v)
+    m = _DUR.match(v) if isinstance(v, str) and len(v) <= 32 else None
     if not m:
-        raise ValueError(f"not a duration: {v!r} (use 30m, 24h, 7d)")
-    return int(m.group(1)) * _UNITS[(m.group(2) or "s").lower()]
+        raise ValueError(f"isn't a duration: use a number with m, h or d, like 30m, 24h or 7d ({str(v)[:32]!r})")
+    return _bounded(int(m.group(1)) * _UNITS[(m.group(2) or "s").lower()])
 
 
 def parse_rate(v: str) -> tuple[int, int]:
     """'60/h' -> (60, 3600); '10/15m' -> (10, 900)."""
-    m = _RATE.match(v)
+    m = _RATE.match(v) if len(v) <= 32 else None
     if not m:
-        raise ValueError(f"not a rate: {v!r} (use 60/h or 10/15m)")
-    return int(m.group(1)), int(m.group(2) or 1) * _UNITS[m.group(3).lower()]
+        raise ValueError(f"isn't a rate: use a count per period, like 60/h or 10/15m ({v[:32]!r})")
+    return _bounded(int(m.group(1))), _bounded(int(m.group(2) or 1) * _UNITS[m.group(3).lower()])
 
 
 def parse_bool(v: str) -> bool:
@@ -70,23 +90,24 @@ class Setting:
     demo: Any = None
 
 
+# Languages with a copy deck in web/src/copy/ (LANGUAGES in web/src/lib/i18n.ts).
+LANGUAGES = ("en", "es", "ca", "fr", "de", "it", "pt", "nl", "pl", "tr", "ru", "uk", "hi", "id", "ja", "ko", "zh-CN")
+
 # Settings an owner can change in the Server tab (unless an env var locks them).
 EDITABLE: dict[str, Setting] = {s.key: s for s in [
     Setting("access", "ACCESS", lambda v: _choice(v, ("anyone", "signed_in")), "anyone", demo="anyone"),
-    Setting("max_expiration", "MAX_EXPIRATION", parse_duration, 7 * 86400, 300, 365 * 86400, demo=3600),
-    Setting("max_views", "MAX_VIEWS", int, 10, 1, 100, demo=1),
-    Setting("max_message_length", "MAX_MESSAGE_LENGTH", int, 10_000, 100, 1_000_000, demo=500),
-    Setting("max_files", "MAX_FILES", int, 5, 0, 20, demo=1),
-    Setting("max_file_size", "MAX_FILE_SIZE", parse_size, 100 * MB, 1 * KB, HARD_MAX_FILE, demo=1 * MB),
-    Setting("request_max_expiration", "REQUEST_MAX_EXPIRATION", parse_duration, 30 * 86400, 300, 365 * 86400, demo=3600),
-    Setting("request_max_keep", "REQUEST_MAX_KEEP", parse_duration, 30 * 86400, 300, 365 * 86400, demo=3600),
-    Setting("audit_retention_days", "AUDIT_RETENTION_DAYS", int, 365, 1, 3650),
-    Setting("brand_name", "BRAND_NAME", lambda v: _text(v, 40), "", demo="Cryptex demo"),
+    Setting("max_expiration", "MAX_EXPIRATION", parse_duration, 7 * 86400, 300, MAX_LIFETIME, demo=3600),
+    Setting("max_message_length", "MAX_MESSAGE_LENGTH", parse_int, 10_000, 100, None, demo=500),
+    Setting("max_files", "MAX_FILES", parse_int, 5, 0, None, demo=1),
+    Setting("max_file_size", "MAX_FILE_SIZE", parse_size, 100 * MB, 1 * KB, None, demo=1 * MB),
+    Setting("audit_retention_days", "AUDIT_RETENTION_DAYS", parse_int, 365, 1, 3650),
+    Setting("brand_name", "BRAND_NAME", lambda v: _text(v, 40), "", demo=""),
+    Setting("language", "DEFAULT_LANGUAGE", lambda v: _choice(v, ("auto", *LANGUAGES)), "auto", demo="auto"),
 ]}
 
 
 def _choice(v: Any, options: tuple[str, ...]) -> str:
-    if v not in options:
+    if not isinstance(v, str) or v not in options:
         raise ValueError(f"must be one of {', '.join(options)}")
     return v
 
@@ -103,10 +124,23 @@ def validate_setting(key: str, value: Any) -> Any:
     s = EDITABLE[key]
     v = s.parse(value)
     if s.lo is not None and v < s.lo:
-        raise ValueError(f"must be at least {s.lo}")
+        raise ValueError(f"must be at least {_show(s, s.lo)}")
     if s.hi is not None and v > s.hi:
-        raise ValueError(f"must be at most {s.hi}")
+        raise ValueError(f"must be at most {_show(s, s.hi)}")
     return v
+
+
+def _show(s: Setting, n: int) -> str:
+    """A bound as people set it: 2gb, 365d, 20."""
+    if s.parse is parse_size:
+        for unit, size in (("gb", GB), ("mb", MB), ("kb", KB)):
+            if n % size == 0:
+                return f"{n // size}{unit}"
+    if s.parse is parse_duration:
+        for unit, secs in (("d", 86400), ("h", 3600), ("m", 60)):
+            if n % secs == 0:
+                return f"{n // secs}{unit}"
+    return str(n)
 
 
 @dataclass(frozen=True)
@@ -119,59 +153,66 @@ class Rate:
 class Env:
     """Everything read from the environment once at startup."""
     data_dir: Path
-    public_url: str | None
     enc_key: bytes
     demo: bool
-    trusted_proxies: list[ipaddress.IPv4Network | ipaddress.IPv6Network]
     rate_create: Rate
     rate_reveal: Rate
-    rate_auth: Rate
+    rate_auth: Rate        # failed sign-in attempts per IP
     rate_failed_tokens: Rate
-    oidc_issuer: str | None
-    oidc_client_id: str | None
-    oidc_client_secret: str | None
-    oidc_allowed_domains: list[str]
-    oidc_name: str
-    oidc_owner_emails: list[str]
-    smtp_url: str | None
-    smtp_from: str | None
+    rate_status: Rate      # receipt lookups: Your links, the receipt page
     log_level: str
     log_format: str
     log_ips: bool
     metrics_token: str | None
-    setup_code: str
     static_dir: Path | None
+    min_free_disk: int = 1 * GB  # refuse new secrets that would leave less free space than this on DATA_DIR
     locked: dict[str, Any] = field(default_factory=dict)  # setting key -> value from env
-    demo_seals_per_day: int = 30
+    demo_seals_per_day: int = 10
     demo_upload_bytes_per_day: int = 10 * MB
-    demo_max_live_items: int = 2000
     demo_storage_cap: int = 1 * GB
-    demo_pow_bits: int = 18
-    demo_wipe_cron: str = "0 0 * * *"
     demo_seals_per_hour_breaker: int = 500
 
-    @property
-    def smtp_enabled(self) -> bool:
-        return bool(self.smtp_url) and not self.demo
 
-    @property
-    def oidc_enabled(self) -> bool:
-        return bool(self.oidc_issuer and self.oidc_client_id) and not self.demo
+def _decode_key(raw: str, source: str) -> bytes:
+    try:
+        key = base64.b64decode(raw.strip(), validate=True)
+    except (binascii.Error, ValueError):
+        key = b""
+    if len(key) != 32:
+        raise ValueError(f"{source} must hold 32 random bytes, base64-encoded")
+    return key
 
 
-def _load_enc_key(data_dir: Path, raw: str | None) -> bytes:
-    if raw:
-        key = base64.b64decode(raw)
-        if len(key) != 32:
-            raise ValueError("ENC_KEY must be 32 random bytes, base64-encoded (openssl rand -base64 32)")
-        return key
+def _has_accounts(data_dir: Path) -> bool:
+    """Does the database already hold accounts (whose secrets an old ENC_KEY protects)?"""
+    path = data_dir / "cryptex.db"
+    if not path.exists():
+        return False
+    try:
+        c = sqlite3.connect(f"file:{path}?mode=ro", uri=True)
+        try:
+            return c.execute("SELECT 1 FROM users LIMIT 1").fetchone() is not None
+        finally:
+            c.close()
+    except sqlite3.Error:
+        return False
+
+
+def _load_enc_key(data_dir: Path) -> bytes:
+    """The server key (ENC_KEY in the code): DATA_DIR/enc.key, made on first start (only for a server with no accounts
+    yet). create_app checks it against the canary in the database (security.check_canary)."""
     path = data_dir / "enc.key"
     if path.exists():
-        return base64.b64decode(path.read_text().strip())
+        return _decode_key(path.read_text(), str(path))
+    if _has_accounts(data_dir):
+        raise ValueError(f"{path} is missing, but this server already has accounts. Put back the enc.key it was set up "
+                         "with (it's in every backup); a new key can't open their data.")
     key = secrets.token_bytes(32)
-    path.write_text(base64.b64encode(key).decode() + "\n")
-    os.chmod(path, 0o600)
-    log.warning("ENC_KEY not set; generated %s. Back it up separately from the data volume.", path)
+    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    with os.fdopen(fd, "w") as f:
+        f.write(base64.b64encode(key).decode() + "\n")
+    log.info("Generated %s, the key that protects this server's sign-in data. Keep it with the data folder: "
+             "without it, nobody can sign in.", path)
     return key
 
 
@@ -182,45 +223,38 @@ def load_env(environ: dict[str, str] | None = None) -> Env:
     data_dir.mkdir(parents=True, exist_ok=True)
     demo = parse_bool(get("DEMO", "false"))
 
-    public_url = get("PUBLIC_URL")
-    if public_url:
-        public_url = public_url.rstrip("/")
-        if not (public_url.startswith("https://") or re.match(r"^http://(localhost|127\.0\.0\.1)(:\d+)?$", public_url)):
-            raise ValueError("PUBLIC_URL must use https:// (http:// is allowed only for localhost)")
-
     def rate(k: str, d: str) -> Rate:
-        c, w = parse_rate(get(k, d))
+        try:
+            c, w = parse_rate(get(k, d))
+        except ValueError as err:
+            raise ValueError(f"{k}: {err}") from None
+        if c < 1 or w < 1:
+            raise ValueError(f"{k}: use at least 1 per period")
+        if w > MAX_WINDOW:
+            raise ValueError(f"{k}: use a period of 1 day or less (counters are kept for a day)")
         return Rate(c, w)
 
-    proxies = [ipaddress.ip_network(p.strip(), strict=False) for p in (get("TRUSTED_PROXIES", "") or "").split(",") if p.strip()]
-    if parse_bool(get("CRYPTEX_BEHIND_NGINX", "false")):  # the container's own nginx, on loopback
-        proxies += [ipaddress.ip_network("127.0.0.1/32"), ipaddress.ip_network("::1/128")]
-    setup_code = get("SETUP_CODE") or "-".join(secrets.token_hex(2).upper() for _ in range(3))
+    try:
+        min_free = parse_size(get("MIN_FREE_DISK", "1gb"))
+    except ValueError as err:
+        raise ValueError(f"MIN_FREE_DISK: {err}") from None
+
     static_dir = get("STATIC_DIR")
 
     env = Env(
         data_dir=data_dir,
-        public_url=public_url,
-        enc_key=_load_enc_key(data_dir, get("ENC_KEY")),
+        enc_key=_load_enc_key(data_dir),
         demo=demo,
-        trusted_proxies=proxies,
         rate_create=rate("RATE_CREATE", "60/h"),
         rate_reveal=rate("RATE_REVEAL", "120/h"),
         rate_auth=rate("RATE_AUTH", "10/15m"),
         rate_failed_tokens=rate("RATE_FAILED_TOKENS", "30/h"),
-        oidc_issuer=(get("OIDC_ISSUER") or "").rstrip("/") or None,
-        oidc_client_id=get("OIDC_CLIENT_ID"),
-        oidc_client_secret=get("OIDC_CLIENT_SECRET"),
-        oidc_allowed_domains=[d.strip().lower() for d in (get("OIDC_ALLOWED_DOMAINS", "") or "").split(",") if d.strip()],
-        oidc_name=get("OIDC_NAME", "single sign-on"),
-        oidc_owner_emails=[x.strip().lower() for x in (get("OIDC_OWNER_EMAILS", "") or "").split(",") if x.strip()],
-        smtp_url=get("SMTP_URL"),
-        smtp_from=get("SMTP_FROM"),
+        rate_status=rate("RATE_STATUS", "600/h"),
         log_level=get("LOG_LEVEL", "info"),
         log_format=get("LOG_FORMAT", "json"),
         log_ips=parse_bool(get("LOG_IPS", "false")),
         metrics_token=get("METRICS_TOKEN"),
-        setup_code=setup_code,
+        min_free_disk=min_free,
         static_dir=Path(static_dir) if static_dir else None,
     )
 
@@ -232,16 +266,21 @@ def load_env(environ: dict[str, str] | None = None) -> Env:
                 raise ValueError(f"{s.env}: {err}") from None
 
     if demo:
-        def stricter(k: str, d: int, p: Callable[[str], int] = int) -> int:
+        def stricter(k: str, d: int, p: Callable[[str], int] = parse_int) -> int:
+            """Demo tuning can only tighten the defaults: a looser value is ignored, a malformed one is an error."""
             v = get(k)
-            return min(d, p(v)) if v else d
-        env.demo_seals_per_day = stricter("DEMO_SEALS_PER_DAY", 30)
+            if not v:
+                return d
+            try:
+                n = p(v)
+            except ValueError as err:
+                raise ValueError(f"{k}: {err}") from None
+            if n < 1:
+                raise ValueError(f"{k}: must be at least 1")
+            return min(d, n)
+        env.demo_seals_per_day = stricter("DEMO_SEALS_PER_DAY", 10)
         env.demo_upload_bytes_per_day = stricter("DEMO_UPLOAD_BYTES_PER_DAY", 10 * MB, parse_size)
-        env.demo_max_live_items = stricter("DEMO_MAX_LIVE_ITEMS", 2000)
         env.demo_storage_cap = stricter("DEMO_STORAGE_CAP", 1 * GB, parse_size)
-        bits = get("DEMO_POW_BITS")
-        env.demo_pow_bits = max(18, int(bits)) if bits else 18  # more bits is stricter
-        env.demo_wipe_cron = get("DEMO_WIPE_CRON", "0 0 * * *")
         for s in EDITABLE.values():
             if s.demo is not None:
                 env.locked[s.key] = s.demo

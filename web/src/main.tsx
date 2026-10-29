@@ -1,23 +1,28 @@
-/** Router, theme and config bootstrap (frontend.md §1). */
+/** Router, theme and config bootstrap. */
 import './styles/fonts.css';
 import './styles/app.css';
 import './styles/live.css';
 import { render } from 'preact';
 import type { ComponentType } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
-import { match, navigate, route } from './lib/router';
-import { applyTheme, bootError, config, loadConfig } from './lib/state';
+import { isId, match, navigate, route } from './lib/router';
+import { applyTheme, bootError, config, countLinks, deviceLanguage, loadConfig } from './lib/state';
 import { ReauthDialog } from './screens/server/common';
 import { Toasts } from './ui/chrome';
 import { ConfirmHost } from './ui/confirm';
-import { t } from './lib/i18n';
+import { pick, setLocale, t } from './lib/i18n';
 
 applyTheme();
+// Phones and tablets, iPads included (they report a Mac, and a fine pointer with a trackpad): no "drop files" hints.
+if (/iPad|iPhone|iPod|Android/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)) {
+  document.documentElement.classList.add('touch-os');
+}
 
-/** First focus on each route: the page heading, except "/" where it's the composer (frontend.md §6).
+/** First focus on each route: the page heading, except "/" where it's the composer.
  *  Leaves focus alone if the person already moved it. */
 function focusFirst(force = false): void {
   const active = document.activeElement;
+  if (active?.closest('[aria-modal="true"]')) return; // an open dialog keeps focus (a prompt that loaded meanwhile)
   if (!force && active && active !== document.body && active.closest('main')) return;
   if (location.pathname === '/') (document.getElementById('composer') ?? document.querySelector<HTMLElement>('[data-autofocus]'))?.focus({ preventScroll: true });
   else document.querySelector<HTMLElement>('[data-page-heading]')?.focus({ preventScroll: true });
@@ -41,24 +46,27 @@ function lazy<P extends object>(load: () => Promise<ComponentType<P>>): Componen
   };
 }
 
+// Only for signed-in people: unlock with the password, the reset-link notice.
+const ResetNotice = lazy(() => import('./ui/notice').then((m) => m.ResetNotice));
+const VaultPrompts = lazy(() => import('./ui/vault').then((m) => m.VaultPrompts));
 const Reveal = lazy(() => import('./screens/reveal/Reveal').then((m) => m.Reveal));
 const NotFoundBody = lazy(() => import('./screens/reveal/Reveal').then((m) => m.NotFoundBody));
-const Respond = lazy(() => import('./screens/respond/Respond').then((m) => m.Respond));
-const KeyImport = lazy(() => import('./screens/respond/Respond').then((m) => m.KeyImport));
 const Home = lazy(() => import('./screens/Home').then((m) => m.Home));
+const Account = lazy(() => import('./screens/Account').then((m) => m.Account));
 const Links = lazy(() => import('./screens/links/Links').then((m) => m.Links));
 const Receipt = lazy(() => import('./screens/links/Receipt').then((m) => m.Receipt));
+const Answer = lazy(() => import('./screens/request/Answer').then((m) => m.Answer));
 const SignIn = lazy(() => import('./screens/auth/SignIn').then((m) => m.SignIn));
 const Setup = lazy(() => import('./screens/auth/Setup').then((m) => m.Setup));
+const Reset = lazy(() => import('./screens/auth/Reset').then((m) => m.Reset));
+const Invite = lazy(() => import('./screens/auth/Invite').then((m) => m.Invite));
 const DemoLimit = lazy(() => import('./screens/misc').then((m) => m.DemoLimit));
 const Privacy = lazy(() => import('./screens/misc').then((m) => m.Privacy));
-const MyTokens = lazy(() => import('./screens/server/Tokens').then((m) => m.MyTokens));
-const TokensSection = lazy(() => import('./screens/server/Tokens').then((m) => m.TokensSection));
 const OverviewSection = lazy(() => import('./screens/server/Sections').then((m) => m.OverviewSection));
 const AccessSection = lazy(() => import('./screens/server/Sections').then((m) => m.AccessSection));
 const LimitsSection = lazy(() => import('./screens/server/Sections').then((m) => m.LimitsSection));
 const BrandingSection = lazy(() => import('./screens/server/Sections').then((m) => m.BrandingSection));
-const NotificationsSection = lazy(() => import('./screens/server/Sections').then((m) => m.NotificationsSection));
+const LanguageSection = lazy(() => import('./screens/server/Sections').then((m) => m.LanguageSection));
 const AuditSection = lazy(() => import('./screens/server/Sections').then((m) => m.AuditSection));
 
 function Screen() {
@@ -66,9 +74,8 @@ function Screen() {
   const { path } = route.value;
   let m: Record<string, string> | null;
   // Recipient routes work whatever the server's setup or access state.
-  if ((m = match('/s/:id', path))) return <Reveal id={m.id} />;
-  if ((m = match('/q/:id/key', path))) return <KeyImport id={m.id} />;
-  if ((m = match('/q/:id', path))) return <Respond id={m.id} />;
+  if ((m = match('/s/:id', path))) return isId(m.id) ? <Reveal id={m.id} /> : <NotFoundBody />;
+  if ((m = match('/a/:id', path))) return isId(m.id) ? <Answer id={m.id} /> : <NotFoundBody />;
   if (path === '/privacy') return <Privacy />;
   if (c.setup_needed) {
     if (path !== '/setup') {
@@ -82,16 +89,22 @@ function Screen() {
     return null;
   }
   if (path === '/signin') return <SignIn />;
+  if (path === '/invite') return <Invite />;
+  if (path === '/reset') return <Reset />;
   const mustSignIn = c.mode === 'signed_in' && !c.signed_in;
   if ((path === '/' || path === '/links') && mustSignIn) {
     navigate(`/signin?next=${encodeURIComponent(path)}`, { replace: true });
     return null;
   }
+  if (path === '/account' && !c.signed_in && !c.demo) {
+    navigate('/signin?next=%2Faccount', { replace: true });
+    return null;
+  }
+  if (path === '/account') return <Account />;
   if (path === '/') return <Home />;
   if (path === '/links') return <Links />;
-  if ((m = match('/r/:id', path))) return <Receipt id={m.id} />;
+  if ((m = match('/r/:id', path))) return isId(m.id) ? <Receipt id={m.id} /> : <NotFoundBody />;
   if (path === '/demo/limit' && c.demo) return <DemoLimit />;
-  if (path === '/tokens' && c.signed_in && !c.demo) return <MyTokens />;
   if (path.startsWith('/server') && (c.user?.role === 'owner' && c.signed_in || c.demo)) {
     const section = path.slice('/server'.length) || '/';
     switch (section) {
@@ -99,13 +112,16 @@ function Screen() {
       case '/access': return <AccessSection />;
       case '/limits': return <LimitsSection />;
       case '/branding': return <BrandingSection />;
-      case '/notifications': return <NotificationsSection />;
-      case '/tokens': return <TokensSection />;
+      case '/language': return <LanguageSection />;
       case '/audit': return <AuditSection />;
     }
   }
   return <NotFoundBody />;
 }
+
+const SIGN_IN_PAGES = new Set(['/signin', '/setup', '/invite', '/reset']);
+
+const BOOT_TITLE: Record<string, string> = { unsupported: 'boot.unsupported_title', insecure: 'boot.insecure_title' };
 
 function App() {
   const c = config.value;
@@ -116,16 +132,23 @@ function App() {
   if (bootError.value) {
     return (
       <main class="main narrow boot-error" id="main">
-        <h1 class="h1">{bootError.value === 'unsupported' ? 'Update your browser' : 'Can’t reach this server'}</h1>
-        <p class="lede">{bootError.value === 'unsupported' ? t('reveal.unsupported', { brand: 'Cryptex' }) : t('errors.internal')}</p>
-        {bootError.value !== 'unsupported' && <button class="btn secondary" onClick={() => location.reload()}>{t('send.try_again')}</button>}
+        <h1 class="h1">{t(BOOT_TITLE[bootError.value] ?? 'boot.offline_title')}</h1>
+        <p class="lede">{bootError.value === 'unsupported' ? t('reveal.unsupported', { brand: 'Cryptex' }) : bootError.value === 'insecure' ? t('boot.insecure_body') : t('errors.internal')}</p>
+        {bootError.value === 'offline' && <button class="btn secondary" onClick={() => location.reload()}>{t('send.try_again')}</button>}
       </main>
     );
   }
   if (!c) return null;
+  // A link someone sent (a secret, or a request to answer) is about the recipient, not the account signed in here: no
+  // account prompts over it. Nor on
+  // the pages that sign someone in (maybe someone else): unlocking or the reset notice would ask for the password
+  // being replaced there, or cancel the very link in use.
+  const account = c.signed_in && !path.startsWith('/s/') && !path.startsWith('/a/') && !SIGN_IN_PAGES.has(path);
   return (
     <>
       <Screen />
+      {account && <VaultPrompts />}
+      {account && c.user?.notice && <ResetNotice />}
       <ReauthDialog />
       <ConfirmHost />
       <Toasts />
@@ -135,16 +158,20 @@ function App() {
 
 async function boot() {
   const supported = !!(globalThis.crypto?.subtle && window.indexedDB && window.Worker && 'TextEncoder' in window);
-  if (!supported) {
+  // Plain http (other than localhost) has no crypto.subtle: that's the server's setup, not an old browser.
+  if (!window.isSecureContext) {
+    bootError.value = 'insecure';
+  } else if (!supported) {
     bootError.value = 'unsupported';
   } else {
     try {
       await loadConfig();
-      if (!/^\/(s|q)\//.test(location.pathname)) void import('./screens/links/sync').then((m) => m.refreshLinksCount());
+      if (!location.pathname.startsWith('/s/') && !location.pathname.startsWith('/a/')) countLinks();
     } catch {
       bootError.value = 'offline';
     }
   }
+  if (!config.value) await setLocale(pick(deviceLanguage.value, null, navigator.languages ?? [navigator.language])).catch(() => undefined);
   const root = document.getElementById('app')!;
   root.textContent = '';
   render(<App />, root);

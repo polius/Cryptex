@@ -1,6 +1,0 @@
-#!/command/with-contenv sh
-# The data volume may be created by Docker as root: hand it to the API user.
-set -e
-mkdir -p "${DATA_DIR:-/data}"
-chown -R cryptex:cryptex "${DATA_DIR:-/data}"
-chmod 700 "${DATA_DIR:-/data}"

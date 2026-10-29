@@ -1,4 +1,4 @@
-/** A tiny history router. Fragments are read once on load and kept in memory (frontend.md §1). */
+/** A tiny history router. Fragments are read once on load and kept in memory. */
 import { signal } from '@preact/signals';
 
 export interface Location {
@@ -27,10 +27,18 @@ window.addEventListener('popstate', () => {
   route.value = read();
 });
 
-/** A link pasted into the same tab only changes the fragment: start that page over with the new key. */
+/** A link pasted into the same tab only changes the fragment: start that page over with the new key. Only a whole
+ *  link key does that; any other fragment (an in-page anchor) leaves a revealed secret where it is. An invite or
+ *  reset link does too: those pages read their token once, as they load (screens/auth). */
 window.addEventListener('hashchange', () => {
-  if (/^\/(s|q)\//.test(location.pathname)) location.reload();
+  const path = location.pathname;
+  if (((path.startsWith('/s/') || path.startsWith('/a/')) && /^#[A-Za-z0-9_-]{22}$/.test(location.hash)) || ((path === '/invite' || path === '/reset') && location.hash.length > 1)) {
+    location.reload();
+  }
 });
+
+/** Secret, request and receipt IDs: 10 base62 characters. Anything else never reaches the API. */
+export const isId = (v: string): boolean => /^[0-9A-Za-z]{10}$/.test(v);
 
 /** Same-origin <a href> clicks navigate without a page load. */
 document.addEventListener('click', (e) => {
@@ -49,7 +57,13 @@ export function match(pattern: string, path: string): Record<string, string> | n
   if (p.length !== s.length) return null;
   const out: Record<string, string> = {};
   for (let i = 0; i < p.length; i++) {
-    if (p[i].startsWith(':')) out[p[i].slice(1)] = decodeURIComponent(s[i]);
+    if (p[i].startsWith(':')) {
+      try {
+        out[p[i].slice(1)] = decodeURIComponent(s[i]);
+      } catch {
+        return null; // a malformed %-escape: no route
+      }
+    }
     else if (p[i] !== s[i]) return null;
   }
   return out;
