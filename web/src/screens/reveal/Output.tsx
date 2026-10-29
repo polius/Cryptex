@@ -160,6 +160,10 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
     }
   };
   const zippable = data.files.length > 1 && data.files.reduce((n, f) => n + f.size, 0) < ZIP_MAX;
+  const tools = fields.length > 0 || zippable;
+  const clearNow = (cls: string) => (
+    <button type="button" class={`btn danger ${cls}`} style="justify-self:start" onClick={clear}><Icon name="eyeoff" size="sm" />{t('reveal.clear_now')}</button>
+  );
 
   return (
     <>
@@ -203,13 +207,16 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
           </div>
         ))}
       </section>
-      <div class="actions-m between">
-        {(fields.length > 0 || zippable) && <div class="row">
+      {/* Phones pin the tools to the bottom of the screen; Clear now stays in the page there, small, like Destroy on a
+          link's ready page. */}
+      {tools && <div class="actions-m between">
+        <div class="row">
           {fields.length > 0 && <Btn kind="secondary" icon="copy" onClick={() => copyText(toEnv(data.items), t('reveal.copied_env'))}>{t('reveal.copy_env')}</Btn>}
           {zippable && <Btn kind="secondary" icon="down" loading={zipping} onClick={zipAll}>{t('reveal.zip')}</Btn>}
-        </div>}
-        <button class="btn ghost" onClick={clear}>{t('reveal.clear_now')}</button>
-      </div>
+        </div>
+        {clearNow('hide-m')}
+      </div>}
+      {clearNow(tools ? 'sm show-m' : '')}
       <p class="fine">{t('reveal.clipboard_note')}</p>
     </>
   );

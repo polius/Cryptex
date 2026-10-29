@@ -39,7 +39,7 @@ test('sending works with proof of work; the recipient can report', async ({ page
   await demoSend(page, 'demo canary');
   await expect(page.locator('.linkbox')).toBeVisible({ timeout: 30_000 });
   const link = (await page.locator('.linkbox .url .sr').textContent())!.trim();
-  await expect(page.locator('.facts')).toContainText('Once');
+  await expect(page.locator('.facts')).toContainText('Until it expires'); // reusable until it expires, by default
   const r = await (await browser.newContext()).newPage();
   await r.goto(link);
   await r.getByRole('button', { name: 'Report abuse' }).click();

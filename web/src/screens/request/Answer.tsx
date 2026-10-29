@@ -14,7 +14,7 @@ import { host, Page, RecipientHeader } from '../../ui/chrome';
 import { Icon } from '../../ui/icons';
 import { errorText } from '../errors';
 import { NotFoundBody } from '../reveal/Reveal';
-import { charCount, Composer, emptyComposer, isEmpty, type ComposerState } from '../send/Composer';
+import { charCount, Composer, DropZone, emptyComposer, isEmpty, usePageInput, type ComposerState } from '../send/Composer';
 import { Check, PassphraseBox } from '../send/Policy';
 import { Sealing, type SealProgress } from '../send/Sealing';
 
@@ -36,6 +36,7 @@ export function Answer({ id }: { id: string }) {
   const [cancelling, setCancelling] = useState(false);
   const [pass, setPass] = useState({ on: false, value: '' });
   const paste = useRef<(raw: string) => void>(() => undefined);
+  const drop = useRef<(files: File[]) => void>(() => undefined);
   const abort = useRef<AbortController | null>(null);
   const upload = useRef<{ id: string; token: string } | null>(null);
 
@@ -103,8 +104,10 @@ export function Answer({ id }: { id: string }) {
     setSending(null);
   }
 
+  // Before the early returns below: hooks run on every render.
+  const dragging = usePageInput(s.k === 'ready' && !sending, paste, drop);
   const page = (body: preact.ComponentChildren, wide = false) => (
-    <Page header={<RecipientHeader />}><main class={`main ${wide ? 'send-page' : 'narrow'}`} id="main">{body}</main></Page>
+    <Page header={<RecipientHeader />}><DropZone on={dragging} /><main class={`main ${wide ? 'send-page' : 'narrow'}`} id="main">{body}</main></Page>
   );
 
   switch (s.k) {
@@ -159,7 +162,7 @@ export function Answer({ id }: { id: string }) {
       )}
     </div>
     <Composer state={composer} onChange={setComposer} maxChars={c.limits.max_message_chars} maxFiles={c.limits.max_files}
-      maxFileBytes={c.limits.max_file_bytes} disabled={busy} onFilesRejected={(m) => toast(m, 'error')} registerPaste={(fn) => { paste.current = fn; }}
+      maxFileBytes={c.limits.max_file_bytes} disabled={busy} onFilesRejected={(m) => toast(m, 'error')} registerPaste={(fn) => { paste.current = fn; }} registerDrop={(fn) => { drop.current = fn; }}
       trailing={!busy && (
         <span class="cmp-go">
           <Btn kind="primary" id="answer-go" icon="lock" onClick={() => void send(a)} unavailable={isEmpty(composer)}

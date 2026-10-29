@@ -73,6 +73,54 @@ function followCaret(el: HTMLTextAreaElement) {
   if (box && el.selectionEnd === el.value.length) box.scrollTop = box.scrollHeight;
 }
 
+/** A page built around a composer (sending, answering a request): text pasted outside a field goes into it, and files
+ *  dropped anywhere on the page are attached. `on`: it can take them now (not while sealing). A dropped file never
+ *  replaces the page, even then. Returns whether files are being dragged over it, for <DropZone>. */
+export function usePageInput(on: boolean, paste: { current: (raw: string) => void }, drop: { current: (files: File[]) => void }): boolean {
+  const [dragging, setDragging] = useState(false);
+  useEffect(() => {
+    const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
+    const onPaste = (e: ClipboardEvent) => {
+      if (!on || (e.target as HTMLElement).closest('input,textarea,[contenteditable]')) return;
+      const raw = e.clipboardData?.getData('text/plain');
+      if (!raw) return;
+      e.preventDefault();
+      paste.current(raw);
+      setTimeout(() => (document.querySelector('.editor #composer-big, .editor .field.edit .v, #composer, .field.edit .v') as HTMLElement | null)?.focus());
+    };
+    const onOver = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      if (on) setDragging(true);
+    };
+    const onLeave = (e: DragEvent) => {
+      if (!e.relatedTarget) setDragging(false);
+    };
+    const onDrop = (e: DragEvent) => {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      setDragging(false);
+      if (on) drop.current(Array.from(e.dataTransfer!.files));
+    };
+    document.addEventListener('paste', onPaste);
+    document.addEventListener('dragover', onOver);
+    document.addEventListener('dragleave', onLeave);
+    document.addEventListener('drop', onDrop);
+    return () => {
+      document.removeEventListener('paste', onPaste);
+      document.removeEventListener('dragover', onOver);
+      document.removeEventListener('dragleave', onLeave);
+      document.removeEventListener('drop', onDrop);
+    };
+  }, [on]);
+  return on && dragging;
+}
+
+/** "Drop files to attach" over the whole page while files are dragged over it. */
+export function DropZone({ on }: { on: boolean }) {
+  return on ? <div class="dropzone" aria-hidden="true"><span><Icon name="upload" size="lg" />{t('send.drop_overlay')}</span></div> : null;
+}
+
 export function Composer(props: {
   state: ComposerState; onChange: (s: ComposerState) => void; maxChars: number; maxFiles: number; maxFileBytes: number;
   disabled?: boolean; onFilesRejected: (msg: string) => void; registerPaste: (fn: (raw: string) => void) => void;

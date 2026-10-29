@@ -33,6 +33,15 @@ test('someone without an account answers once, with a passphrase, and only the r
   await expect(r.page.locator('.ask-said blockquote')).toHaveText('Sam from IT: the VPN password for the new laptop, please.'); // their words only
   await expect(r.page.getByText(/\bsam\b/)).toHaveCount(0);
   await r.page.locator('#composer').fill('vpn-canary-7');
+  // A file dropped anywhere on the page is attached, as on the send page; the page stays.
+  const files = await r.page.evaluateHandle(() => {
+    const d = new DataTransfer();
+    d.items.add(new File(['config'], 'vpn.conf', { type: 'text/plain' }));
+    return d;
+  });
+  await r.page.dispatchEvent('main', 'dragover', { dataTransfer: files });
+  await r.page.dispatchEvent('main', 'drop', { dataTransfer: files });
+  await expect(r.page.getByText('vpn.conf')).toBeVisible();
   await r.page.getByRole('checkbox', { name: /Ask for a passphrase/ }).check();
   await r.page.getByLabel('Passphrase', { exact: true }).fill('copper-lantern-river-42');
   await r.page.getByRole('button', { name: 'Send securely' }).click();

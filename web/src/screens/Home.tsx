@@ -12,7 +12,7 @@ import { Banner, Btn, H1 } from '../ui/bits';
 import { AppHeader, host, Page } from '../ui/chrome';
 import { Icon, Mark } from '../ui/icons';
 import { AskButton } from './request/AskButton';
-import { charCount, Composer, emptyComposer, isEmpty, type ComposerState } from './send/Composer';
+import { charCount, Composer, DropZone, emptyComposer, isEmpty, usePageInput, type ComposerState } from './send/Composer';
 import { LinkReady } from './send/LinkReady';
 import { clampPolicy, defaultPolicy, opensLabel, OptionsPanel, SendFoot, sendRuleItems, type SendPolicy } from './send/Policy';
 import { Sealing, type SealProgress } from './send/Sealing';
@@ -47,7 +47,7 @@ export function Home() {
   const upload = useRef<{ id: string; token: string } | null>(null);
   const pasteHandler = useRef<(raw: string) => void>(() => undefined);
   const dropHandler = useRef<(files: File[]) => void>(() => undefined);
-  const [dragging, setDragging] = useState(false);
+  const dragging = usePageInput(phase.k === 'compose', pasteHandler, dropHandler);
 
   // Restore the last-used policy, within today's limits.
   useEffect(() => {
@@ -55,17 +55,8 @@ export function Home() {
     prefs.get<SendPolicy>('policy').then((p) => p && setPolicy(clampPolicy({ ...defaultPolicy(c), ...p }, c))).catch(() => undefined);
   }, []);
 
-  // ⌘/Ctrl+V anywhere on "/" focuses the composer and pastes; ⌘/Ctrl+Enter creates.
+  // ⌘/Ctrl+Enter creates (⌘/Ctrl+V anywhere pastes into the composer, and files drop anywhere: usePageInput).
   useEffect(() => {
-    const onPaste = (e: ClipboardEvent) => {
-      const target = e.target as HTMLElement;
-      if (phase.k !== 'compose' || target.closest('input,textarea,[contenteditable]')) return;
-      const raw = e.clipboardData?.getData('text/plain');
-      if (!raw) return;
-      e.preventDefault();
-      pasteHandler.current(raw);
-      setTimeout(() => (document.querySelector('.editor #composer-big, .editor .field.edit .v, #composer, .field.edit .v') as HTMLElement | null)?.focus());
-    };
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && phase.k === 'compose') {
         e.preventDefault();
@@ -73,34 +64,8 @@ export function Home() {
         void create();
       }
     };
-    // Files dropped anywhere on the page are attached (A1: "Or drop files anywhere on this page").
-    const hasFiles = (e: DragEvent) => !!e.dataTransfer && Array.from(e.dataTransfer.types).includes('Files');
-    const onOver = (e: DragEvent) => {
-      if (!hasFiles(e) || phase.k !== 'compose') return;
-      e.preventDefault();
-      setDragging(true);
-    };
-    const onLeave = (e: DragEvent) => {
-      if (!e.relatedTarget) setDragging(false);
-    };
-    const onDrop = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      setDragging(false);
-      if (phase.k === 'compose') dropHandler.current(Array.from(e.dataTransfer!.files));
-    };
-    document.addEventListener('paste', onPaste);
     document.addEventListener('keydown', onKey);
-    document.addEventListener('dragover', onOver);
-    document.addEventListener('dragleave', onLeave);
-    document.addEventListener('drop', onDrop);
-    return () => {
-      document.removeEventListener('paste', onPaste);
-      document.removeEventListener('keydown', onKey);
-      document.removeEventListener('dragover', onOver);
-      document.removeEventListener('dragleave', onLeave);
-      document.removeEventListener('drop', onDrop);
-    };
+    return () => document.removeEventListener('keydown', onKey);
   });
 
   const tryCopy = async (link: string) => {
@@ -253,7 +218,7 @@ export function Home() {
 
   return (
     <Page header={<AppHeader active="new" />}>
-      {dragging && <div class="dropzone" aria-hidden="true"><span><Icon name="upload" size="lg" />{t('send.drop_overlay')}</span></div>}
+      <DropZone on={dragging} />
       <main class={`main send-page${phase.k === 'sealing' && phase.step === 4 ? ' leaving' : ''}`} id="main">
         {phase.k === 'error' && (
           <><H1 class="sr">{t('send.title')}</H1><Banner kind="danger" icon="alert">{phase.message} {t('send.retry_note')}</Banner></>
