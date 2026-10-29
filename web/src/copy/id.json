@@ -360,7 +360,8 @@
     "dropped_body": "Tab ini meminta untuk membukanya pada {date}, tetapi koneksi terputus sebelum rahasia diterima. Tautan ini dihitung sudah dibuka, jadi tidak bisa dibuka lagi. Minta pengirim mengirimnya lagi.",
     "gone_tries_body_opened": "Rahasia ini sudah pernah dibuka. Lalu seseorang terlalu sering salah memasukkan sandi tambahan, jadi rahasia ini dihapus.",
     "from_brand": "{brand} mengirimi Anda",
-    "passphrase_hint_anon": "Pengirim seharusnya sudah memberikan sandi tambahan secara terpisah, misalnya lewat telepon."
+    "passphrase_hint_anon": "Pengirim seharusnya sudah memberikan sandi tambahan secara terpisah, misalnya lewat telepon.",
+    "badge_not_found": "Tidak ditemukan"
   },
   "errors": {
     "invalid": "Ada yang belum benar di formulir. Periksa kolom yang ditandai.",

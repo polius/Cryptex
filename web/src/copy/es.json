@@ -360,7 +360,8 @@
     "dropped_body": "Esta pestaña pidió abrirlo el {date}, pero la conexión se cortó antes de que llegara el secreto. Cuenta como abierto, así que no se puede volver a abrir. Pide al remitente que te lo vuelva a enviar.",
     "gone_tries_body_opened": "Ya se había abierto. Después, alguien escribió mal la contraseña adicional demasiadas veces, así que se ha borrado.",
     "from_brand": "{brand} te ha enviado",
-    "passphrase_hint_anon": "El remitente debería habértela dado por separado, por ejemplo en una llamada."
+    "passphrase_hint_anon": "El remitente debería habértela dado por separado, por ejemplo en una llamada.",
+    "badge_not_found": "No encontrado"
   },
   "errors": {
     "invalid": "Hay algo en el formulario que no es correcto. Revisa el campo marcado.",

@@ -361,7 +361,8 @@
     "dropped_body": "This tab asked to open it on {date}, but the connection dropped before the secret arrived. It counts as opened, so it can’t be opened again. Ask the sender to send it again.",
     "gone_tries_body_opened": "It had already been opened. Then someone entered the wrong passphrase too many times, so it was deleted.",
     "from_brand": "{brand} sent you",
-    "passphrase_hint_anon": "The sender should have given you the passphrase separately, for example on a call."
+    "passphrase_hint_anon": "The sender should have given you the passphrase separately, for example on a call.",
+    "badge_not_found": "Not found"
   },
   "errors": {
     "invalid": "Something in the form isn’t right. Check the highlighted field.",

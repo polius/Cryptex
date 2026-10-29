@@ -360,7 +360,8 @@
     "dropped_body": "Bu sekme {date} tarihinde açmayı istedi, ancak gizli bilgi gelmeden bağlantı koptu. Açılmış sayılır, bu yüzden tekrar açılamaz. Gönderen kişiden tekrar göndermesini isteyin.",
     "gone_tries_body_opened": "Daha önce açılmıştı. Sonra biri ek şifreyi çok fazla kez yanlış girdi; bu yüzden silindi.",
     "from_brand": "{brand} size şunu gönderdi",
-    "passphrase_hint_anon": "Gönderen kişi ek şifreyi size ayrıca, örneğin telefonda iletmiş olmalı."
+    "passphrase_hint_anon": "Gönderen kişi ek şifreyi size ayrıca, örneğin telefonda iletmiş olmalı.",
+    "badge_not_found": "Bulunamadı"
   },
   "errors": {
     "invalid": "Formda bir sorun var. İşaretli alanı kontrol edin.",

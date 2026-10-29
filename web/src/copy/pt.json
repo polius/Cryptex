@@ -360,7 +360,8 @@
     "dropped_body": "Esta aba pediu para abri-lo em {date}, mas a conexão caiu antes de o segredo chegar. Ele conta como aberto, então não pode ser aberto de novo. Peça ao remetente para enviar de novo.",
     "gone_tries_body_opened": "Ele já tinha sido aberto. Depois, alguém digitou a senha extra errada vezes demais, então ele foi apagado.",
     "from_brand": "{brand} enviou para você",
-    "passphrase_hint_anon": "O remetente deve ter passado a senha extra para você por outro meio, como numa ligação."
+    "passphrase_hint_anon": "O remetente deve ter passado a senha extra para você por outro meio, como numa ligação.",
+    "badge_not_found": "Não encontrado"
   },
   "errors": {
     "invalid": "Algo no formulário não está certo. Confira o campo destacado.",

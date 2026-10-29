@@ -8,7 +8,7 @@ import { rich, t } from '../../lib/i18n';
 import { dropFragment } from '../../lib/router';
 import { config, toast } from '../../lib/state';
 import { Banner, Btn, ErrMsg, H1, Outcome, Status, useViewFocus } from '../../ui/bits';
-import { host, Page, RecipientHeader } from '../../ui/chrome';
+import { AppHeader, host, Page, RecipientHeader } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
 import { errorText } from '../errors';
 import { Output } from './Output';
@@ -308,15 +308,20 @@ function Gone({ reason, at, opened }: { reason: string; at?: string; opened?: bo
   );
 }
 
+/** Nothing at this address: the same card as a link that's gone. A link's address (/s/, /a/) keeps the recipient's
+ *  header; anywhere else, someone signed in (or in the demo) keeps the app's. */
 export function NotFoundBody() {
-  const brand = config.value?.brand.name;
+  const c = config.value;
+  const app = !/^\/[sa]\//.test(location.pathname) && !!(c?.signed_in || c?.demo);
   return (
-    <Page header={<RecipientHeader />}>
-      <main class="main narrow" id="main" style="padding-top:96px">
-        <span class="avatar big" aria-hidden="true"><Icon name="search" size="lg" /></span>
-        <H1>{t('errors.not_found')}</H1>
-        <p class="lede">{rich('reveal.not_found_body', { hash: <span class="mono">#</span> })}</p>
-        <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: brand || 'Cryptex' })}</a></div>
+    <Page header={app ? <AppHeader /> : <RecipientHeader />}>
+      <main class="main narrow" id="main">
+        <section class="sealed"><div class="sealed-body">
+          <Status kind="expired">{t('reveal.badge_not_found')}</Status>
+          <H1>{t('errors.not_found')}</H1>
+          <p class="lede">{rich('reveal.not_found_body', { hash: <span class="mono">#</span> })}</p>
+          <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: c?.brand.name || 'Cryptex' })}</a></div>
+        </div></section>
       </main>
     </Page>
   );

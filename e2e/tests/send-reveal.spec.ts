@@ -23,7 +23,11 @@ test('send a note and a file, the recipient reveals it once', async ({ browser }
   const r = await stranger(browser);
   await r.page.goto(link);
   await expect(r.page.getByRole('heading', { name: 'Office wifi' })).toBeVisible();
-  await expect(r.page.getByText(OWNER.username, { exact: true })).toBeVisible();
+  // Who sent it is named only to someone signed in here: a stranger sees the organization.
+  await expect(r.page.locator('.from')).toHaveText('Acme sent you');
+  await expect(r.page.getByText(OWNER.username, { exact: true })).toHaveCount(0);
+  await page.goto(link); // the sender, signed in, opening the sealed page (opening it isn't revealing it)
+  await expect(page.locator('.from')).toHaveText(`${OWNER.username} at Acme sent you`);
   await expect(r.page.getByText('1 file')).toBeVisible();
   await r.page.getByRole('button', { name: 'Reveal secret' }).click();
   await expect(r.page.locator('.out')).toContainText('The wifi password is on the fridge.');

@@ -360,7 +360,8 @@
     "dropped_body": "Aquesta pestanya va demanar obrir-lo el {date}, però la connexió es va tallar abans que arribés el secret. Compta com a obert, així que no es pot tornar a obrir. Demana al remitent que te’l torni a enviar.",
     "gone_tries_body_opened": "Ja s’havia obert. Després algú ha escrit malament la contrasenya addicional massa vegades i s’ha esborrat.",
     "from_brand": "{brand} t’ha enviat",
-    "passphrase_hint_anon": "El remitent te l’hauria d’haver donat per separat, per exemple en una trucada."
+    "passphrase_hint_anon": "El remitent te l’hauria d’haver donat per separat, per exemple en una trucada.",
+    "badge_not_found": "No trobat"
   },
   "errors": {
     "invalid": "Hi ha alguna cosa del formulari que no és correcta. Revisa el camp marcat.",

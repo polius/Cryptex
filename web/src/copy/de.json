@@ -360,7 +360,8 @@
     "dropped_body": "Dieser Tab wollte ihn am {date} öffnen, aber die Verbindung brach ab, bevor das Geheimnis ankam. Er gilt als geöffnet und kann nicht noch einmal geöffnet werden. Bitte den Absender, es noch einmal zu senden.",
     "gone_tries_body_opened": "Es war schon geöffnet worden. Danach hat jemand zu oft ein falsches Zusatzpasswort eingegeben, deshalb wurde es gelöscht.",
     "from_brand": "{brand} sendet dir",
-    "passphrase_hint_anon": "Der Absender sollte dir das Zusatzpasswort auf anderem Weg gegeben haben, zum Beispiel am Telefon."
+    "passphrase_hint_anon": "Der Absender sollte dir das Zusatzpasswort auf anderem Weg gegeben haben, zum Beispiel am Telefon.",
+    "badge_not_found": "Nicht gefunden"
   },
   "errors": {
     "invalid": "Im Formular stimmt etwas nicht. Prüfe das markierte Feld.",

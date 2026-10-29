@@ -360,7 +360,8 @@
     "dropped_body": "这个标签页曾于 {date} 请求打开它，但在私密信息送达前连接中断了。它已算作打开，无法再次打开。请让发送者重新发送。",
     "gone_tries_body_opened": "它之前已被打开过。之后有人多次输错附加密码，所以它已被删除。",
     "from_brand": "{brand} 发给你",
-    "passphrase_hint_anon": "发送者应该已经另外告诉你附加密码了，比如通过电话。"
+    "passphrase_hint_anon": "发送者应该已经另外告诉你附加密码了，比如通过电话。",
+    "badge_not_found": "未找到"
   },
   "errors": {
     "invalid": "表单中有内容不正确。请检查标出的字段。",

@@ -360,7 +360,8 @@
     "dropped_body": "Dit tabblad vroeg op {date} om hem te openen, maar de verbinding viel weg voordat het geheim binnenkwam. Hij telt als geopend en kan dus niet opnieuw worden geopend. Vraag de afzender om het opnieuw te sturen.",
     "gone_tries_body_opened": "Het was al geopend. Daarna heeft iemand te vaak een verkeerd extra wachtwoord ingevoerd, dus het is verwijderd.",
     "from_brand": "{brand} stuurt je",
-    "passphrase_hint_anon": "De afzender heeft je het extra wachtwoord als het goed is apart gegeven, bijvoorbeeld telefonisch."
+    "passphrase_hint_anon": "De afzender heeft je het extra wachtwoord als het goed is apart gegeven, bijvoorbeeld telefonisch.",
+    "badge_not_found": "Niet gevonden"
   },
   "errors": {
     "invalid": "Er klopt iets niet in het formulier. Controleer het gemarkeerde veld.",

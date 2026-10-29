@@ -360,7 +360,8 @@
     "dropped_body": "Cet onglet a demandé à l’ouvrir le {date}, mais la connexion a été coupée avant que le secret n’arrive. Il compte comme ouvert et ne peut plus être ouvert. Demandez à l’expéditeur de le renvoyer.",
     "gone_tries_body_opened": "Il avait déjà été ouvert. Ensuite, quelqu’un a saisi un mauvais mot de passe supplémentaire trop de fois, il a donc été supprimé.",
     "from_brand": "{brand} vous a envoyé",
-    "passphrase_hint_anon": "L’expéditeur a dû vous donner le mot de passe supplémentaire à part, par exemple lors d’un appel."
+    "passphrase_hint_anon": "L’expéditeur a dû vous donner le mot de passe supplémentaire à part, par exemple lors d’un appel.",
+    "badge_not_found": "Introuvable"
   },
   "errors": {
     "invalid": "Un élément du formulaire est incorrect. Vérifiez le champ mis en évidence.",

@@ -360,7 +360,8 @@
     "dropped_body": "Questa scheda ha chiesto di aprirlo il {date}, ma la connessione si è interrotta prima che arrivasse il segreto. Conta come aperto, quindi non si può aprire di nuovo. Chiedi a chi l’ha inviato di mandarlo di nuovo.",
     "gone_tries_body_opened": "Era già stato aperto. Poi qualcuno ha inserito la password aggiuntiva sbagliata troppe volte, quindi è stato cancellato.",
     "from_brand": "{brand} ti ha inviato",
-    "passphrase_hint_anon": "Chi l’ha inviato dovrebbe averti dato la password aggiuntiva a parte, per esempio al telefono."
+    "passphrase_hint_anon": "Chi l’ha inviato dovrebbe averti dato la password aggiuntiva a parte, per esempio al telefono.",
+    "badge_not_found": "Non trovato"
   },
   "errors": {
     "invalid": "Qualcosa nel modulo non va. Controlla il campo evidenziato.",

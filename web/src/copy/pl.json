@@ -360,7 +360,8 @@
     "dropped_body": "Ta karta poprosiła o otwarcie go {date}, ale połączenie zostało przerwane, zanim dotarł sekret. Liczy się jako otwarty, więc nie można go otworzyć ponownie. Poproś nadawcę o ponowne wysłanie.",
     "gone_tries_body_opened": "Został już wcześniej otwarty. Potem ktoś zbyt wiele razy wpisał błędne dodatkowe hasło, więc sekret został usunięty.",
     "from_brand": "{brand} przesyła ci",
-    "passphrase_hint_anon": "Nadawca powinien przekazać ci dodatkowe hasło osobno, np. przez telefon."
+    "passphrase_hint_anon": "Nadawca powinien przekazać ci dodatkowe hasło osobno, np. przez telefon.",
+    "badge_not_found": "Nie znaleziono"
   },
   "errors": {
     "invalid": "Coś w formularzu się nie zgadza. Sprawdź wyróżnione pole.",
