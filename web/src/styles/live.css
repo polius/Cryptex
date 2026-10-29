@@ -904,3 +904,16 @@ select.chip.select{border-color:var(--line-input)} /* a form control too: its ed
   .page-head > .page-acts{grid-column:2;grid-row:1}
   .page-acts .ask-l{display:none}
 }
+/* A short server section starts at the top: its rows don't spread over the screen (Language on a phone). */
+.srv{align-content:start}
+@media (max-width:720px){
+  /* A page with a bottom bar keeps it at the bottom, under the content, however short the page (a link's ready page,
+     an opened secret). Buttons placed in the page stay their own size. */
+  .main:has(> .actions-m){display:flex;flex-direction:column}
+  .main > .actions-m{margin-top:auto}
+  .main:has(> .actions-m) > .btn{align-self:flex-start}
+  /* Setup's steps need the header's width: the theme follows the device there. */
+  .wizard-hd .theme-pick{display:none}
+  /* "211 bytes stored": the unit goes under the number rather than out of the card. */
+  .metric b{white-space:normal}
+}

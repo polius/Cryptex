@@ -51,6 +51,14 @@ class Caller:
         return "user" if self.via == "session" else "link"
 
 
+def signed_in_here(request: Request) -> bool:
+    """Whether this browser is signed in on this server, for requests a link's token speaks for (caller() leaves the
+    session out of those). Reads only: it gives no permission and changes nothing."""
+    cookie = request.cookies.get(SESSION_COOKIE)
+    h = token_hash(cookie) if cookie else None
+    return h is not None and db.val("SELECT 1 FROM sessions WHERE id_hash = ? AND expires_at > ?", h, now()) is not None
+
+
 def caller(request: Request) -> Caller:
     c: Caller | None = getattr(request.state, "caller", None)
     if c is not None:

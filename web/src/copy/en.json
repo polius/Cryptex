@@ -27,7 +27,6 @@
     "menu": "Menu",
     "account_label": "Account",
     "menu_new": "New secret",
-    "role": "{role, select, owner {owner} other {member}}",
     "menu_account": "Your account",
     "signout_failed": "Couldn’t sign out. Check your connection and try again."
   },
@@ -149,7 +148,7 @@
   "links": {
     "title": "Your links",
     "lede": "Everything you sent or asked for, and its status, on any device you sign in on.",
-    "lede_local": "Everything you sent from this browser, and whether it’s been opened.",
+    "lede_local": "Everything you sent or asked for from this browser, and its status.",
     "tab_all": "All",
     "tab_waiting": "Waiting",
     "tab_done": "Done",
@@ -166,7 +165,7 @@
     "contents_message": "a message",
     "subtitle": "{other, select, true {From another device · } other {}}{sent}",
     "expires_when": "expires {when}",
-    "empty_lede": "Everything you send shows up here, with when it was opened.",
+    "empty_lede": "Everything you send or ask for shows up here, with its status.",
     "filter_label": "Filter",
     "tab_empty": "Nothing here.",
     "search": "Search links",
@@ -360,7 +359,9 @@
     "opened_here_gone_body": "You revealed it here on {date}, and it no longer works. If you didn’t save what you needed, ask the sender to send it again.",
     "dropped_title": "This link was most likely opened here",
     "dropped_body": "This tab asked to open it on {date}, but the connection dropped before the secret arrived. It counts as opened, so it can’t be opened again. Ask the sender to send it again.",
-    "gone_tries_body_opened": "It had already been opened. Then someone entered the wrong passphrase too many times, so it was deleted."
+    "gone_tries_body_opened": "It had already been opened. Then someone entered the wrong passphrase too many times, so it was deleted.",
+    "from_brand": "{brand} sent you",
+    "passphrase_hint_anon": "The sender should have given you the passphrase separately, for example on a call."
   },
   "errors": {
     "invalid": "Something in the form isn’t right. Check the highlighted field.",
@@ -562,7 +563,7 @@
     "row_events_why": "So senders can see what happened, and for security (the audit log)",
     "row_events_kept": "Set by the operator, 365 days by default",
     "row_account": "Your account, if you have one: username, role, when it was last used, and a verifier of your password (never the password itself)",
-    "row_account_why": "To let you sign in and send, and to show your username to recipients",
+    "row_account_why": "To let you sign in and send, and to show your username to recipients who are signed in here too",
     "row_account_kept": "While your account exists",
     "row_cookie": "A session cookie, if you sign in",
     "row_cookie_why": "To keep you signed in",
@@ -753,14 +754,13 @@
     "logo_help": "Square SVG or PNG, at least 64 px.",
     "logo_current": "Current logo",
     "logo_none": "No logo yet",
-    "logo_drop": "Drop a new file or {browse}",
+    "logo_drop": "Drop a file here or {browse}",
     "browse": "browse",
     "logo_remove": "Remove",
     "logo_type": "Use an SVG or PNG file.",
     "logo_size": "Use a file of {size} or less.",
     "logo_updated": "Logo updated",
     "preview": "Preview",
-    "preview_from": "{sender} sent you",
     "preview_title": "Staging database",
     "preview_caption": "What people see when they open a link from this server."
   },

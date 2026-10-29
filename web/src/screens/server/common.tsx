@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { ApiError, api } from '../../api/client';
 import { locale, rich, t } from '../../lib/i18n';
 import { config, toast } from '../../lib/state';
-import { Banner, Btn, ErrMsg } from '../../ui/bits';
+import { Banner, Btn, ErrMsg, PasswordInput } from '../../ui/bits';
 import { AppHeader, Page } from '../../ui/chrome';
 import { Dialog } from '../../ui/dialog';
 import { Icon, type IconName } from '../../ui/icons';
@@ -154,7 +154,7 @@ export function ReauthDialog() {
       <p class="muted small">{t('server.reauth_body')}</p>
       <form class="stack" id="ra-form" onSubmit={(e) => { e.preventDefault(); void confirm(); }}>
         <div><label class="label" for="ra-pw">{t('signin.password')}</label>
-          <input id="ra-pw" class="input" type="password" autoComplete="current-password" value={password} data-autofocus aria-describedby={err ? 'ra-err' : undefined}
+          <PasswordInput id="ra-pw" autoComplete="current-password" value={password} data-autofocus aria-describedby={err ? 'ra-err' : undefined}
             onInput={(e) => setPassword((e.target as HTMLInputElement).value)} /></div>
         {config.value?.user?.totp !== false && <div><label class="label" for="ra-code">{t('signin.totp')}</label>
           <input id="ra-code" class="input mono" inputMode="numeric" autoComplete="one-time-code" maxLength={6} value={code} aria-describedby={err ? 'ra-err' : undefined}

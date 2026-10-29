@@ -5,7 +5,7 @@ import { PASSWORD_MIN } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
 import { cfg, loadConfig } from '../../lib/state';
-import { Btn, ErrMsg, H1, SharedCheck, useViewFocus } from '../../ui/bits';
+import { Btn, ErrMsg, H1, PasswordInput, SharedCheck, useViewFocus } from '../../ui/bits';
 import { Page, RecipientHeader } from '../../ui/chrome';
 import { TotpEnroll, type TotpSetup } from '../../ui/totp';
 import { errorText } from '../errors';
@@ -75,9 +75,9 @@ export function Invite() {
                 : rich(brand ? 'invite.joining' : 'invite.joining_no_brand', { brand, role: inv.role, username: <b>{inv.username}</b> })}</p>
             </div>
             <div><label class="label" for="password">{t('signin.password')}</label>
-              <input id="password" class={`input${err?.field === 'password' ? ' err' : ''}`} type="password" autoComplete="new-password" minLength={PASSWORD_MIN} value={password} data-autofocus
+              <PasswordInput id="password" autoComplete="new-password" minLength={PASSWORD_MIN} value={password} data-autofocus
                 aria-invalid={err?.field === 'password'} aria-describedby={err?.field === 'password' ? 'password-err' : 'password-help'}
-                onInput={(e) => setPassword((e.target as HTMLInputElement).value)} />
+                onInput={(e) => setPassword((e.target as HTMLInputElement).value)} invalid={err?.field === 'password'} />
               {err?.field === 'password' ? <ErrMsg id="password-err">{err.text}</ErrMsg> : <p class="help" id="password-help">{t('invite.password_help')}</p>}</div>
             <input type="text" autoComplete="username" value={inv.username} hidden readOnly />
             <label class="check"><input type="checkbox" checked={use2fa} onChange={(e) => setUse2fa((e.target as HTMLInputElement).checked)} />

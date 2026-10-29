@@ -8,7 +8,7 @@ import { PASSWORD_MIN, USERNAME } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
 import { config, loadConfig, toast } from '../../lib/state';
-import { Banner, Btn, Command, ErrMsg, H1, Radio, useViewFocus } from '../../ui/bits';
+import { Banner, Btn, Command, ErrMsg, H1, PasswordInput, Radio, useViewFocus } from '../../ui/bits';
 import { BrandLockup, LanguagePicker, ThemePicker } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
 import { LogoDrop } from '../../ui/logo';
@@ -31,7 +31,6 @@ export function Setup() {
   const [f, setF] = useState({ code: '', username: '', password: '', org: '', mode: 'signed_in' as 'anyone' | 'signed_in' });
   // The logo stays in this browser until Finish: a file and its preview.
   const [logo, setLogo] = useState<{ file: File; url: string } | null>(null);
-  const [pwShown, setPwShown] = useState(false);
   const inFlight = useRef(false);
   const [err, setErr] = useState<{ field?: string; text: string } | null>(null);
   const [busy, setBusy] = useState(false);
@@ -165,12 +164,8 @@ export function Setup() {
                   aria-invalid={!!fieldErr('username')} aria-describedby={fieldErr('username') ? 'username-err' : 'username-help'} onInput={(e) => set({ username: (e.target as HTMLInputElement).value })} />
                 {fieldErr('username') ? <ErrMsg id="username-err">{fieldErr('username')}</ErrMsg> : <p class="help" id="username-help">{t('signin.username_help')}</p>}</div>
               <div><label class="label" for="password">{t('signin.password')}</label>
-                <div class={`input${fieldErr('password') ? ' err' : ''}`}>
-                  <input id="password" class="bare" type={pwShown ? 'text' : 'password'} value={f.password} autoComplete="new-password" minLength={PASSWORD_MIN} spellcheck={false}
-                    aria-invalid={!!fieldErr('password')} aria-describedby={fieldErr('password') ? 'password-err' : 'password-help'} onInput={(e) => set({ password: (e.target as HTMLInputElement).value })} />
-                  <button type="button" class="btn icon sm ghost" aria-label={pwShown ? t('reveal.hide') : t('reveal.show')} title={pwShown ? t('reveal.hide') : t('reveal.show')}
-                    aria-pressed={pwShown} onClick={() => setPwShown(!pwShown)}><Icon name={pwShown ? 'eyeoff' : 'eye'} size="sm" /></button>
-                </div>
+                <PasswordInput id="password" value={f.password} autoComplete="new-password" minLength={PASSWORD_MIN} invalid={!!fieldErr('password')}
+                  aria-invalid={!!fieldErr('password')} aria-describedby={fieldErr('password') ? 'password-err' : 'password-help'} onInput={(e) => set({ password: (e.target as HTMLInputElement).value })} />
                 {fieldErr('password') ? <ErrMsg id="password-err">{fieldErr('password')}</ErrMsg> : <p class="help" id="password-help">{t('setup.password_help')}</p>}</div>
               {err && !err.field && <ErrMsg>{err.text}</ErrMsg>}
             </Panel>

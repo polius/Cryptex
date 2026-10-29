@@ -8,7 +8,7 @@ import { PASSWORD_MIN } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { navigate, route } from '../../lib/router';
 import { cfg, loadConfig } from '../../lib/state';
-import { Btn, Command, ErrMsg, H1, SharedCheck, useViewFocus } from '../../ui/bits';
+import { Btn, Command, ErrMsg, H1, PasswordInput, SharedCheck, useViewFocus } from '../../ui/bits';
 import { Page, RecipientHeader } from '../../ui/chrome';
 import { errorText } from '../errors';
 import type { Bundle } from '../../store/vault';
@@ -149,7 +149,7 @@ export function SignIn() {
                 <>
                   <input type="text" autoComplete="username" value={username.trim().toLowerCase()} hidden readOnly />
                   <div><label class="label" for="password">{t('signin.new_password')}</label>
-                    <input id="password" class="input" type="password" autoComplete="new-password" minLength={PASSWORD_MIN} value={password} data-autofocus
+                    <PasswordInput id="password" autoComplete="new-password" minLength={PASSWORD_MIN} value={password} data-autofocus
                       onInput={(e) => setPassword((e.target as HTMLInputElement).value)} />
                     <p class="help">{t('invite.password_help')}</p></div>
                   <p class="fine">{t('reset.links_note')}</p>
@@ -179,7 +179,7 @@ export function SignIn() {
             <>
               {usernameField(!username)}
               <div><label class="label" for="password">{t('signin.password')}</label>
-                <input id="password" class="input" type="password" autoComplete="current-password" value={password} required data-autofocus={!!username || undefined}
+                <PasswordInput id="password" autoComplete="current-password" value={password} required data-autofocus={!!username || undefined}
                   aria-describedby={err ? 'signin-err' : undefined} onInput={(e) => setPassword((e.target as HTMLInputElement).value)} /></div>
               <SharedCheck checked={shared} onChange={setShared} />
             </>

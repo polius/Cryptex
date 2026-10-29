@@ -26,7 +26,6 @@
     "menu": "Menü",
     "account_label": "Konto",
     "menu_new": "Neues Geheimnis",
-    "role": "{role, select, owner {Inhaber} other {Mitglied}}",
     "menu_account": "Dein Konto",
     "signout_failed": "Abmelden hat nicht geklappt. Prüfe deine Verbindung und versuch es noch einmal."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Deine Links",
     "lede": "Alles, was du gesendet oder angefragt hast, mit Status – auf jedem Gerät, auf dem du angemeldet bist.",
-    "lede_local": "Alles, was du in diesem Browser gesendet hast, und ob es geöffnet wurde.",
+    "lede_local": "Alles, was du in diesem Browser gesendet oder angefragt hast, mit Status.",
     "tab_all": "Alle",
     "tab_waiting": "Wartend",
     "tab_done": "Erledigt",
@@ -165,7 +164,7 @@
     "contents_message": "eine Nachricht",
     "subtitle": "{other, select, true {Von einem anderen Gerät · } other {}}{sent}",
     "expires_when": "läuft {when} ab",
-    "empty_lede": "Alles, was du sendest, erscheint hier – mit dem Zeitpunkt, an dem es geöffnet wurde.",
+    "empty_lede": "Alles, was du sendest oder anfragst, erscheint hier – mit Status.",
     "filter_label": "Filter",
     "tab_empty": "Hier ist nichts.",
     "search": "Links durchsuchen",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "Du hast es hier am {date} angezeigt, und es funktioniert nicht mehr. Wenn du nicht gespeichert hast, was du brauchst, frag den Absender, ob er es noch einmal senden kann.",
     "dropped_title": "Dieser Link wurde wahrscheinlich hier geöffnet",
     "dropped_body": "Dieser Tab wollte ihn am {date} öffnen, aber die Verbindung brach ab, bevor das Geheimnis ankam. Er gilt als geöffnet und kann nicht noch einmal geöffnet werden. Bitte den Absender, es noch einmal zu senden.",
-    "gone_tries_body_opened": "Es war schon geöffnet worden. Danach hat jemand zu oft ein falsches Zusatzpasswort eingegeben, deshalb wurde es gelöscht."
+    "gone_tries_body_opened": "Es war schon geöffnet worden. Danach hat jemand zu oft ein falsches Zusatzpasswort eingegeben, deshalb wurde es gelöscht.",
+    "from_brand": "{brand} sendet dir",
+    "passphrase_hint_anon": "Der Absender sollte dir das Zusatzpasswort auf anderem Weg gegeben haben, zum Beispiel am Telefon."
   },
   "errors": {
     "invalid": "Im Formular stimmt etwas nicht. Prüfe das markierte Feld.",
@@ -561,7 +562,7 @@
     "row_events_why": "Damit Absender sehen, was passiert ist, und für die Sicherheit (das Aktivitätsprotokoll)",
     "row_events_kept": "Vom Betreiber festgelegt, standardmäßig 365 Tage",
     "row_account": "Dein Konto, falls du eins hast: Benutzername, Rolle, letzte Nutzung und ein Prüfwert deines Passworts (nie das Passwort selbst)",
-    "row_account_why": "Damit du dich anmelden und senden kannst und Empfänger deinen Benutzernamen sehen",
+    "row_account_why": "Damit du dich anmelden und senden kannst und Empfänger, die hier auch angemeldet sind, deinen Benutzernamen sehen",
     "row_account_kept": "Solange dein Konto besteht",
     "row_cookie": "Ein Sitzungscookie, wenn du dich anmeldest",
     "row_cookie_why": "Damit du angemeldet bleibst",
@@ -752,14 +753,13 @@
     "logo_help": "Quadratisches SVG oder PNG, mindestens 64 px.",
     "logo_current": "Aktuelles Logo",
     "logo_none": "Noch kein Logo",
-    "logo_drop": "Neue Datei hier ablegen oder {browse}",
+    "logo_drop": "Datei hier ablegen oder {browse}",
     "browse": "durchsuchen",
     "logo_remove": "Entfernen",
     "logo_type": "Verwende eine SVG- oder PNG-Datei.",
     "logo_size": "Verwende eine Datei mit höchstens {size}.",
     "logo_updated": "Logo aktualisiert",
     "preview": "Vorschau",
-    "preview_from": "{sender} sendet dir",
     "preview_title": "Staging-Datenbank",
     "preview_caption": "Das sehen andere, wenn sie einen Link von diesem Server öffnen."
   },

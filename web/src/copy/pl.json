@@ -26,7 +26,6 @@
     "menu": "Menu",
     "account_label": "Konto",
     "menu_new": "Nowy sekret",
-    "role": "{role, select, owner {właściciel} other {członek}}",
     "menu_account": "Twoje konto",
     "signout_failed": "Nie udało się wylogować. Sprawdź połączenie i spróbuj ponownie."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Twoje linki",
     "lede": "Wszystko, co wysłałeś lub o co poprosiłeś, wraz ze statusem, na każdym urządzeniu, na którym się logujesz.",
-    "lede_local": "Wszystko, co wysyłasz z tej przeglądarki, i czy zostało już otwarte.",
+    "lede_local": "Wszystko, co wysłałeś lub o co poprosiłeś z tej przeglądarki, wraz ze statusem.",
     "tab_all": "Wszystkie",
     "tab_waiting": "Czekające",
     "tab_done": "Zakończone",
@@ -165,7 +164,7 @@
     "contents_message": "wiadomość",
     "subtitle": "{other, select, true {Z innego urządzenia · } other {}}{sent}",
     "expires_when": "wygasa {when}",
-    "empty_lede": "Tu pojawi się wszystko, co wyślesz, wraz z czasem otwarcia.",
+    "empty_lede": "Tu pojawi się wszystko, co wyślesz lub o co poprosisz, wraz ze statusem.",
     "filter_label": "Filtr",
     "tab_empty": "Nic tu nie ma.",
     "search": "Szukaj linków",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "Odsłonięto go tutaj {date} i już nie działa. Jeśli nie zapisano tego, co potrzebne, poproś nadawcę o ponowne wysłanie.",
     "dropped_title": "Ten link najpewniej został otwarty tutaj",
     "dropped_body": "Ta karta poprosiła o otwarcie go {date}, ale połączenie zostało przerwane, zanim dotarł sekret. Liczy się jako otwarty, więc nie można go otworzyć ponownie. Poproś nadawcę o ponowne wysłanie.",
-    "gone_tries_body_opened": "Został już wcześniej otwarty. Potem ktoś zbyt wiele razy wpisał błędne dodatkowe hasło, więc sekret został usunięty."
+    "gone_tries_body_opened": "Został już wcześniej otwarty. Potem ktoś zbyt wiele razy wpisał błędne dodatkowe hasło, więc sekret został usunięty.",
+    "from_brand": "{brand} przesyła ci",
+    "passphrase_hint_anon": "Nadawca powinien przekazać ci dodatkowe hasło osobno, np. przez telefon."
   },
   "errors": {
     "invalid": "Coś w formularzu się nie zgadza. Sprawdź wyróżnione pole.",
@@ -561,7 +562,7 @@
     "row_events_why": "Aby nadawcy widzieli, co się stało, i dla bezpieczeństwa (dziennik zdarzeń)",
     "row_events_kept": "Ustala operator, domyślnie 365 dni",
     "row_account": "Twoje konto, jeśli je masz: nazwa użytkownika, rola, czas ostatniego użycia i weryfikator hasła (nigdy samo hasło)",
-    "row_account_why": "Aby umożliwić logowanie i wysyłanie oraz pokazać odbiorcom twoją nazwę użytkownika",
+    "row_account_why": "Aby umożliwić logowanie i wysyłanie oraz pokazać twoją nazwę użytkownika odbiorcom, którzy też są tu zalogowani",
     "row_account_kept": "Dopóki istnieje twoje konto",
     "row_cookie": "Plik cookie sesji, jeśli się zalogujesz",
     "row_cookie_why": "Aby utrzymać sesję logowania",
@@ -752,14 +753,13 @@
     "logo_help": "Kwadratowy plik SVG lub PNG, co najmniej 64 px.",
     "logo_current": "Obecne logo",
     "logo_none": "Nie ma jeszcze logo",
-    "logo_drop": "Upuść nowy plik lub {browse}",
+    "logo_drop": "Upuść plik tutaj lub {browse}",
     "browse": "wybierz go",
     "logo_remove": "Usuń",
     "logo_type": "Użyj pliku SVG lub PNG.",
     "logo_size": "Użyj pliku o rozmiarze maksymalnie {size}.",
     "logo_updated": "Zaktualizowano logo",
     "preview": "Podgląd",
-    "preview_from": "{sender} przesyła ci",
     "preview_title": "Testowa baza danych",
     "preview_caption": "Tak widzą to osoby, które otwierają link z tego serwera."
   },

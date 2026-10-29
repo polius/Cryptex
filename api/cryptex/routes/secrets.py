@@ -10,7 +10,7 @@ from pydantic import ConfigDict, Field
 from starlette.background import BackgroundTask
 
 from .. import db, demo, items, ratelimit, state
-from ..deps import Caller, caller, cap_hash, deny, matches
+from ..deps import Caller, caller, cap_hash, deny, matches, signed_in_here
 from ..errors import ApiError, NotFound, gone, invalid
 from ..events import emit
 from ..util import b64u, is_id, iso, new_id, new_token, now, token_hash, unb64u
@@ -207,9 +207,10 @@ def _gone_or_deny(c: Caller, sid: str, h: str) -> ApiError:
 def meta(sid: str, request: Request) -> dict[str, Any]:
     _, row = _revealable(request, sid)
     files = items.file_count(sid)
-    # Who sent it, as this server knows them: the account's current username, or null (anonymous, or removed since).
-    # The name inside meta_ct is whatever the sender's browser wrote, so recipients are shown this one instead.
-    sender = db.val("SELECT username FROM users WHERE id = ?", row["owner_id"]) if row["owner_id"] else None
+    # Who sent it, as this server knows them (the account's current username), and only to someone signed in here:
+    # a username is half of a sign-in, and a link can travel further than meant. Null otherwise, and for anonymous
+    # senders (or accounts removed since). The page then names only the organization.
+    sender = db.val("SELECT username FROM users WHERE id = ?", row["owner_id"]) if row["owner_id"] and signed_in_here(request) else None
     out: dict[str, Any] = {
         "meta_ct": row["meta_ct"].decode(), "views_left": views_left(row["max_views"], row["views"]),
         "max_views": row["max_views"], "expires_at": iso(row["expires_at"]),

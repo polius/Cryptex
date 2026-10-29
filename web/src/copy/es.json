@@ -26,7 +26,6 @@
     "menu": "Menú",
     "account_label": "Cuenta",
     "menu_new": "Nuevo secreto",
-    "role": "{role, select, owner {propietario} other {miembro}}",
     "menu_account": "Tu cuenta",
     "signout_failed": "No se ha podido cerrar la sesión. Revisa tu conexión y vuelve a intentarlo."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Tus enlaces",
     "lede": "Todo lo que has enviado o pedido, con su estado, en cualquier dispositivo en el que inicies sesión.",
-    "lede_local": "Todo lo que has enviado desde este navegador y si ya se ha abierto.",
+    "lede_local": "Todo lo que has enviado o pedido desde este navegador, con su estado.",
     "tab_all": "Todos",
     "tab_waiting": "Pendientes",
     "tab_done": "Terminados",
@@ -165,7 +164,7 @@
     "contents_message": "un mensaje",
     "subtitle": "{other, select, true {Desde otro dispositivo · } other {}}{sent}",
     "expires_when": "caduca {when}",
-    "empty_lede": "Todo lo que envíes aparecerá aquí, con la hora en que se abra.",
+    "empty_lede": "Todo lo que envíes o pidas aparecerá aquí, con su estado.",
     "filter_label": "Filtro",
     "tab_empty": "No hay nada aquí.",
     "search": "Buscar enlaces",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "Lo mostraste aquí el {date}, y ya no funciona. Si no guardaste lo que necesitabas, pide al remitente que te lo vuelva a enviar.",
     "dropped_title": "Lo más probable es que este enlace se abriera aquí",
     "dropped_body": "Esta pestaña pidió abrirlo el {date}, pero la conexión se cortó antes de que llegara el secreto. Cuenta como abierto, así que no se puede volver a abrir. Pide al remitente que te lo vuelva a enviar.",
-    "gone_tries_body_opened": "Ya se había abierto. Después, alguien escribió mal la contraseña adicional demasiadas veces, así que se ha borrado."
+    "gone_tries_body_opened": "Ya se había abierto. Después, alguien escribió mal la contraseña adicional demasiadas veces, así que se ha borrado.",
+    "from_brand": "{brand} te ha enviado",
+    "passphrase_hint_anon": "El remitente debería habértela dado por separado, por ejemplo en una llamada."
   },
   "errors": {
     "invalid": "Hay algo en el formulario que no es correcto. Revisa el campo marcado.",
@@ -561,7 +562,7 @@
     "row_events_why": "Para que los remitentes vean qué ha pasado, y por seguridad (el registro de auditoría)",
     "row_events_kept": "Lo define el administrador; por defecto, 365 días",
     "row_account": "Tu cuenta, si tienes una: nombre de usuario, rol, cuándo se usó por última vez y un verificador de tu contraseña (nunca la contraseña)",
-    "row_account_why": "Para que puedas iniciar sesión y enviar, y mostrar tu nombre de usuario a los destinatarios",
+    "row_account_why": "Para que puedas iniciar sesión y enviar, y mostrar tu nombre de usuario a los destinatarios que también hayan iniciado sesión aquí",
     "row_account_kept": "Mientras exista tu cuenta",
     "row_cookie": "Una cookie de sesión, si inicias sesión",
     "row_cookie_why": "Para mantener tu sesión iniciada",
@@ -752,14 +753,13 @@
     "logo_help": "SVG o PNG cuadrado, de al menos 64 px.",
     "logo_current": "Logotipo actual",
     "logo_none": "Aún no hay logotipo",
-    "logo_drop": "Suelta un archivo nuevo o {browse}",
+    "logo_drop": "Suelta un archivo aquí o {browse}",
     "browse": "elige uno",
     "logo_remove": "Quitar",
     "logo_type": "Usa un archivo SVG o PNG.",
     "logo_size": "Usa un archivo de {size} como máximo.",
     "logo_updated": "Logotipo actualizado",
     "preview": "Vista previa",
-    "preview_from": "{sender} te ha enviado",
     "preview_title": "Base de datos de pruebas",
     "preview_caption": "Lo que ve la gente al abrir un enlace de este servidor."
   },

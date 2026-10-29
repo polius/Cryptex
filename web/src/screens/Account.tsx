@@ -5,7 +5,7 @@ import { api, ApiError } from '../api/client';
 import { PASSWORD_MIN } from '../lib/format';
 import { rich, t } from '../lib/i18n';
 import { config, loadConfig, shownUser, toast } from '../lib/state';
-import { Banner, Btn, ErrMsg, H1 } from '../ui/bits';
+import { Banner, Btn, ErrMsg, H1, PasswordInput } from '../ui/bits';
 import { AppHeader, Page } from '../ui/chrome';
 import { confirmDialog } from '../ui/confirm';
 import { Dialog } from '../ui/dialog';
@@ -94,9 +94,9 @@ function PasswordDialog({ onClose }: { onClose: () => void }) {
     <Dialog open onClose={onClose} labelledBy="pw-title" footer={<><button class="btn secondary" onClick={onClose}>{t('send.cancel')}</button><Btn type="submit" form="pw-form" kind="primary" loading={busy}>{t('access.change_password')}</Btn></>}>
       <h2 class="h3" id="pw-title">{t('access.password_title')}</h2>
       <form class="stack" id="pw-form" onSubmit={(e) => { e.preventDefault(); void save(); }}>
-        <div><label class="label" for="pw-cur">{t('access.password_current')}</label><input id="pw-cur" class="input" type="password" autoComplete="current-password" value={cur} data-autofocus
+        <div><label class="label" for="pw-cur">{t('access.password_current')}</label><PasswordInput id="pw-cur" autoComplete="current-password" value={cur} data-autofocus
           aria-describedby={err ? 'pw-err' : undefined} onInput={(e) => setCur((e.target as HTMLInputElement).value)} /></div>
-        <div><label class="label" for="pw-new">{t('access.password_new')}</label><input id="pw-new" class="input" type="password" autoComplete="new-password" minLength={PASSWORD_MIN} value={next}
+        <div><label class="label" for="pw-new">{t('access.password_new')}</label><PasswordInput id="pw-new" autoComplete="new-password" minLength={PASSWORD_MIN} value={next}
           aria-describedby={err ? 'pw-help pw-err' : 'pw-help'} onInput={(e) => setNext((e.target as HTMLInputElement).value)} />
           <p class="help" id="pw-help">{t('access.password_help')}</p></div>
         {err && <ErrMsg id="pw-err">{err}</ErrMsg>}

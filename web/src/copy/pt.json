@@ -26,7 +26,6 @@
     "menu": "Menu",
     "account_label": "Conta",
     "menu_new": "Novo segredo",
-    "role": "{role, select, owner {proprietário} other {membro}}",
     "menu_account": "Sua conta",
     "signout_failed": "Não foi possível sair. Verifique sua conexão e tente de novo."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Seus links",
     "lede": "Tudo o que você enviou ou pediu, com o status, em qualquer dispositivo em que você entrar.",
-    "lede_local": "Tudo o que você enviou deste navegador, e se já foi aberto.",
+    "lede_local": "Tudo o que você enviou ou pediu deste navegador, com o status.",
     "tab_all": "Todos",
     "tab_waiting": "Aguardando",
     "tab_done": "Concluídos",
@@ -165,7 +164,7 @@
     "contents_message": "uma mensagem",
     "subtitle": "{other, select, true {De outro dispositivo · } other {}}{sent}",
     "expires_when": "expira {when}",
-    "empty_lede": "Tudo o que você enviar aparece aqui, com a hora em que foi aberto.",
+    "empty_lede": "Tudo o que você enviar ou pedir aparece aqui, com o status.",
     "filter_label": "Filtrar",
     "tab_empty": "Nada aqui.",
     "search": "Buscar links",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "Você o revelou aqui em {date}, e ele não funciona mais. Se não salvou o que precisava, peça ao remetente para enviar de novo.",
     "dropped_title": "Este link provavelmente foi aberto aqui",
     "dropped_body": "Esta aba pediu para abri-lo em {date}, mas a conexão caiu antes de o segredo chegar. Ele conta como aberto, então não pode ser aberto de novo. Peça ao remetente para enviar de novo.",
-    "gone_tries_body_opened": "Ele já tinha sido aberto. Depois, alguém digitou a senha extra errada vezes demais, então ele foi apagado."
+    "gone_tries_body_opened": "Ele já tinha sido aberto. Depois, alguém digitou a senha extra errada vezes demais, então ele foi apagado.",
+    "from_brand": "{brand} enviou para você",
+    "passphrase_hint_anon": "O remetente deve ter passado a senha extra para você por outro meio, como numa ligação."
   },
   "errors": {
     "invalid": "Algo no formulário não está certo. Confira o campo destacado.",
@@ -561,7 +562,7 @@
     "row_events_why": "Para que os remetentes vejam o que aconteceu, e por segurança (o registro de auditoria)",
     "row_events_kept": "Definido pelo operador, 365 dias por padrão",
     "row_account": "Sua conta, se tiver uma: nome de usuário, papel, quando foi usada pela última vez e um verificador da sua senha (nunca a senha em si)",
-    "row_account_why": "Para você poder entrar e enviar, e mostrar seu nome de usuário aos destinatários",
+    "row_account_why": "Para você poder entrar e enviar, e mostrar seu nome de usuário aos destinatários que também entraram aqui",
     "row_account_kept": "Enquanto sua conta existir",
     "row_cookie": "Um cookie de sessão, se você entrar",
     "row_cookie_why": "Para manter você conectado",
@@ -752,14 +753,13 @@
     "logo_help": "SVG ou PNG quadrado, de pelo menos 64 px.",
     "logo_current": "Logo atual",
     "logo_none": "Nenhum logo ainda",
-    "logo_drop": "Solte um novo arquivo ou {browse}",
+    "logo_drop": "Solte um arquivo aqui ou {browse}",
     "browse": "procure",
     "logo_remove": "Remover",
     "logo_type": "Use um arquivo SVG ou PNG.",
     "logo_size": "Use um arquivo de até {size}.",
     "logo_updated": "Logo atualizado",
     "preview": "Prévia",
-    "preview_from": "{sender} enviou para você",
     "preview_title": "Banco de dados de homologação",
     "preview_caption": "O que as pessoas veem ao abrir um link deste servidor."
   },

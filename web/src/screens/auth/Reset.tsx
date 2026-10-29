@@ -6,7 +6,7 @@ import { dateTime, PASSWORD_MIN } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
 import { loadConfig } from '../../lib/state';
-import { Btn, ErrMsg, H1, SharedCheck, useViewFocus } from '../../ui/bits';
+import { Btn, ErrMsg, H1, PasswordInput, SharedCheck, useViewFocus } from '../../ui/bits';
 import { Page, RecipientHeader } from '../../ui/chrome';
 import { TotpEnroll, type TotpSetup } from '../../ui/totp';
 import { errorText } from '../errors';
@@ -88,8 +88,8 @@ export function Reset() {
                 onInput={(e) => setCode((e.target as HTMLInputElement).value.toUpperCase())} />
               {fe('code') ? <ErrMsg id="code-err">{fe('code')}</ErrMsg> : <p class="help" id="code-help">{t('reset.code_help')}</p>}</div>
             <div><label class="label" for="password">{t('signin.new_password')}</label>
-              <input id="password" class={`input${fe('password') ? ' err' : ''}`} type="password" autoComplete="new-password" minLength={PASSWORD_MIN} value={password}
-                aria-invalid={!!fe('password')} aria-describedby={fe('password') ? 'password-err' : 'password-help'} onInput={(e) => setPassword((e.target as HTMLInputElement).value)} />
+              <PasswordInput id="password" autoComplete="new-password" minLength={PASSWORD_MIN} value={password}
+                aria-invalid={!!fe('password')} aria-describedby={fe('password') ? 'password-err' : 'password-help'} onInput={(e) => setPassword((e.target as HTMLInputElement).value)} invalid={!!fe('password')} />
               {fe('password') ? <ErrMsg id="password-err">{fe('password')}</ErrMsg> : <p class="help" id="password-help">{t('invite.password_help')}</p>}</div>
             <label class="check"><input type="checkbox" checked={use2fa} onChange={(e) => setUse2fa((e.target as HTMLInputElement).checked)} />
               <span><b>{t('invite.use_2fa')}</b><small>{t('reset.totp_help')}</small></span></label>

@@ -992,10 +992,13 @@ def test_receipt_lookups_are_rate_limited(server):
 
 # ------------------------------------------------------------------ phishing with a sender name (audit: the page showed what the sender's browser claimed)
 def test_recipient_sees_the_sender_this_server_knows(client):
+    """Only someone signed in here is told who sent it, and then as this server knows them, never what the sender's
+    browser wrote. Anyone else sees no username: a username is half of a sign-in, and a link can travel."""
     s = send(client, sender="ceo@acme")
-    m = open_meta(anon(client), s)
+    m = open_meta(client, s)
     assert m["sender"] == OWNER["username"] and m["plain"]["from"] == "ceo@acme"
-    assert open_meta(anon(client), send(anon(client), sender=OWNER["username"]))["sender"] is None  # anonymous: unverified
+    assert open_meta(anon(client), s)["sender"] is None
+    assert open_meta(client, send(anon(client), sender=OWNER["username"]))["sender"] is None  # anonymous: unverified
 
 
 # ------------------------------------------------------------------ gone pages (audit: "never opened" about a link opened many times)

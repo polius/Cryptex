@@ -26,7 +26,6 @@
     "menu": "Menú",
     "account_label": "Compte",
     "menu_new": "Secret nou",
-    "role": "{role, select, owner {propietari} other {membre}}",
     "menu_account": "El teu compte",
     "signout_failed": "No s’ha pogut tancar la sessió. Comprova la connexió i torna-ho a provar."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Els teus enllaços",
     "lede": "Tot el que has enviat o demanat, amb el seu estat, en qualsevol dispositiu on iniciïs la sessió.",
-    "lede_local": "Tot el que has enviat des d’aquest navegador i si ja s’ha obert.",
+    "lede_local": "Tot el que has enviat o demanat des d’aquest navegador, amb el seu estat.",
     "tab_all": "Tots",
     "tab_waiting": "Pendents",
     "tab_done": "Acabats",
@@ -165,7 +164,7 @@
     "contents_message": "un missatge",
     "subtitle": "{other, select, true {Des d’un altre dispositiu · } other {}}{sent}",
     "expires_when": "caduca {when}",
-    "empty_lede": "Tot el que enviïs apareixerà aquí, amb l’hora en què s’obri.",
+    "empty_lede": "Tot el que enviïs o demanis apareixerà aquí, amb el seu estat.",
     "filter_label": "Filtre",
     "tab_empty": "Aquí no hi ha res.",
     "search": "Cerca enllaços",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "El vas mostrar aquí el {date}, i ja no funciona. Si no vas desar el que necessitaves, demana al remitent que te’l torni a enviar.",
     "dropped_title": "Probablement aquest enllaç s’ha obert aquí",
     "dropped_body": "Aquesta pestanya va demanar obrir-lo el {date}, però la connexió es va tallar abans que arribés el secret. Compta com a obert, així que no es pot tornar a obrir. Demana al remitent que te’l torni a enviar.",
-    "gone_tries_body_opened": "Ja s’havia obert. Després algú ha escrit malament la contrasenya addicional massa vegades i s’ha esborrat."
+    "gone_tries_body_opened": "Ja s’havia obert. Després algú ha escrit malament la contrasenya addicional massa vegades i s’ha esborrat.",
+    "from_brand": "{brand} t’ha enviat",
+    "passphrase_hint_anon": "El remitent te l’hauria d’haver donat per separat, per exemple en una trucada."
   },
   "errors": {
     "invalid": "Hi ha alguna cosa del formulari que no és correcta. Revisa el camp marcat.",
@@ -561,7 +562,7 @@
     "row_events_why": "Perquè els remitents vegin què ha passat, i per seguretat (el registre d’auditoria)",
     "row_events_kept": "El defineix l’administrador; per defecte, 365 dies",
     "row_account": "El teu compte, si en tens: nom d’usuari, rol, quan es va fer servir per últim cop i un verificador de la contrasenya (mai la contrasenya)",
-    "row_account_why": "Per poder iniciar sessió i enviar, i mostrar el teu nom d’usuari als destinataris",
+    "row_account_why": "Per poder iniciar sessió i enviar, i mostrar el teu nom d’usuari als destinataris que també hagin iniciat sessió aquí",
     "row_account_kept": "Mentre existeixi el teu compte",
     "row_cookie": "Una galeta de sessió, si inicies la sessió",
     "row_cookie_why": "Per mantenir la sessió iniciada",
@@ -752,14 +753,13 @@
     "logo_help": "SVG o PNG quadrat, d’almenys 64 px.",
     "logo_current": "Logotip actual",
     "logo_none": "Encara no hi ha logotip",
-    "logo_drop": "Deixa anar un fitxer nou o {browse}",
+    "logo_drop": "Deixa anar un fitxer aquí o {browse}",
     "browse": "tria’n un",
     "logo_remove": "Elimina",
     "logo_type": "Fes servir un fitxer SVG o PNG.",
     "logo_size": "Fes servir un fitxer de {size} com a màxim.",
     "logo_updated": "Logotip actualitzat",
     "preview": "Previsualització",
-    "preview_from": "{sender} t’ha enviat",
     "preview_title": "Base de dades de proves",
     "preview_caption": "El que veu la gent quan obre un enllaç d’aquest servidor."
   },

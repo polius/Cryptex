@@ -26,7 +26,6 @@
     "menu": "菜单",
     "account_label": "账号",
     "menu_new": "新建私密信息",
-    "role": "{role, select, owner {所有者} other {成员}}",
     "menu_account": "你的账号",
     "signout_failed": "无法退出登录。请检查网络连接后重试。"
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "我的链接",
     "lede": "你发送或索取的所有内容及其状态，在你登录的任何设备上都能看到。",
-    "lede_local": "你在这个浏览器上发出的所有内容，以及是否已被打开。",
+    "lede_local": "你在这个浏览器上发送或索取的所有内容及其状态。",
     "tab_all": "全部",
     "tab_waiting": "等待中",
     "tab_done": "已完成",
@@ -165,7 +164,7 @@
     "contents_message": "一条消息",
     "subtitle": "{other, select, true {来自其他设备 · } other {}}{sent}",
     "expires_when": "{when}过期",
-    "empty_lede": "你发送的所有内容都会显示在这里，并注明何时被打开。",
+    "empty_lede": "你发送或索取的所有内容都会连同状态显示在这里。",
     "filter_label": "筛选",
     "tab_empty": "这里什么都没有。",
     "search": "搜索链接",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "你于 {date} 在这里查看过它，它现在已失效。如果你没有保存需要的内容，请让发送者重新发送。",
     "dropped_title": "此链接很可能已在这里打开",
     "dropped_body": "这个标签页曾于 {date} 请求打开它，但在私密信息送达前连接中断了。它已算作打开，无法再次打开。请让发送者重新发送。",
-    "gone_tries_body_opened": "它之前已被打开过。之后有人多次输错附加密码，所以它已被删除。"
+    "gone_tries_body_opened": "它之前已被打开过。之后有人多次输错附加密码，所以它已被删除。",
+    "from_brand": "{brand} 发给你",
+    "passphrase_hint_anon": "发送者应该已经另外告诉你附加密码了，比如通过电话。"
   },
   "errors": {
     "invalid": "表单中有内容不正确。请检查标出的字段。",
@@ -561,7 +562,7 @@
     "row_events_why": "让发送者了解发生了什么，并用于安全（审计日志）",
     "row_events_kept": "由运营者设置，默认 365 天",
     "row_account": "你的账号（如果有）：用户名、角色、最近使用时间，以及密码的验证值（从不保存密码本身）",
-    "row_account_why": "让你可以登录并发送，并向收件人显示你的用户名",
+    "row_account_why": "让你可以登录并发送，并向同样登录了这里的收件人显示你的用户名",
     "row_account_kept": "账号存在期间",
     "row_cookie": "会话 Cookie（如果你登录）",
     "row_cookie_why": "保持你的登录状态",
@@ -752,14 +753,13 @@
     "logo_help": "正方形 SVG 或 PNG，至少 64 px。",
     "logo_current": "当前徽标",
     "logo_none": "还没有徽标",
-    "logo_drop": "拖入新文件，或{browse}",
+    "logo_drop": "将文件拖到这里，或{browse}",
     "browse": "浏览文件",
     "logo_remove": "移除",
     "logo_type": "请使用 SVG 或 PNG 文件。",
     "logo_size": "文件不能超过 {size}。",
     "logo_updated": "徽标已更新",
     "preview": "预览",
-    "preview_from": "{sender} 发给你",
     "preview_title": "测试环境数据库",
     "preview_caption": "别人打开此服务器上的链接时看到的样子。"
   },

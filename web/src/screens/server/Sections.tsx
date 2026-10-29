@@ -3,7 +3,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api } from '../../api/client';
 import { bytes, dateTime, fold, num, relative, stamp, USERNAME } from '../../lib/format';
 import { LANGUAGES, rich, t } from '../../lib/i18n';
-import { loadConfig, shownUser, toast } from '../../lib/state';
+import { loadConfig, toast } from '../../lib/state';
 import { Btn, copyText, ErrMsg, Radio, Status } from '../../ui/bits';
 import { confirmDialog } from '../../ui/confirm';
 import { BrandLockup } from '../../ui/chrome';
@@ -422,7 +422,6 @@ export function BrandingSection() {
     }
   };
   const shownName = name ?? data?.name ?? '';
-  const sender = shownUser()!.username; // the owner here, or the demo's sample owner
   const host = location.host;
   return (
     <ServerShell active="branding">
@@ -444,8 +443,8 @@ export function BrandingSection() {
               <header class="hd"><span class="brand"><BrandLockup name={shownName.trim()} logoUrl={data.logo_url} sub /></span></header>
               <div style="padding:18px"><div class="sealed"><div class="sealed-top tint" style="height:76px"><span class="seal-badge"><Mark />{t('reveal.sealed')}</span></div>
                 <div class="sealed-body" style="padding:16px 18px;gap:8px"><p class="from">{shownName
-                  ? rich('reveal.from', { sender: <b>{sender}</b>, brand: shownName })
-                  : rich('branding.preview_from', { sender: <b>{sender}</b> })}</p><p class="h3">{t('branding.preview_title')}</p></div></div></div>
+                  ? rich('reveal.from_brand', { brand: <b>{shownName}</b> }) // what people opening a link without an account see
+                  : t('reveal.from_no_brand', { sender: t('reveal.someone') })}</p><p class="h3">{t('branding.preview_title')}</p></div></div></div>
             </div><p class="help">{t('branding.preview_caption')}</p></div></div>
         </div></section>
       )}

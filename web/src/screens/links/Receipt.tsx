@@ -265,7 +265,8 @@ function RequestView({ row, deleting, setDeleting, onRenamed }: { row: Row; dele
   const created = r?.created_at ?? row.local?.created_at;
   const ended = r?.ended_at ?? row.local?.ended_at;
   const exp = r?.answer?.expires_at ?? r?.expires_at;
-  const facts: Array<{ k: string; v: string; sub?: string; full?: string }> = [{ k: t('ask.code'), v: requestCode(row.id) }];
+  // The code is already the title ("Request KFX-49M") until it's renamed.
+  const facts: Array<{ k: string; v: string; sub?: string; full?: string }> = row.local?.label ? [{ k: t('ask.code'), v: requestCode(row.id) }] : [];
   if (answerReady(row)) facts.push({ k: t('receipt.answered'), v: stamp(r!.answered_at!), sub: relative(r!.answered_at!), full: dateTime(r!.answered_at!) });
   if (!final && exp) facts.push({ k: t('send.fact_expires'), v: stamp(exp), sub: relative(exp), full: dateTime(exp) });
   if (final) facts.push({ k: t('receipt.ended'), v: ended ? stamp(ended) : '—', sub: ended ? relative(ended) : undefined, full: ended ? dateTime(ended) : undefined });

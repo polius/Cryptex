@@ -26,7 +26,6 @@
     "menu": "Menu",
     "account_label": "Account",
     "menu_new": "Nieuw geheim",
-    "role": "{role, select, owner {eigenaar} other {lid}}",
     "menu_account": "Je account",
     "signout_failed": "Uitloggen is niet gelukt. Controleer je verbinding en probeer het opnieuw."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Je links",
     "lede": "Alles wat je stuurde of vroeg, met de status, op elk apparaat waarop je inlogt.",
-    "lede_local": "Alles wat je vanuit deze browser hebt verstuurd, en of het is geopend.",
+    "lede_local": "Alles wat je vanuit deze browser stuurde of vroeg, met de status.",
     "tab_all": "Alle",
     "tab_waiting": "Wachtend",
     "tab_done": "Klaar",
@@ -165,7 +164,7 @@
     "contents_message": "een bericht",
     "subtitle": "{other, select, true {Vanaf een ander apparaat · } other {}}{sent}",
     "expires_when": "verloopt {when}",
-    "empty_lede": "Alles wat je verstuurt, verschijnt hier, met wanneer het is geopend.",
+    "empty_lede": "Alles wat je verstuurt of vraagt, verschijnt hier, met de status.",
     "filter_label": "Filter",
     "tab_empty": "Hier staat niets.",
     "search": "Links zoeken",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "Je hebt het hier bekeken op {date}, en het werkt niet meer. Heb je niet bewaard wat je nodig had? Vraag de afzender om het opnieuw te sturen.",
     "dropped_title": "Deze link is waarschijnlijk hier geopend",
     "dropped_body": "Dit tabblad vroeg op {date} om hem te openen, maar de verbinding viel weg voordat het geheim binnenkwam. Hij telt als geopend en kan dus niet opnieuw worden geopend. Vraag de afzender om het opnieuw te sturen.",
-    "gone_tries_body_opened": "Het was al geopend. Daarna heeft iemand te vaak een verkeerd extra wachtwoord ingevoerd, dus het is verwijderd."
+    "gone_tries_body_opened": "Het was al geopend. Daarna heeft iemand te vaak een verkeerd extra wachtwoord ingevoerd, dus het is verwijderd.",
+    "from_brand": "{brand} stuurt je",
+    "passphrase_hint_anon": "De afzender heeft je het extra wachtwoord als het goed is apart gegeven, bijvoorbeeld telefonisch."
   },
   "errors": {
     "invalid": "Er klopt iets niet in het formulier. Controleer het gemarkeerde veld.",
@@ -561,7 +562,7 @@
     "row_events_why": "Zodat afzenders kunnen zien wat er is gebeurd, en voor de beveiliging (het activiteitenlog)",
     "row_events_kept": "Ingesteld door de beheerder, standaard 365 dagen",
     "row_account": "Je account, als je er een hebt: gebruikersnaam, rol, wanneer het voor het laatst is gebruikt en een controlewaarde van je wachtwoord (nooit het wachtwoord zelf)",
-    "row_account_why": "Zodat je kunt inloggen en versturen, en ontvangers je gebruikersnaam zien",
+    "row_account_why": "Zodat je kunt inloggen en versturen, en ontvangers die hier ook zijn ingelogd je gebruikersnaam zien",
     "row_account_kept": "Zolang je account bestaat",
     "row_cookie": "Een sessiecookie, als je inlogt",
     "row_cookie_why": "Zodat je ingelogd blijft",
@@ -752,14 +753,13 @@
     "logo_help": "Vierkante SVG of PNG, minstens 64 px.",
     "logo_current": "Huidig logo",
     "logo_none": "Nog geen logo",
-    "logo_drop": "Sleep een nieuw bestand hierheen of {browse}",
+    "logo_drop": "Sleep een bestand hierheen of {browse}",
     "browse": "blader",
     "logo_remove": "Verwijderen",
     "logo_type": "Gebruik een SVG- of PNG-bestand.",
     "logo_size": "Gebruik een bestand van maximaal {size}.",
     "logo_updated": "Logo bijgewerkt",
     "preview": "Voorbeeld",
-    "preview_from": "{sender} stuurt je",
     "preview_title": "Stagingdatabase",
     "preview_caption": "Wat mensen zien als ze een link van deze server openen."
   },

@@ -76,7 +76,8 @@ export function Reveal({ id }: { id: string }) {
     else setS({ k: 'error', message: errorText(e, t('reveal.the_sender')) });
   }
 
-  const sender = (o: Opened) => o.from || t('reveal.someone');
+  // Mid-sentence: the sender's username (shown only to someone signed in here), else "the sender".
+  const sender = (o: Opened) => o.from || t('reveal.the_sender');
   const brand = config.value?.brand.name || host();
 
   /** Reveal, or continue a download that stopped (Try again on the "stopped" page) with the same read session. */
@@ -194,7 +195,7 @@ export function Reveal({ id }: { id: string }) {
           <Status kind="warn">{t('reveal.badge_opened')}</Status>
           <H1>{t(s.dropped ? 'reveal.dropped_title' : 'reveal.opened_here_title')}</H1>
           <p class="lede">{t(s.dropped ? 'reveal.dropped_body' : s.gone ? 'reveal.opened_here_gone_body' : 'reveal.opened_here_body', { date: dateTime(s.at) })}</p>
-          <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: config.value?.brand.name ? `${config.value.brand.name} ${t('app.brand_suffix')}` : 'Cryptex' })}</a></div>
+          <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: config.value?.brand.name || 'Cryptex' })}</a></div>
         </div></section>,
       );
     case 'stopped':
@@ -212,7 +213,7 @@ export function Reveal({ id }: { id: string }) {
           <Status kind="danger">{t('reveal.stopped_badge')}</Status>
           <H1>{t('reveal.unfinished_title')}</H1>
           <p class="lede">{t('reveal.unfinished_body', { sender: s.o.from || t('reveal.the_sender') })}</p>
-          <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: config.value?.brand.name ? `${config.value.brand.name} ${t('app.brand_suffix')}` : 'Cryptex' })}</a></div>
+          <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: config.value?.brand.name || 'Cryptex' })}</a></div>
         </div></section>,
       );
     case 'gone':
@@ -252,7 +253,8 @@ export function Reveal({ id }: { id: string }) {
     <section class="sealed">
       <div class={`sealed-top tint${revealing ? ' lifting' : ''}`}><span class="seal-badge"><Mark open={revealing} />{badge}</span></div>
       <div class="sealed-body">
-        <p class="from">{rich(config.value?.brand.name ? 'reveal.from' : 'reveal.from_no_brand', { sender: <b>{sender(o)}</b>, brand })}</p>
+        <p class="from">{o.from ? rich(config.value?.brand.name ? 'reveal.from' : 'reveal.from_no_brand', { sender: <b>{o.from}</b>, brand })
+          : config.value?.brand.name ? rich('reveal.from_brand', { brand: <b>{brand}</b> }) : t('reveal.from_no_brand', { sender: t('reveal.someone') })}</p>
         <H1>{o.title || t('reveal.a_secret')}</H1>
         <ul class="list">
           <li><Icon name="key" /><span>{m.files ? rich('reveal.contents_size', { contents: <b>{contents.charAt(0).toUpperCase() + contents.slice(1)}</b>, size: bytes(m.size) }) : <b>{contents.charAt(0).toUpperCase() + contents.slice(1)}</b>}</span></li>
@@ -268,7 +270,7 @@ export function Reveal({ id }: { id: string }) {
                 onInput={(e) => setPass((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && pass && void doReveal(o)} />
               <button type="button" class="btn icon sm ghost" aria-label={passShown ? t('reveal.hide') : t('reveal.show')} onClick={() => setPassShown(!passShown)}><Icon name={passShown ? 'eyeoff' : 'eye'} size="sm" /></button>
             </div>
-            {!err && <p class="fine" id="pass-hint" style="margin-top:8px">{t('reveal.passphrase_hint', { sender: sender(o) })}</p>}
+            {!err && <p class="fine" id="pass-hint" style="margin-top:8px">{o.from ? t('reveal.passphrase_hint', { sender: o.from }) : t('reveal.passphrase_hint_anon')}</p>}
           </div>
         )}
         {err && <ErrMsg id="pass-err">{err}</ErrMsg>}
@@ -301,7 +303,7 @@ function Gone({ reason, at, opened }: { reason: string; at?: string; opened?: bo
       <H1>{title}</H1>
       <p class="lede">{body}</p>
       {reason === 'opened' && <Banner kind="warn" icon="alert">{t('reveal.gone_tell_anon')}</Banner>}
-      <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: brand ? `${brand} ${t('app.brand_suffix')}` : 'Cryptex' })}</a></div>
+      <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: brand || 'Cryptex' })}</a></div>
     </div></section>
   );
 }
@@ -314,7 +316,7 @@ export function NotFoundBody() {
         <span class="avatar big" aria-hidden="true"><Icon name="search" size="lg" /></span>
         <H1>{t('errors.not_found')}</H1>
         <p class="lede">{rich('reveal.not_found_body', { hash: <span class="mono">#</span> })}</p>
-        <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: brand ? `${brand} ${t('app.brand_suffix')}` : 'Cryptex' })}</a></div>
+        <div class="row"><a class="btn secondary" href="/">{t('reveal.go_to', { name: brand || 'Cryptex' })}</a></div>
       </main>
     </Page>
   );

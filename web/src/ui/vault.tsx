@@ -6,7 +6,7 @@ import { t } from '../lib/i18n';
 import { config, toast } from '../lib/state';
 import { errorText } from '../screens/errors';
 import { adoptLocal, adoptOffer, keepLocal, signOut as signOutHere, unlockWithPassword, vault } from '../store/vault';
-import { Btn, ErrMsg } from './bits';
+import { Btn, ErrMsg, PasswordInput } from './bits';
 import { Dialog } from './dialog';
 import { Icon } from './icons';
 
@@ -90,8 +90,8 @@ function Unlock() {
       <p class="muted small">{t('vault.unlock_body')}</p>
       <form onSubmit={(e) => { e.preventDefault(); void go(); }}>
         <label class="label" for="vu-pw">{t('signin.password')}</label>
-        <input id="vu-pw" class={`input${err ? ' err' : ''}`} type="password" autoComplete="current-password" value={pw} data-autofocus
-          aria-invalid={!!err} aria-describedby={err ? 'vu-err' : undefined} onInput={(e) => setPw((e.target as HTMLInputElement).value)} />
+        <PasswordInput id="vu-pw" autoComplete="current-password" value={pw} data-autofocus
+          aria-invalid={!!err} aria-describedby={err ? 'vu-err' : undefined} onInput={(e) => setPw((e.target as HTMLInputElement).value)} invalid={!!err} />
       </form>
       {err && <ErrMsg id="vu-err">{err}</ErrMsg>}
     </Dialog>

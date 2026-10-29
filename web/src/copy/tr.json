@@ -26,7 +26,6 @@
     "menu": "Menü",
     "account_label": "Hesap",
     "menu_new": "Yeni gizli bilgi",
-    "role": "{role, select, owner {sahip} other {üye}}",
     "menu_account": "Hesabınız",
     "signout_failed": "Çıkış yapılamadı. Bağlantınızı kontrol edip tekrar deneyin."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Bağlantılarınız",
     "lede": "Gönderdiğiniz veya istediğiniz her şey, durumlarıyla birlikte, giriş yaptığınız her cihazda.",
-    "lede_local": "Bu tarayıcıdan gönderdiğiniz her şey ve açılıp açılmadığı.",
+    "lede_local": "Bu tarayıcıdan gönderdiğiniz veya istediğiniz her şey, durumlarıyla birlikte.",
     "tab_all": "Tümü",
     "tab_waiting": "Bekleyen",
     "tab_done": "Biten",
@@ -165,7 +164,7 @@
     "contents_message": "bir mesaj",
     "subtitle": "{other, select, true {Başka bir cihazdan · } other {}}{sent}",
     "expires_when": "{when} sona eriyor",
-    "empty_lede": "Gönderdiğiniz her şey, ne zaman açıldığıyla birlikte burada görünür.",
+    "empty_lede": "Gönderdiğiniz veya istediğiniz her şey, durumuyla birlikte burada görünür.",
     "filter_label": "Filtre",
     "tab_empty": "Burada bir şey yok.",
     "search": "Bağlantılarda ara",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "{date} tarihinde burada açtınız ve artık çalışmıyor. Gerekenleri kaydetmediyseniz gönderen kişiden tekrar göndermesini isteyin.",
     "dropped_title": "Bu bağlantı büyük olasılıkla burada açıldı",
     "dropped_body": "Bu sekme {date} tarihinde açmayı istedi, ancak gizli bilgi gelmeden bağlantı koptu. Açılmış sayılır, bu yüzden tekrar açılamaz. Gönderen kişiden tekrar göndermesini isteyin.",
-    "gone_tries_body_opened": "Daha önce açılmıştı. Sonra biri ek şifreyi çok fazla kez yanlış girdi; bu yüzden silindi."
+    "gone_tries_body_opened": "Daha önce açılmıştı. Sonra biri ek şifreyi çok fazla kez yanlış girdi; bu yüzden silindi.",
+    "from_brand": "{brand} size şunu gönderdi",
+    "passphrase_hint_anon": "Gönderen kişi ek şifreyi size ayrıca, örneğin telefonda iletmiş olmalı."
   },
   "errors": {
     "invalid": "Formda bir sorun var. İşaretli alanı kontrol edin.",
@@ -561,7 +562,7 @@
     "row_events_why": "Gönderenler ne olduğunu görebilsin diye ve güvenlik için (denetim kaydı)",
     "row_events_kept": "İşletmeci belirler, varsayılan olarak 365 gün",
     "row_account": "Varsa hesabınız: kullanıcı adı, rol, son kullanım zamanı ve şifrenizin bir doğrulayıcısı (şifrenin kendisi asla)",
-    "row_account_why": "Giriş yapıp gönderebilmeniz ve alıcılara kullanıcı adınızı göstermek için",
+    "row_account_why": "Giriş yapıp gönderebilmeniz ve burada giriş yapmış alıcılara kullanıcı adınızı göstermek için",
     "row_account_kept": "Hesabınız var olduğu sürece",
     "row_cookie": "Giriş yaparsanız bir oturum çerezi",
     "row_cookie_why": "Girişinizin açık kalması için",
@@ -752,14 +753,13 @@
     "logo_help": "Kare SVG veya PNG, en az 64 px.",
     "logo_current": "Mevcut logo",
     "logo_none": "Henüz logo yok",
-    "logo_drop": "Yeni bir dosya bırakın ya da {browse}",
+    "logo_drop": "Bir dosyayı buraya bırakın ya da {browse}",
     "browse": "göz atın",
     "logo_remove": "Kaldır",
     "logo_type": "SVG veya PNG dosyası kullanın.",
     "logo_size": "En fazla {size} boyutunda bir dosya kullanın.",
     "logo_updated": "Logo güncellendi",
     "preview": "Önizleme",
-    "preview_from": "{sender} size şunu gönderdi",
     "preview_title": "Test veritabanı",
     "preview_caption": "Bu sunucudan bir bağlantı açan kişilerin gördüğü ekran."
   },

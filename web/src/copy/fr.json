@@ -26,7 +26,6 @@
     "menu": "Menu",
     "account_label": "Compte",
     "menu_new": "Nouveau secret",
-    "role": "{role, select, owner {propriétaire} other {membre}}",
     "menu_account": "Votre compte",
     "signout_failed": "Impossible de vous déconnecter. Vérifiez votre connexion et réessayez."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Vos liens",
     "lede": "Tout ce que vous avez envoyé ou demandé, avec son statut, sur tous les appareils où vous vous connectez.",
-    "lede_local": "Tout ce que vous avez envoyé depuis ce navigateur, et s’il a été ouvert.",
+    "lede_local": "Tout ce que vous avez envoyé ou demandé depuis ce navigateur, avec son statut.",
     "tab_all": "Tous",
     "tab_waiting": "En attente",
     "tab_done": "Terminés",
@@ -165,7 +164,7 @@
     "contents_message": "un message",
     "subtitle": "{other, select, true {Depuis un autre appareil · } other {}}{sent}",
     "expires_when": "expire {when}",
-    "empty_lede": "Tout ce que vous envoyez apparaît ici, avec le moment où il a été ouvert.",
+    "empty_lede": "Tout ce que vous envoyez ou demandez apparaît ici, avec son statut.",
     "filter_label": "Filtrer",
     "tab_empty": "Rien ici.",
     "search": "Rechercher des liens",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "Vous l’avez révélé ici le {date}, et il ne fonctionne plus. Si vous n’avez pas enregistré ce dont vous aviez besoin, demandez à l’expéditeur de le renvoyer.",
     "dropped_title": "Ce lien a très probablement été ouvert ici",
     "dropped_body": "Cet onglet a demandé à l’ouvrir le {date}, mais la connexion a été coupée avant que le secret n’arrive. Il compte comme ouvert et ne peut plus être ouvert. Demandez à l’expéditeur de le renvoyer.",
-    "gone_tries_body_opened": "Il avait déjà été ouvert. Ensuite, quelqu’un a saisi un mauvais mot de passe supplémentaire trop de fois, il a donc été supprimé."
+    "gone_tries_body_opened": "Il avait déjà été ouvert. Ensuite, quelqu’un a saisi un mauvais mot de passe supplémentaire trop de fois, il a donc été supprimé.",
+    "from_brand": "{brand} vous a envoyé",
+    "passphrase_hint_anon": "L’expéditeur a dû vous donner le mot de passe supplémentaire à part, par exemple lors d’un appel."
   },
   "errors": {
     "invalid": "Un élément du formulaire est incorrect. Vérifiez le champ mis en évidence.",
@@ -561,7 +562,7 @@
     "row_events_why": "Pour que les expéditeurs voient ce qui s’est passé, et pour la sécurité (le journal d’audit)",
     "row_events_kept": "Défini par l’exploitant, 365 jours par défaut",
     "row_account": "Votre compte, si vous en avez un : nom d’utilisateur, rôle, date de dernière utilisation et un vérificateur de votre mot de passe (jamais le mot de passe lui-même)",
-    "row_account_why": "Pour vous permettre de vous connecter et d’envoyer, et montrer votre nom d’utilisateur aux destinataires",
+    "row_account_why": "Pour vous permettre de vous connecter et d’envoyer, et montrer votre nom d’utilisateur aux destinataires également connectés ici",
     "row_account_kept": "Tant que votre compte existe",
     "row_cookie": "Un cookie de session, si vous vous connectez",
     "row_cookie_why": "Pour que vous restiez connecté",
@@ -752,14 +753,13 @@
     "logo_help": "SVG ou PNG carré, d’au moins 64 px.",
     "logo_current": "Logo actuel",
     "logo_none": "Pas encore de logo",
-    "logo_drop": "Déposez un nouveau fichier ou {browse}",
+    "logo_drop": "Déposez un fichier ici ou {browse}",
     "browse": "parcourez",
     "logo_remove": "Supprimer",
     "logo_type": "Utilisez un fichier SVG ou PNG.",
     "logo_size": "Utilisez un fichier de {size} maximum.",
     "logo_updated": "Logo mis à jour",
     "preview": "Aperçu",
-    "preview_from": "{sender} vous a envoyé",
     "preview_title": "Base de données de préproduction",
     "preview_caption": "Ce que voient les gens quand ils ouvrent un lien de ce serveur."
   },

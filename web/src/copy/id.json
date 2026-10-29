@@ -26,7 +26,6 @@
     "menu": "Menu",
     "account_label": "Akun",
     "menu_new": "Rahasia baru",
-    "role": "{role, select, owner {pemilik} other {anggota}}",
     "menu_account": "Akun Anda",
     "signout_failed": "Tidak bisa keluar. Periksa koneksi Anda, lalu coba lagi."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "Tautan Anda",
     "lede": "Semua yang Anda kirim atau minta, beserta statusnya, di perangkat mana pun tempat Anda masuk.",
-    "lede_local": "Semua yang Anda kirim dari browser ini, dan apakah sudah dibuka.",
+    "lede_local": "Semua yang Anda kirim atau minta dari browser ini, beserta statusnya.",
     "tab_all": "Semua",
     "tab_waiting": "Menunggu",
     "tab_done": "Selesai",
@@ -165,7 +164,7 @@
     "contents_message": "sebuah pesan",
     "subtitle": "{other, select, true {Dari perangkat lain · } other {}}{sent}",
     "expires_when": "kedaluwarsa {when}",
-    "empty_lede": "Semua yang Anda kirim muncul di sini, beserta waktu dibukanya.",
+    "empty_lede": "Semua yang Anda kirim atau minta muncul di sini, beserta statusnya.",
     "filter_label": "Filter",
     "tab_empty": "Tidak ada apa pun di sini.",
     "search": "Cari tautan",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "Anda menampilkannya di sini pada {date}, dan tautannya sudah tidak berfungsi. Jika Anda belum menyimpan yang Anda perlukan, minta pengirim mengirimnya lagi.",
     "dropped_title": "Tautan ini kemungkinan besar dibuka di sini",
     "dropped_body": "Tab ini meminta untuk membukanya pada {date}, tetapi koneksi terputus sebelum rahasia diterima. Tautan ini dihitung sudah dibuka, jadi tidak bisa dibuka lagi. Minta pengirim mengirimnya lagi.",
-    "gone_tries_body_opened": "Rahasia ini sudah pernah dibuka. Lalu seseorang terlalu sering salah memasukkan sandi tambahan, jadi rahasia ini dihapus."
+    "gone_tries_body_opened": "Rahasia ini sudah pernah dibuka. Lalu seseorang terlalu sering salah memasukkan sandi tambahan, jadi rahasia ini dihapus.",
+    "from_brand": "{brand} mengirimi Anda",
+    "passphrase_hint_anon": "Pengirim seharusnya sudah memberikan sandi tambahan secara terpisah, misalnya lewat telepon."
   },
   "errors": {
     "invalid": "Ada yang belum benar di formulir. Periksa kolom yang ditandai.",
@@ -561,7 +562,7 @@
     "row_events_why": "Agar pengirim bisa melihat apa yang terjadi, dan untuk keamanan (log audit)",
     "row_events_kept": "Ditentukan oleh pengelola, default 365 hari",
     "row_account": "Akun Anda, jika ada: nama pengguna, peran, kapan terakhir dipakai, dan pemverifikasi sandi Anda (bukan sandinya)",
-    "row_account_why": "Agar Anda bisa masuk dan mengirim, dan penerima melihat nama pengguna Anda",
+    "row_account_why": "Agar Anda bisa masuk dan mengirim, dan penerima yang juga masuk di sini melihat nama pengguna Anda",
     "row_account_kept": "Selama akun Anda ada",
     "row_cookie": "Cookie sesi, jika Anda masuk",
     "row_cookie_why": "Agar Anda tetap masuk",
@@ -752,14 +753,13 @@
     "logo_help": "SVG atau PNG persegi, minimal 64 px.",
     "logo_current": "Logo saat ini",
     "logo_none": "Belum ada logo",
-    "logo_drop": "Letakkan file baru atau {browse}",
+    "logo_drop": "Letakkan file di sini atau {browse}",
     "browse": "telusuri",
     "logo_remove": "Hapus",
     "logo_type": "Gunakan file SVG atau PNG.",
     "logo_size": "Gunakan file berukuran {size} atau kurang.",
     "logo_updated": "Logo diperbarui",
     "preview": "Pratinjau",
-    "preview_from": "{sender} mengirimi Anda",
     "preview_title": "Database staging",
     "preview_caption": "Yang dilihat orang saat membuka tautan dari server ini."
   },

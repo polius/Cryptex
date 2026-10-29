@@ -148,7 +148,7 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
     <>
       <div class="menu-scrim dim" onClick={onClose} aria-hidden="true" />
       <div class="menu-pop acct-menu" id="account-menu" role="group" aria-label={t('app.account_label')} ref={ref}>
-        {user && <div class="who"><b>{user.username}</b><small>{t('app.role', { role: user.role })}</small></div>}
+        {user && <div class="who"><b>{user.username}</b><small>{t(user.role === 'owner' ? 'people.owner' : 'people.member')}</small></div>}
         <button class="mi" onClick={go('/')}><Icon name="plus" size="sm" />{t('app.menu_new')}</button>
         <button class="mi" onClick={go('/links')}><Icon name="link" size="sm" />{t('app.nav_links')}</button>
         {user?.role === 'owner' && <button class="mi" onClick={go('/server')}><Icon name="gauge" size="sm" />{t('app.nav_server')}</button>}

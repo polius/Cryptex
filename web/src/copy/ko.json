@@ -26,7 +26,6 @@
     "menu": "메뉴",
     "account_label": "계정",
     "menu_new": "새 시크릿",
-    "role": "{role, select, owner {소유자} other {멤버}}",
     "menu_account": "내 계정",
     "signout_failed": "로그아웃하지 못했어요. 연결을 확인하고 다시 시도하세요."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "내 링크",
     "lede": "보내거나 요청한 모든 것과 그 상태를, 로그인한 어느 기기에서나 볼 수 있어요.",
-    "lede_local": "이 브라우저에서 보낸 시크릿과 열람 여부예요.",
+    "lede_local": "이 브라우저에서 보내거나 요청한 모든 것과 그 상태예요.",
     "tab_all": "전체",
     "tab_waiting": "대기 중",
     "tab_done": "완료",
@@ -165,7 +164,7 @@
     "contents_message": "메시지",
     "subtitle": "{other, select, true {다른 기기에서 · } other {}}{sent}",
     "expires_when": "{when} 만료",
-    "empty_lede": "보낸 시크릿은 모두 여기에 열람 시각과 함께 표시돼요.",
+    "empty_lede": "보내거나 요청한 모든 것이 여기에 상태와 함께 표시돼요.",
     "filter_label": "필터",
     "tab_empty": "여기에는 아무것도 없어요.",
     "search": "링크 검색",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "{date}에 여기에서 열람해서 이 링크는 더 이상 작동하지 않아요. 필요한 내용을 저장하지 않았다면 보낸 사람에게 다시 보내 달라고 하세요.",
     "dropped_title": "이 링크는 아마 여기에서 열렸을 거예요",
     "dropped_body": "이 탭에서 {date}에 열기를 요청했지만, 시크릿이 도착하기 전에 연결이 끊겼어요. 열린 것으로 처리되어 다시 열 수 없어요. 보낸 사람에게 다시 보내 달라고 하세요.",
-    "gone_tries_body_opened": "이미 열람된 적이 있어요. 그 후 누군가 추가 비밀번호를 너무 많이 틀려서 삭제됐어요."
+    "gone_tries_body_opened": "이미 열람된 적이 있어요. 그 후 누군가 추가 비밀번호를 너무 많이 틀려서 삭제됐어요.",
+    "from_brand": "{brand}에서 도착했어요",
+    "passphrase_hint_anon": "추가 비밀번호는 보낸 사람에게서 전화 등 다른 방법으로 따로 받았을 거예요."
   },
   "errors": {
     "invalid": "입력한 내용에 문제가 있어요. 표시된 항목을 확인하세요.",
@@ -561,7 +562,7 @@
     "row_events_why": "보낸 사람이 무슨 일이 있었는지 확인하고, 보안을 지키기 위해(감사 로그)",
     "row_events_kept": "운영자가 설정, 기본값 365일",
     "row_account": "계정(있는 경우): 사용자 이름, 역할, 마지막 사용 시각, 비밀번호 검증값(비밀번호 자체는 저장하지 않음)",
-    "row_account_why": "로그인해서 보낼 수 있게 하고 받는 사람에게 사용자 이름을 보여 주기 위해",
+    "row_account_why": "로그인해서 보낼 수 있게 하고, 여기에 로그인한 받는 사람에게 사용자 이름을 보여 주기 위해",
     "row_account_kept": "계정이 있는 동안",
     "row_cookie": "로그인한 경우 세션 쿠키",
     "row_cookie_why": "로그인 상태를 유지하기 위해",
@@ -752,14 +753,13 @@
     "logo_help": "정사각형 SVG 또는 PNG, 64px 이상.",
     "logo_current": "현재 로고",
     "logo_none": "아직 로고가 없어요",
-    "logo_drop": "새 파일을 끌어다 놓거나 {browse}",
+    "logo_drop": "파일을 여기에 끌어다 놓거나 {browse}",
     "browse": "찾아보기",
     "logo_remove": "삭제",
     "logo_type": "SVG 또는 PNG 파일을 사용하세요.",
     "logo_size": "{size} 이하의 파일을 사용하세요.",
     "logo_updated": "로고를 업데이트했어요",
     "preview": "미리보기",
-    "preview_from": "{sender}에게서 도착했어요",
     "preview_title": "스테이징 데이터베이스",
     "preview_caption": "이 서버의 링크를 연 사람에게 보이는 화면이에요."
   },

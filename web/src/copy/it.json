@@ -26,7 +26,6 @@
     "menu": "Menu",
     "account_label": "Account",
     "menu_new": "Nuovo segreto",
-    "role": "{role, select, owner {proprietario} other {membro}}",
     "menu_account": "Il tuo account",
     "signout_failed": "Impossibile uscire. Controlla la connessione e riprova."
   },
@@ -148,7 +147,7 @@
   "links": {
     "title": "I tuoi link",
     "lede": "Tutto quello che hai inviato o chiesto, con il suo stato, su ogni dispositivo in cui accedi.",
-    "lede_local": "Tutto quello che hai inviato da questo browser e se è stato aperto.",
+    "lede_local": "Tutto quello che hai inviato o chiesto da questo browser, con il suo stato.",
     "tab_all": "Tutti",
     "tab_waiting": "In attesa",
     "tab_done": "Completati",
@@ -165,7 +164,7 @@
     "contents_message": "un messaggio",
     "subtitle": "{other, select, true {Da un altro dispositivo · } other {}}{sent}",
     "expires_when": "scade {when}",
-    "empty_lede": "Tutto quello che invii compare qui, con il momento in cui è stato aperto.",
+    "empty_lede": "Tutto quello che invii o chiedi compare qui, con il suo stato.",
     "filter_label": "Filtra",
     "tab_empty": "Niente qui.",
     "search": "Cerca link",
@@ -359,7 +358,9 @@
     "opened_here_gone_body": "L’hai rivelato qui il {date} e ora non funziona più. Se non hai salvato quello che ti serviva, chiedi a chi l’ha inviato di mandarlo di nuovo.",
     "dropped_title": "Molto probabilmente questo link è stato aperto qui",
     "dropped_body": "Questa scheda ha chiesto di aprirlo il {date}, ma la connessione si è interrotta prima che arrivasse il segreto. Conta come aperto, quindi non si può aprire di nuovo. Chiedi a chi l’ha inviato di mandarlo di nuovo.",
-    "gone_tries_body_opened": "Era già stato aperto. Poi qualcuno ha inserito la password aggiuntiva sbagliata troppe volte, quindi è stato cancellato."
+    "gone_tries_body_opened": "Era già stato aperto. Poi qualcuno ha inserito la password aggiuntiva sbagliata troppe volte, quindi è stato cancellato.",
+    "from_brand": "{brand} ti ha inviato",
+    "passphrase_hint_anon": "Chi l’ha inviato dovrebbe averti dato la password aggiuntiva a parte, per esempio al telefono."
   },
   "errors": {
     "invalid": "Qualcosa nel modulo non va. Controlla il campo evidenziato.",
@@ -561,7 +562,7 @@
     "row_events_why": "Per far vedere ai mittenti cosa è successo, e per la sicurezza (il registro attività)",
     "row_events_kept": "Deciso dal gestore, 365 giorni per impostazione predefinita",
     "row_account": "Il tuo account, se ne hai uno: nome utente, ruolo, ultimo utilizzo e un verificatore della password (mai la password stessa)",
-    "row_account_why": "Per permetterti di accedere e inviare, e mostrare il tuo nome utente ai destinatari",
+    "row_account_why": "Per permetterti di accedere e inviare, e mostrare il tuo nome utente ai destinatari che hanno effettuato l’accesso anche qui",
     "row_account_kept": "Finché esiste il tuo account",
     "row_cookie": "Un cookie di sessione, se accedi",
     "row_cookie_why": "Per mantenere l’accesso",
@@ -752,14 +753,13 @@
     "logo_help": "SVG o PNG quadrato, di almeno 64 px.",
     "logo_current": "Logo attuale",
     "logo_none": "Ancora nessun logo",
-    "logo_drop": "Trascina un nuovo file o {browse}",
+    "logo_drop": "Trascina un file qui o {browse}",
     "browse": "sfoglia",
     "logo_remove": "Rimuovi",
     "logo_type": "Usa un file SVG o PNG.",
     "logo_size": "Usa un file di {size} o meno.",
     "logo_updated": "Logo aggiornato",
     "preview": "Anteprima",
-    "preview_from": "{sender} ti ha inviato",
     "preview_title": "Database di staging",
     "preview_caption": "Ciò che vedono le persone quando aprono un link da questo server."
   },
