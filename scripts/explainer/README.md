@@ -60,7 +60,7 @@ If every pixel is a **pure function of the timestamp**, then
 So the "renderer" is a web page, and the "render farm" is `page.screenshot()`
 in a loop.
 
-Scene arc, timed to the narration (about 58 s):
+Scene arc, timed to the narration (about 70 s):
 
 ```
 open ("Meet Cryptex": the mark clasps, the name decrypts)
@@ -157,8 +157,10 @@ on the film's paper, with a play button (`POSTER` in `web/scenes.js`):
 ## Customizing
 
 - **Wording and pacing**: edit `LINES` in `narration.py`. Keep it short:
-  the whole film is about 90 spoken words. `GAP_SAME`,
-  `GAP_SCENE` and `GAP_EXTRA` decide how fast the film feels. Adding a line?
+  the whole film is about 90 spoken words. `HOLD` / `SCENE_HOLD` (how long a
+  scene stays on its point after its last word), `LEAD` / `SCENE_LEAD` (how
+  long it shows before its first), `GAP_SAME` and `GAP_EXTRA` decide how
+  fast the film feels. Adding a line?
   Give it a scene and, if a visual should land on a word, an anchor
   (`{"key": "key"}`); scenes read it with `api.on("<line-id>", "<anchor>")`.
 - **Visuals**: `web/scenes.js` and `web/style.css`. A scene moves its camera

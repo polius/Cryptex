@@ -79,7 +79,7 @@
     spans.forEach((s, i) => {
       const p = outQuint(ramp(t, t0 + i * stagger, t0 + i * stagger + dur));
       let y = (1 - p) * 120;
-      if (out != null) y -= inCubic(ramp(t, out + i * stagger * 0.5, out + i * stagger * 0.5 + 0.35)) * 120;
+      if (out != null) y -= inCubic(ramp(t, out + i * stagger * 0.5, out + i * stagger * 0.5 + 0.5)) * 120;
       s.style.transform = `translateY(${y.toFixed(2)}%)`;
     });
   }
@@ -175,7 +175,9 @@
     // animations the scene seeks frame by frame (B.seek).
     const css = "<style>html,body{overflow:hidden!important;scrollbar-width:none}" +
       "*,*::before,*::after{transition:none!important;caret-color:transparent}" +
-      ":not(.anim,.anim *),:not(.anim,.anim *)::before,:not(.anim,.anim *)::after{animation:none!important}</style>";
+      ":not(.anim,.anim *),:not(.anim,.anim *)::before,:not(.anim,.anim *)::after{animation:none!important}" +
+      // pages start at the top: centred, they would jump when a panel opens and leave empty space above
+      ".send-page{align-content:start!important}</style>";
     return html
       .replace(/<script[\s\S]*?<\/script>/g, "")
       .replace(/<link rel="(modulepreload|manifest|icon|apple-touch-icon)"[^>]*>/g, "")

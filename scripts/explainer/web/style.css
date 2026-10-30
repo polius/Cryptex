@@ -224,7 +224,7 @@ html, body {
 .card-cut { transform-origin: 70% 50%; }
 .biglink { font: 500 50px/1 var(--mono); letter-spacing: -0.01em; color: var(--ink); white-space: pre; }
 .biglink .h { display: inline-block; color: var(--ink-2); }
-.biglink .frag { position: relative; display: inline-block; color: var(--accent); transform-origin: 50% 60%;
+.biglink .frag { position: relative; display: inline-block; color: var(--accent); transform-origin: 50% 50%;
   text-shadow: 0 0 calc(var(--hi, 0) * 28px) rgba(143, 169, 240, calc(var(--hi, 0) * 0.7)); }
 .biglink .frag::after { content: ""; position: absolute; left: -14px; right: -14px; top: -16px; bottom: -16px; border-radius: 16px;
   background: rgba(143, 169, 240, 0.08); box-shadow: inset 0 0 0 2px rgba(143, 169, 240, 0.5), 0 20px 60px -10px rgba(143, 169, 240, 0.35); opacity: var(--hi, 0); }
@@ -243,3 +243,4 @@ html, body {
 .ghcard svg { width: 150px; height: 150px; color: var(--ink); }
 .ghcard b { font: 600 44px/1 var(--text); color: var(--ink); white-space: nowrap; }
 .ghcard span { font: 500 30px/1 var(--text); color: var(--muted); }
+.biglink .frag .ktag { position: absolute; left: 50%; top: 100%; margin-top: 46px; }

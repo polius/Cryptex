@@ -436,7 +436,7 @@
       + `<div class="actions-m between"><button type="button" class="btn danger hide-m">${ic("trash", "sm")}Destroy</button><div class="row"><button type="button" class="btn secondary">${ic("inbox", "sm")}<span class="ask-l">Ask for a secret</span></button><button type="button" class="btn primary">Done</button></div></div></main>` + foot();
   }
   const SSH = "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQ\n-----END OPENSSH PRIVATE KEY-----";
-  function answerPage(text) {
+  function answerPage(text, busy = false) {
     const filled = !!text;
     return hdRecipient() + `<main class="main send-page"><div class="send-head has-note"><h1 class="h1">Someone is asking you for a secret</h1><p class="lede">Put it below. It’s encrypted on this device before it’s sent.</p>`
       + `<figure class="ask-said"><figcaption>${ic("user", "sm")}From the person asking</figcaption><blockquote>${NOTE}</blockquote></figure></div>`
@@ -445,11 +445,12 @@
         : `<div class="cmp-empty"><textarea class="ph-area" rows="1" placeholder="Type or paste a password, a login, a private note…" style="height: 140px;"></textarea></div>`)
       + `<div class="cmp-bar"><button type="button" class="btn sm ghost">${ic("clip", "sm")}Attach files</button><button type="button" class="btn sm ghost">${ic("plus", "sm")}Add field</button><span class="cmp-end">`
       + (filled ? `<span class="detected counter">${text.length} / 10,000 characters</span>` : "")
-      + `<span class="cmp-go"><button type="button" class="btn primary send-sec"${filled ? "" : ' aria-disabled="true"'}>${ic("lock", "sm")}Send securely</button></span></span></div></section>`
+      + `<span class="cmp-go"><button type="button" class="btn primary send-sec"${filled ? "" : ' aria-disabled="true"'}${busy ? " disabled" : ""}>${busy ? '<span class="spin"></span>' : ic("lock", "sm")}Send securely</button></span></span></div></section>`
+      + (busy ? `<p class="fine" role="status">Encrypting and sending…</p>` : "")
       + `<ul class="list ask-facts"><li>${ic("lock")}<span>Encrypted on this device. Only the person who asked can open it, not even ${HOST}.</span></li><li>${ic("clock")}<span>You can answer until Sat, Oct 31, 09:43 AM.</span></li></ul></main>`;
   }
   function answerSentPage() {
-    return hdRecipient() + `<main class="main narrow"><section class="outcome"><div class="outcome-top tint"><span class="outcome-icon ok">${ic("check", "lg")}</span></div>`
+    return hdRecipient() + `<main class="main narrow"><section class="outcome anim"><div class="outcome-top tint"><span class="outcome-icon ok">${ic("check", "lg")}</span></div>`
       + `<div class="outcome-body"><h1 class="h2">Sent</h1><div class="outcome-text"><p>It’s encrypted for the person who asked, and nobody else. You can close this page.</p></div></div></section></main>`;
   }
 
@@ -472,69 +473,69 @@
 
   /* ====================================================================== *
    *  SEND — one continuous shot of the app: paste, choose how long it
-   *  lasts, create the link; the camera follows the hand
+   *  lasts, create the link; the camera follows the hand. The window shows
+   *  the whole page at once (no scrolling), so the camera alone moves.
    * ====================================================================== */
   function send(cam, api) {
-    const B = browser(cam, { x: 250, y: 110, w: 1420, h: 900, zoom: 1.18 });
+    const B = browser(cam, { x: 250, y: 80, w: 1420, h: 960, zoom: 1.0 });
     const clip = at(cam, 0, 0, "clip", ENV.map(([k, v]) => `<span class="k">${k}</span>=${k === "DB_PASSWORD" ? `"${v}"` : v}`).join("\n"));
     const kcap = at(cam, 0, 0, "keycap", "⌘ V");
     const cur = pointer(cam);
 
-    const PASTE = api.on("send1", "paste") + 0.25, FIELDS = PASTE + 0.35, TY = FIELDS + 0.3, RATE = 0.03;
-    const CHANGE = api.on("send1", "choose") + 0.05, HOUR = api.on("send1", "lasts") + 0.05, ONCE = HOUR + 0.6;
-    const GO = api.on("send2", "create") + 0.1;
+    const PASTE = api.on("send1", "paste") + 0.35, FIELDS = PASTE + 0.4, TY = FIELDS + 0.45, RATE = 0.035;
+    const CHANGE = api.on("send2", "choose") - 0.05, HOUR = api.on("send2", "lasts") + 0.05, ONCE = HOUR + 0.75;
+    const GO = api.on("send3", "create") + 0.15;
+    // the app's seal, slowed down so each step can be read
     const T = { S1: GO + 0.05 };
-    T.S2 = T.S1 + 1.0; T.S3 = T.S2 + 0.55; T.LEAVE = T.S3 + 0.7; T.ARRIVE = T.LEAVE + 0.32;
+    T.S2 = T.S1 + 1.4; T.S3 = T.S2 + 0.8; T.LEAVE = T.S3 + 1.0; T.ARRIVE = T.LEAVE + 0.4;
     api.cue("key", PASTE - 0.02, 0.6); api.cue("key", PASTE + 0.05, 0.5);
     api.cue("whoosh", PASTE + 0.08, 0.3);
-    ENV.forEach((_, i) => api.cue("pop", FIELDS + 0.04 + i * 0.08, 0.32));
+    ENV.forEach((_, i) => api.cue("pop", FIELDS + 0.04 + i * 0.1, 0.32));
     for (let i = 0; i < TITLE.length; i += 2) api.cue("key", TY + i * RATE, 0.18);
     api.cue("click", CHANGE, 0.6); api.cue("click", HOUR, 0.6); api.cue("tick", ONCE, 0.8);
     api.cue("click", GO, 0.8);
     api.cue("scramble", T.S1 + 0.02, 0.7); api.cue("sweep", T.S1 + 0.1, 0.5);
     api.cue("clasp", T.S2, 0.9); api.cue("chime", T.S3, 0.7);
 
-    let P = { change: [1300, 860], hour: [1100, 700], once: [1000, 800], go: [1600, 700], comp: [960, 560], panel: [960, 700], box: [960, 500] }, SCR = 0;
+    let P = { change: [1300, 860], hour: [1100, 700], once: [1000, 800], go: [1600, 700], comp: [960, 560], panel: [960, 700], box: [960, 500] };
     afterFonts(() => {
       B.html(sendPage({ fields: 3, title: TITLE, options: true }));
-      SCR = Math.max(0, B.$(".panel").getBoundingClientRect().bottom + 40 - B.h);
       P.hour = B.at(".choice:nth-child(1)", 0.5, 0.55); P.once = B.at(".panel .check input", 0.5, 0.5); P.go = B.at("#send-go", 0.45, 0.55);
-      P.panel = B.at(".panel", 0.5, 0.42);
+      P.panel = B.at(".panel", 0.5, 0.5);
       B.html(sendPage({ fields: 3, title: TITLE }));
       P.change = B.at(".change", 0.45, 0.55); P.comp = B.at(".composer", 0.5, 0.5);
       B.html(sentPage()); P.box = B.at(".linkbox", 0.5, 0.5);
     });
 
     return function (t) {
-      // in on the composer as it fills, down to the options, over to Create link, back to the link
-      camera(cam, t, [aim(0, 1.0, [960, 560], [960, 545]), aim(PASTE - 0.7, 1.24, P.comp, [960, 560], 1.1),
-        aim(CHANGE + 0.05, 1.2, [P.panel[0], P.panel[1] - SCR], [960, 560], 1.1),
-        aim(ONCE + 0.45, 1.3, P.comp, [960, 590], 1.1),
-        aim(T.ARRIVE - 0.1, 1.22, P.box, [960, 520], 1.1)], 0.4);
-      reveal(B.win, ramp(t, -0.2, 0.5), { dy: 40, scale: 0.98 });
+      // wide, then in on the composer as it fills, down to the options, back to Create link, then on the link
+      camera(cam, t, [aim(0, 1.0, [960, 560], [960, 545]), aim(PASTE - 1.0, 1.42, P.comp, [960, 560], 1.4),
+        aim(CHANGE - 0.35, 1.36, P.panel, [960, 560], 1.4),
+        aim(ONCE + 0.5, 1.42, P.comp, [960, 560], 1.4),
+        aim(T.LEAVE + 0.1, 1.38, P.box, [960, 520], 1.5)], 0.35);
+      reveal(B.win, ramp(t, -0.2, 0.6), { dy: 40, scale: 0.98 });
       if (t < T.S1) {
-        const st = { fields: t >= FIELDS ? 3 : 0, focus: t < CHANGE - 0.1, title: typed(TITLE, t, TY, RATE), options: t >= CHANGE && t < ONCE + 0.7, hour: t >= HOUR, once: t >= ONCE };
+        const st = { fields: t >= FIELDS ? 3 : 0, focus: t < CHANGE - 0.1, title: typed(TITLE, t, TY, RATE), options: t >= CHANGE, hour: t >= HOUR, once: t >= ONCE };
         B.html(sendPage(st));
-        if (st.fields) B.$$(".field").forEach((f, i) => { const p = outQuint(ramp(t, FIELDS + i * 0.08, FIELDS + i * 0.08 + 0.35)); f.style.opacity = p.toFixed(3); f.style.transform = `translateY(${(10 * (1 - p)).toFixed(1)}px)`; });
-        B.scroll(SCR * inOutCubic(ramp(t, CHANGE + 0.05, CHANGE + 0.55)) * (1 - inOutCubic(ramp(t, ONCE + 0.3, ONCE + 0.8))));
+        if (st.fields) B.$$(".field").forEach((f, i) => { const p = outQuint(ramp(t, FIELDS + i * 0.1, FIELDS + i * 0.1 + 0.45)); f.style.opacity = p.toFixed(3); f.style.transform = `translateY(${(10 * (1 - p)).toFixed(1)}px)`; });
+        const pn = B.$(".panel");
+        if (pn) { const p = outQuint(ramp(t, CHANGE, CHANGE + 0.45)); pn.style.opacity = p.toFixed(3); pn.style.transform = `translateY(${(-10 * (1 - p)).toFixed(1)}px)`; }
       } else if (t < T.ARRIVE) {
-        B.html(sendPage({ fields: 3, title: TITLE, once: true, hour: true, seal: true }));
-        if (t >= T.LEAVE) { const m = B.$("main"); setClass(m, "leaving", true); setClass(m, "anim", true); B.seek(m, (t - T.LEAVE) * 1000); }
+        B.html(sendPage({ fields: 3, title: TITLE, once: true, hour: true, options: true, seal: true }));
+        if (t >= T.LEAVE) { const m = B.$("main"); setClass(m, "leaving", true); setClass(m, "anim", true); B.seek(m, ((t - T.LEAVE) * 1000) / 2.2); }
         sealDrive(B, t, T);
-        B.scroll(0);
       } else {
-        B.html(sentPage()); B.seek(B.$("main"), (t - T.ARRIVE) * 1000); B.scroll(0);
+        B.html(sentPage()); B.seek(B.$("main"), ((t - T.ARRIVE) * 1000) / 1.7);
       }
       // the clipboard drops into the composer
       clip.parentElement.style.left = P.comp[0] + "px"; clip.parentElement.style.top = P.comp[1] - 10 + "px";
-      kcap.parentElement.style.left = P.comp[0] + 300 + "px"; kcap.parentElement.style.top = P.comp[1] - 130 + "px";
-      const cp = ramp(t, PASTE - 0.7, PASTE - 0.35), flyIn = inCubic(ramp(t, PASTE + 0.05, FIELDS));
-      reveal(clip, cp, { dy: 30, alpha: 1 - flyIn, base: `translateY(${(-50 * flyIn).toFixed(1)}px) scale(${lerp(1, 0.7, flyIn).toFixed(3)})` });
-      reveal(kcap, ramp(t, PASTE - 0.6, PASTE - 0.3) * (1 - ramp(t, PASTE + 0.2, PASTE + 0.45)), { dy: 16, base: `translateY(${(4 * Math.sin(Math.PI * ramp(t, PASTE - 0.06, PASTE + 0.12))).toFixed(1)}px)` });
-      const off = (p, s) => [p[0], p[1] - s];
-      const pos = path([[CHANGE - 0.9, P.change[0] + 220, P.change[1] + 160], [CHANGE - 0.05, ...P.change], [HOUR - 0.05, ...off(P.hour, SCR)],
-        [ONCE - 0.05, ...off(P.once, SCR)], [GO - 0.05, ...P.go], [GO + 0.8, P.go[0] + 110, P.go[1] + 130]])(t);
-      cur(t, pos, [CHANGE, HOUR, ONCE, GO], ramp(t, CHANGE - 0.9, CHANGE - 0.6) * (1 - ramp(t, GO + 0.4, GO + 0.8)));
+      kcap.parentElement.style.left = P.comp[0] + 250 + "px"; kcap.parentElement.style.top = P.comp[1] - 110 + "px";
+      const cp = ramp(t, PASTE - 0.8, PASTE - 0.4), flyIn = inCubic(ramp(t, PASTE + 0.05, FIELDS));
+      reveal(clip, cp, { dy: 30, alpha: 1 - flyIn, base: `scale(0.8) translateY(${(-50 * flyIn).toFixed(1)}px) scale(${lerp(1, 0.7, flyIn).toFixed(3)})` });
+      reveal(kcap, ramp(t, PASTE - 0.7, PASTE - 0.35) * (1 - ramp(t, PASTE + 0.2, PASTE + 0.5)), { dy: 16, base: `scale(0.8) translateY(${(4 * Math.sin(Math.PI * ramp(t, PASTE - 0.06, PASTE + 0.12))).toFixed(1)}px)` });
+      const pos = path([[CHANGE - 1.0, P.change[0] + 180, P.change[1] + 140], [CHANGE - 0.05, ...P.change], [HOUR - 0.05, ...P.hour],
+        [ONCE - 0.05, ...P.once], [GO - 0.05, ...P.go], [GO + 0.9, P.go[0] + 90, P.go[1] + 110]])(t);
+      cur(t, pos, [CHANGE, HOUR, ONCE, GO], ramp(t, CHANGE - 1.0, CHANGE - 0.65) * (1 - ramp(t, GO + 0.45, GO + 0.9)));
     };
   }
 
@@ -552,41 +553,37 @@
     const t2 = bigtype(layer, "The key stays in the link.", [1], { x: 960, y: 300, size: 96, center: true });
     const t3 = bigtype(layer, "Your server can’t read it.", [3], { x: 960, y: 250, size: 96, center: true });
     const HP = `${HOST}/s/${ID}`, FR = `#${KEY}`;
-    const hero = at(cam, 960, 610, "biglink", `<span class="h"></span><span class="frag"></span>`);
-    const hp = hero.querySelector(".h"), fr = hero.querySelector(".frag");
-    const ktag = at(cam, 0, 0, "tag acc big", `${ic("key")}The key`);
+    const hero = at(cam, 960, 610, "biglink", `<span class="h"></span><span class="frag"><span class="ft"></span><span class="ktag tag acc big">${ic("key")}The key</span></span>`);
+    const hp = hero.querySelector(".h"), fr = hero.querySelector(".frag"), ft = hero.querySelector(".ft"), ktag = hero.querySelector(".ktag");
     const L = vcard(cam, 530, 640, `${ic("user")}<span>What you send</span>`, "plain");
     const R = vcard(cam, 1390, 640, `${SERVER_IC}<span>What your server stores</span>`, "noise");
 
     const KEYT = api.on("key2", "key") - 0.15;
-    const SPLIT = api.on("key2", "server") - 0.45;
+    const SPLIT = api.segStart("key3") - 0.55;
     api.cue("scramble", 0.15, 0.6); api.cue("swell", KEYT - 0.4, 0.5); api.cue("hit", KEYT + 0.05, 0.5);
     api.cue("whoosh", SPLIT, 0.4); api.cue("pop", SPLIT + 0.25, 0.4); api.cue("pop", SPLIT + 0.45, 0.4);
-    api.cue("deny", api.on("key2", "read") + 0.05, 0.35);
-    afterFonts(() => {
-      setText(hp, HP); setText(fr, FR);
-      const c = cam.getBoundingClientRect(), r = fr.getBoundingClientRect();
-      ktag.parentElement.style.left = r.left - c.left + r.width / 2 + "px"; ktag.parentElement.style.top = r.bottom - c.top + 70 + "px";
-    });
+    api.cue("deny", api.on("key3", "read") + 0.05, 0.35);
 
     return function (t) {
       camera(cam, t, [[0, 1.04, 0, 0], [0, 1.0, 0, 0, api.dur]], 0.4);
-      kin(t1, t, api.segStart("key1") - 0.25, 0.06, 0.5, KEYT - 0.5);
-      kin(t2, t, KEYT - 0.2, 0.06, 0.5, SPLIT - 0.1);
-      kin(t3, t, SPLIT + 0.2, 0.06, 0.5);
+      kin(t1, t, api.segStart("key1") - 0.25, 0.06, 0.6, KEYT - 0.75);
+      kin(t2, t, KEYT - 0.05, 0.06, 0.6, SPLIT - 0.3);
+      kin(t3, t, SPLIT + 0.45, 0.06, 0.6);
       // the link resolves out of noise, then its key lifts out and glows
-      const out = inOutCubic(ramp(t, SPLIT - 0.2, SPLIT + 0.3));
+      const out = inOutCubic(ramp(t, SPLIT - 0.3, SPLIT + 0.55));
       reveal(hero, ramp(t, 0.0, 0.4) * (1 - out), { dy: 0, scale: 0.94, base: `translateY(${(-60 * out).toFixed(1)}px)` });
       setText(hp, A.decrypt(HP, t, 0.15, 0.9, 3));
-      setText(fr, A.decrypt(FR, t, 0.55, 0.9, 5));
-      const lift = spring(ramp(t, KEYT, KEYT + 0.9) * 1.3, 8, 5.5);
-      fr.style.transform = `translateY(${(-26 * lift).toFixed(1)}px) scale(${lerp(1, 1.06, lift).toFixed(3)})`;
-      fr.style.setProperty("--hi", clamp(lift).toFixed(3));
-      hp.style.opacity = lerp(1, 0.35, ramp(t, KEYT, KEYT + 0.5)).toFixed(3);
-      reveal(ktag, ramp(t, KEYT + 0.25, KEYT + 0.7) * (1 - out), { dy: 14 });
+      setText(ft, A.decrypt(FR, t, 0.55, 0.9, 5));
+      // the key slides apart from the address, on the same line, and lights up
+      const sep = inOutCubic(ramp(t, KEYT, KEYT + 0.9));
+      hp.style.transform = `translateX(${(-22 * sep).toFixed(1)}px)`;
+      fr.style.transform = `translateX(${(22 * sep).toFixed(1)}px)`;
+      fr.style.setProperty("--hi", sep.toFixed(3));
+      hp.style.opacity = lerp(1, 0.4, sep).toFixed(3);
+      reveal(ktag, ramp(t, KEYT + 0.4, KEYT + 1.0), { dy: 12, base: "translateX(-50%)" });
       // what you send, and what your server stores
-      reveal(L.n, ramp(t, SPLIT + 0.2, SPLIT + 0.7), { dy: 40 });
-      reveal(R.n, ramp(t, SPLIT + 0.4, SPLIT + 0.9), { dy: 40 });
+      reveal(L.n, ramp(t, SPLIT + 0.35, SPLIT + 1.15), { dy: 40 });
+      reveal(R.n, ramp(t, SPLIT + 0.6, SPLIT + 1.4), { dy: 40 });
       L.lines.forEach((l, i) => setText(l, PLAIN[i]));
       R.lines.forEach((l, i) => setText(l, A.scramble(PLAIN[i], t, -99, 0.01, i + 2)));
     };
@@ -615,8 +612,8 @@
       camera(cam, t, [[0, 1.0, 0, 0], [0, 1.03, -10, 0, api.dur]], 0.4);
       reveal(PH.phone, ramp(t, -0.15, 0.5), { dy: 70 });
       PH.sleep.style.opacity = 0;
-      kin(tA, t, api.segStart("open1") - 0.25, 0.06, 0.5, GONE - 0.35);
-      kin(tB, t, GONE - 0.1, 0.06, 0.5);
+      kin(tA, t, api.segStart("open1") - 0.25, 0.06, 0.6, GONE - 0.7);
+      kin(tB, t, GONE + 0.05, 0.06, 0.6);
       if (t < OPEN) PH.html(sealedPage(t >= TAP));
       else if (t < GONE) { PH.html(openPage()); PH.seek(PH.$(".out"), (t - OPEN) * 1000); }
       else PH.html(gonePage());
@@ -669,16 +666,17 @@
     const tB = bigtype(layer, "Only you\ncan open it.", [0, 1]);
     const B = browser(cam, { x: 740, y: 120, w: 1120, h: 1020, zoom: 1.3 });
     const PH = phone(cam, { x: 1110, y: 50, w: 470, h: 980 });
+    const light = el("div", "abs sweeplight", PH.phone.querySelector(".scr"));
     const cur = pointer(cam), tap = tapper(cam);
 
     const NOTE0 = api.on("ask1", "need") + 0.05, NRATE = 0.022;
     const CREATE = api.on("ask1", "request") + 0.15, READY = CREATE + 0.2;
-    const SWAP = api.segStart("ask2") - 0.55;                         // from Maya's window to Sam's phone
-    const FILL = SWAP + 0.75, SEND = api.on("ask2", "encrypted") + 0.05, SENT = SEND + 0.4;
+    const SWAP = api.segStart("ask2") - 0.9;                          // from Maya's window to Sam's phone
+    const FILL = SWAP + 1.55, SEND = api.on("ask2", "encrypted") - 0.1, SENT = SEND + 1.15;
     for (let i = 0; i < NOTE.length; i += 2) api.cue("key", NOTE0 + i * NRATE, 0.16);
     api.cue("click", CREATE, 0.7); api.cue("chime", READY + 0.1, 0.4);
     api.cue("whoosh", SWAP, 0.35); api.cue("pop", FILL, 0.4);
-    api.cue("tap", SEND, 0.8); api.cue("clasp", SEND + 0.15, 0.6); api.cue("chime", SENT + 0.1, 0.5);
+    api.cue("tap", SEND, 0.8); api.cue("scramble", SEND + 0.1, 0.6); api.cue("sweep", SENT - 0.25, 0.45); api.cue("chime", SENT + 0.15, 0.6);
 
     let P = [1500, 900], Q = [1340, 760];
     afterFonts(() => {
@@ -687,10 +685,10 @@
     });
     return function (t) {
       camera(cam, t, [[0, 1.0, 0, 0], [0, 1.03, -18, -6, api.dur]], 0.4);
-      kin(tA, t, api.segStart("ask1") - 0.25, 0.06, 0.5, SWAP - 0.1);
-      kin(tB, t, api.segStart("ask2") - 0.1, 0.06, 0.5);
+      kin(tA, t, api.segStart("ask1") - 0.25, 0.06, 0.6, SWAP - 0.2);
+      kin(tB, t, SWAP + 0.6, 0.06, 0.6);
       // Maya: the dialog, her note, the request link
-      const out = inOutCubic(ramp(t, SWAP, SWAP + 0.6));
+      const out = inOutCubic(ramp(t, SWAP, SWAP + 0.75));
       reveal(B.win, ramp(t, -0.2, 0.5) * (1 - out), { dy: 40, base: `translateX(${(-80 * out).toFixed(1)}px)` });
       B.win.style.display = out >= 1 ? "none" : "";
       if (t < READY) B.html(askPage(typed(NOTE, t, NOTE0, NRATE)));
@@ -698,11 +696,30 @@
       const pos = path([[CREATE - 0.8, P[0] + 140, P[1] + 160], [CREATE - 0.05, ...P], [CREATE + 0.7, P[0] + 100, P[1] + 120]])(t);
       cur(t, pos, [CREATE], ramp(t, CREATE - 0.8, CREATE - 0.5) * (1 - ramp(t, CREATE + 0.4, CREATE + 0.7)));
       // Sam: the request, the key pasted in, sent
-      const pin = inOutCubic(ramp(t, SWAP + 0.15, SWAP + 0.8));
+      const pin = inOutCubic(ramp(t, SWAP + 0.65, SWAP + 1.4));   // after the window has gone: never two screens at once
       reveal(PH.phone, pin, { dy: 0, base: `translateX(${(90 * (1 - pin)).toFixed(1)}px)` });
       PH.sleep.style.opacity = 0;
-      if (t < SENT) PH.html(answerPage(t >= FILL ? SSH : ""));
-      else { PH.html(answerSentPage()); }
+      // Send securely: the button turns busy, the key in the box encrypts, a sweep of light, then Sent
+      if (t < SEND) PH.html(answerPage(t >= FILL ? SSH : ""));
+      else if (t < SENT) {
+        PH.html(answerPage(SSH, true));
+        const ta = PH.$(".note-area");
+        if (ta) ta.value = A.scramble(SSH, t, SEND + 0.1, 0.6, 7);
+        const sp = PH.$(".send-sec .spin");
+        if (sp) sp.style.transform = `rotate(${((t - SEND) * 515).toFixed(1)}deg)`;
+        const cmp = PH.$(".composer");
+        const lv = ramp(t, SENT - 0.3, SENT);
+        if (cmp) { cmp.style.opacity = (1 - lv).toFixed(3); cmp.style.transform = `translateY(${(-14 * lv).toFixed(1)}px)`; }
+      } else {
+        PH.html(answerSentPage());
+        PH.seek(PH.$(".outcome"), ((t - SENT) * 1000) / 1.4);
+        const ic_ = PH.$(".outcome-icon");
+        if (ic_) { const k = spring(ramp(t, SENT + 0.1, SENT + 0.8) * 1.3, 11, 5); ic_.style.transform = `scale(${lerp(0.4, 1, k).toFixed(3)})`;
+          ic_.style.boxShadow = `0 0 0 ${(18 * ramp(t, SENT + 0.15, SENT + 0.9)).toFixed(1)}px rgba(79,194,133,${(0.3 * (1 - ramp(t, SENT + 0.15, SENT + 0.9))).toFixed(3)})`; }
+      }
+      const lp = ramp(t, SENT - 0.35, SENT + 0.45);
+      light.style.opacity = lp > 0 && lp < 1 ? Math.sin(Math.PI * lp).toFixed(3) : 0;
+      light.style.transform = `translateY(${lerp(-100, 110, inOutCubic(lp)).toFixed(1)}%)`;
       tap(t, Q, SEND);
     };
   }

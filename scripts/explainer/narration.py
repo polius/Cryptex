@@ -36,30 +36,34 @@ LANG = "en-us"
 # ---- pacing ----------------------------------------------------------------
 # Unhurried on purpose: every scene settles on its point before the next turns in.
 FPS = int(os.environ.get("FPS", "60"))
-LEAD_IN = 1.55             # the mark clasps shut, then the first word
 GAP_SAME = 0.4             # pause between two lines in the same scene
-GAP_SCENE = 1.4            # pause when the scene changes: the shot settles, then the cut
 TAIL = 3.4                 # hold after the last line (settled end card)
-# extra hold before a line (on top of the normal gap), to let a visual land
+# A scene change is laid out from both sides of the cut: the scene leaving
+# holds on its point after its last word (HOLD; the cut starts half a second
+# before it ends), and the next one shows for a while before its first word
+# (LEAD). Unhurried on purpose: the voice never ends on a picture that is
+# already leaving.
+HOLD, LEAD = 1.6, 1.0
+SCENE_HOLD = {
+    "send": 5.0,           # the seal plays out, slowly, and the link page settles
+    "key": 2.0,            # what you send, next to what your server stores
+    "reveal": 1.7,         # the page that says it was already opened
+    "track": 1.8,          # the green row
+    "ask": 1.7,            # Sam's answer, sent
+    "selfhost": 1.8,       # the server comes up
+}
+SCENE_LEAD = {"open": 1.55, "send": 0.9, "key": 1.3, "outro": 2.6}
+# extra pause before a line inside a scene, to let a visual land
 GAP_EXTRA = {
-    "send1": 0.2,
-    "send2": 0.55,         # the options close, the hand moves to Create link
-    "key1": 1.7,           # the seal plays out and the link is ready
-    "key2": 0.35,
-    "open1": 1.1,          # what you send, next to what your server stores
-    "open2": 0.9,          # the secret, on the phone
-    "track1": 0.3,
-    "ask1": 0.5,           # the link's page holds on the green row
-    "ask2": 1.0,           # Maya's note, then her request link
-    "self1": 0.5,          # Sam's answer is sent
+    "send2": 1.0,          # the paste becomes fields, the title is typed
+    "send3": 1.0,          # "Opens once" is ticked, the camera returns to Create link
+    "key2": 0.45,
+    "key3": 0.5,           # the key, apart from the address
+    "open2": 1.1,          # the secret, on the phone
+    "ask2": 1.2,           # Maya's note, then her request link
     "self2": 0.2,
-    "outro1": 2.3,         # the server comes up; the glyphs gather into the mark before the name is said
     "outro2": -0.2,        # keep the closing line close to the name
 }
-
-# How long before its first line a scene should appear (seconds). The default
-# is half the scene-change gap.
-SCENE_LEAD = {"outro": 2.6}
 
 # ---- the script ------------------------------------------------------------
 # id, scene, voice-over, anchors {label: spoken substring} — anchors mark when a
@@ -69,14 +73,18 @@ SCENE_LEAD = {"outro": 2.6}
 LINES = [
     ("brand1", "open", "Meet Cryptex, the secure way to share passwords, keys and files.",
      {"secure": "secure"}),
-    ("send1", "send", "Paste a password, and choose how long it lasts.",
-     {"paste": "Paste", "choose": "choose", "lasts": "lasts"}),
-    ("send2", "send", "Then create a link.",
+    ("send1", "send", "Paste a password.",
+     {"paste": "Paste"}),
+    ("send2", "send", "Choose how long it lasts.",
+     {"choose": "Choose", "lasts": "lasts"}),
+    ("send3", "send", "Then create a link.",
      {"create": "create"}),
     ("key1", "key", "It's encrypted on your device before it leaves.",
      {"encrypted": "encrypted", "device": "device"}),
-    ("key2", "key", "The key stays in the link, so your server only stores what it can't read.",
-     {"key": "key", "server": "server", "read": "read"}),
+    ("key2", "key", "The key stays in the link, and never reaches your server.",
+     {"key": "key", "never": "never"}),
+    ("key3", "key", "So your server can't read it.",
+     {"server": "server", "read": "read"}),
     ("open1", "reveal", "They open it once.",
      {"opens": "open it"}),
     ("open2", "reveal", "Then it's gone for good.",
@@ -259,10 +267,12 @@ def main():
     durs = [duration(os.path.join(AUD, f"{sid}.wav")) for sid, *_ in LINES]
 
     # ---- lay out the timeline from real audio durations --------------------
-    segs, parts, t = [], [make_silence(LEAD_IN)], LEAD_IN
+    lead_in = SCENE_LEAD.get(LINES[0][1], LEAD)
+    segs, parts, t = [], [make_silence(lead_in)], lead_in
     for i, (sid, scene, vo, anchors) in enumerate(LINES):
         if i > 0:
-            gap = GAP_SCENE if scene != LINES[i - 1][1] else GAP_SAME
+            prev = LINES[i - 1][1]
+            gap = (SCENE_HOLD.get(prev, HOLD) + SCENE_LEAD.get(scene, LEAD)) if scene != prev else GAP_SAME
             gap += GAP_EXTRA.get(sid, 0.0)
             parts.append(make_silence(gap))
             t += gap
@@ -300,10 +310,8 @@ def main():
     for i, sc in enumerate(order):
         if i == 0:
             start = 0.0
-        elif sc["name"] in SCENE_LEAD:
-            start = sc["first"] - SCENE_LEAD[sc["name"]]
         else:
-            start = (order[i - 1]["last_end"] + sc["first"]) / 2
+            start = order[i - 1]["last_end"] + SCENE_HOLD.get(order[i - 1]["name"], HOLD)
         scenes.append({"name": sc["name"], "start": round(start, 3)})
     for i in range(len(scenes)):
         scenes[i]["end"] = round(scenes[i + 1]["start"], 3) if i + 1 < len(scenes) else video_end
