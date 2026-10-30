@@ -172,7 +172,7 @@ export function Home() {
     requestAnimationFrame(() => document.getElementById('options-toggle')?.focus());
   };
 
-  // Leaving the link page (Back to "/", the logo or "New") changes the route: start a fresh secret from there.
+  // Leaving the link page (Back to "/", the logo or "New secret") changes the route: start a fresh secret from there.
   const nav = route.value;
   const firstNav = useRef(nav);
   useEffect(() => {

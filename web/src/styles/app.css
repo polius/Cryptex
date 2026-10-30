@@ -367,10 +367,15 @@ kbd{font:500 11.5px var(--f-mono);padding:2px 5px;border-radius:5px;border:1px s
 .kv dt{color:var(--muted)} .kv dd{margin:0;font-weight:500}
 
 /* ---------- responsive ---------- */
-/* The narrowest phones: New keeps only its icon; its name stays for screen readers. */
+/* "New secret" in the top bar: "New" on phones, only its icon on the narrowest; screen readers always hear "New secret". */
+.nav-new .nav-s{display:none}
+@media (max-width:520px){
+  .nav-new .nav-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .nav-new .nav-s{display:inline}
+}
 @media (max-width:380px){
   .hd .nav-new{width:40px;justify-content:center;padding:0}
-  .nav-new .nav-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+  .nav-new .nav-s{display:none}
 }
 @media (max-width:720px){
   body{font-size:15px}
