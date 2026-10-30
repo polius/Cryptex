@@ -3,6 +3,8 @@
 **Share passwords, keys and files through links that are encrypted in your browser.**
 The server stores only ciphertext: it can't read the secret, its title, its file names or who sent it.
 
+<a href="https://pol.alzina.dev/videos/cryptex.mp4"><img src="docs/video-poster.png" alt="Cryptex's Send a secret page with a database login filled in. Click to watch the video (45 seconds): sealing a secret into a link, why your server can’t read it, and what else Cryptex does" width="100%"></a>
+
 ## Features
 
 - **Encrypted before it leaves your browser.** The key is part of the link, so only the people you give the link to can open it.
