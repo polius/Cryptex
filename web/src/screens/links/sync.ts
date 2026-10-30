@@ -26,6 +26,20 @@ export const isFinal = (r: Row): boolean => {
 };
 
 const THIRTY_DAYS = 30 * 86400_000;
+
+/** Writes to the stored links, one at a time: a status read that started before a delete must not write the deleted
+ *  link back when it ends. */
+let writing: Promise<unknown> = Promise.resolve();
+function oneAtATime<T>(write: () => Promise<T>): Promise<T> {
+  const run = writing.then(write, write);
+  writing = run.catch(() => undefined);
+  return run;
+}
+
+/** Store a newer copy of a link, unless it was deleted meanwhile. */
+const update = (r: StoredReceipt) => oneAtATime(async () => {
+  if (await receipts.get(r.id)) await receipts.put(r);
+});
 /** The most IDs one /receipts/lookup takes. */
 export const BATCH = 2000;
 
@@ -92,7 +106,7 @@ export async function loadRows(): Promise<Row[]> {
   for (const row of rows) {
     if (looked.has(row.id) && !row.remote && row.local && !row.local.ended_at) {
       row.local = { ...row.local, last_status: 'gone', link: undefined, ended_at: new Date().toISOString() };
-      await keep(receipts.put(row.local));
+      await keep(update(row.local));
     }
   }
   for (const row of rows) await keep(persist(row));
@@ -109,7 +123,11 @@ export async function loadRows(): Promise<Row[]> {
 export const deleteLocked = (): boolean => !!signedInUid() && !vaultItems.isOpen();
 
 /** Delete from Your links (signed in: on every device). A link still waiting is destroyed first, so it stops working. */
-export async function deleteRow(r: Row): Promise<void> {
+export function deleteRow(r: Row): Promise<void> {
+  return oneAtATime(() => remove(r));
+}
+
+async function remove(r: Row): Promise<void> {
   if (deleteLocked()) throw new Error('locked');
   if (isRequest(r)) {
     // Its link stops taking answers and an answer it has is destroyed, on the server first: the vault item holds the
@@ -154,7 +172,7 @@ export async function persist(row: Row): Promise<void> {
   }
   if (Object.keys(patch).length) {
     row.local = { ...row.local, ...patch };
-    await receipts.put(row.local);
+    await update(row.local);
   }
 }
 
