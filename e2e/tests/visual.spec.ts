@@ -89,8 +89,9 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
         }
         await page.goto('/server');
         await expect(page.locator('.health')).toBeVisible();
-        // Only the stable top: what needs attention depends on the host (disk, invites), so it isn't pixel-tested.
-        await snap(page, `server-overview-${tag}`, ['.count', '.lede', '.metric'], vp === 'mobile' ? 560 : 330);
+        // Only the stable top: what needs attention depends on the host (disk, invites), so it isn't pixel-tested. On
+        // phones the metrics stack and their wrapped values change their height, so the clip stops above them.
+        await snap(page, `server-overview-${tag}`, ['.count', '.lede', '.metric'], vp === 'mobile' ? 210 : 330);
       });
 
       // Screens that need a state the shared e2e server isn't in (a fresh server, a live invite or reset link) answer
