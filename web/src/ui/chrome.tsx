@@ -73,7 +73,7 @@ export function AppHeader({ active }: { active?: 'new' | 'links' | 'server' }) {
       {c?.demo && <DemoChip />}
       <span class="sp" />
       <nav aria-label={t('app.nav_label')}>
-        {canSend && <a class={`navlink hide-m${active === 'new' ? ' on' : ''}`} href="/" aria-current={active === 'new' ? 'page' : undefined}><Icon name="plus" size="sm" />{t('app.nav_new')}</a>}
+        {canSend && <a class={`navlink nav-new${active === 'new' ? ' on' : ''}`} href="/" aria-current={active === 'new' ? 'page' : undefined}><Icon name="plus" size="sm" /><span class="nav-l">{t('app.nav_new')}</span></a>}
         {canSend && (
           <a class={`navlink${active === 'links' ? ' on' : ''}`} href="/links" aria-current={active === 'links' ? 'page' : undefined}>
             {t('app.nav_links')}{linksCount.value > 0 && <span class="count" aria-label={t('app.links_waiting', { n: linksCount.value })}>{linksCount.value}</span>}

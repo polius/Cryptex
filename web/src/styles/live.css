@@ -661,7 +661,7 @@ p,.lede{text-wrap:pretty}
 .demo-quota.pill.out{color:var(--demo-ink)}
 .demo-quota.pill.out .q-meter{background:color-mix(in srgb,var(--demo-ink) 20%,transparent)}
 /* Small phones: the Demo badge needs the wordmark's room, and Expand keeps only its icon so the toolbar stays on one line. */
-@media (max-width:380px){.hd:has(.demo-chip) .brand .wordmark{display:none}}
+@media (max-width:720px){.hd:has(.demo-chip) .brand .wordmark{display:none}} /* phones: the mark and the Demo badge */
 /* The narrowest phones: setup's steps need the header's width, so the theme follows the device there. */
 @media (max-width:340px){.wizard-hd .theme-pick{display:none}}
 /* Footer parts: a dot before each one after the first (decorative, not read out); on phones they stack without it. */

@@ -5,7 +5,7 @@ import { owner, stranger } from './helpers';
 /** The dialog behind "Ask for a secret": pick how long, create, then read the link and its code off its ready page.
  *  Done leaves that page for the request's status, at the same address. */
 async function ask(page: Page, note = ''): Promise<{ link: string; code: string }> {
-  await page.locator('.send-head, .page-head').getByRole('button', { name: 'Ask for a secret' }).click();
+  await page.locator('.send-head').getByRole('button', { name: 'Ask for a secret' }).click();
   const dialog = page.getByRole('dialog');
   if (note) await dialog.getByLabel(/Note for them/).fill(note);
   await dialog.getByRole('radio', { name: '1 hour' }).click();
@@ -62,7 +62,7 @@ test('someone without an account answers once, with a passphrase, and only the r
 
 test('destroying a request closes its link', async ({ browser }) => {
   const { page } = await owner(browser);
-  await page.goto('/links');
+  await page.goto('/');
   const { link, code } = await ask(page);
   await page.goto('/links');
   await expect(page.getByRole('link', { name: new RegExp(`Request ${code}`) })).toBeVisible();

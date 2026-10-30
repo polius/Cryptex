@@ -281,10 +281,7 @@ export function Links() {
   return (
     <Page header={<AppHeader active="links" />}>
       <main class="main wide" id="main">
-        <div class="between page-head">
-          <div class="stack" style="gap:6px"><H1>{t('links.title')}</H1><p class="lede">{t(config.value?.signed_in ? 'links.lede' : 'links.lede_local')}</p><DemoQuota pill /></div>
-          <div class="row page-acts"><AskButton /><a class="btn primary" href="/"><Icon name="plus" size="sm" />{t('app.nav_new')}</a></div>
-        </div>
+        <div class="stack" style="gap:6px"><H1>{t('links.title')}</H1><p class="lede">{t(config.value?.signed_in ? 'links.lede' : 'links.lede_local')}</p><DemoQuota pill /></div>
         {loadFailed}
         <div class="links-bar">
           <div class="tabs" role="tablist" aria-label={t('links.filter_label')} onKeyDown={arrowSelect}>
