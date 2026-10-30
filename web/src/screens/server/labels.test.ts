@@ -16,6 +16,5 @@ describe('audit log: setting changes', () => {
     expect(changed('brand_logo', null, 'uploaded')).toBe('Setting changed · logo — → uploaded');
     expect(changed('brand_name', '', 'Acme')).toBe('Setting changed · name — → Acme');
     expect(changed('access', 'anyone', 'signed_in')).toBe('Setting changed · who can create links anyone → people with an account');
-    expect(changed('language', 'auto', 'de')).toBe('Setting changed · language browser language → Deutsch');
   });
 });

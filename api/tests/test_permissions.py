@@ -86,8 +86,8 @@ def test_members_get_404_for_server_tab(client):
     r = lisa.post("/api/v1/auth/invite/accept", json={"token": url.split("#", 1)[1], **creds("lisa's long passphrase")})
     assert r.status_code == 200 and r.json()["user"]["role"] == "member"
     lisa.headers["X-CSRF"] = r.json()["csrf"]
-    for path in ("/api/v1/server/overview", "/api/v1/server/access", "/api/v1/server/limits", "/api/v1/server/language",
-                 "/api/v1/server/users", "/api/v1/server/branding", "/api/v1/server/audit"):
+    for path in ("/api/v1/server/overview", "/api/v1/server/access", "/api/v1/server/limits", "/api/v1/server/users",
+                 "/api/v1/server/branding", "/api/v1/server/audit"):
         r = lisa.get(path)
         assert (r.status_code, r.json()) == (404, NOT_FOUND), path
     me = client.get("/api/v1/auth/session").json()["user"]["id"]

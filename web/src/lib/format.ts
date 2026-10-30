@@ -1,17 +1,16 @@
-/** Sizes, durations and dates, in the language on screen and the viewer's time zone. */
-import { locale } from './i18n';
+/** Sizes, durations and dates, in English and the viewer's time zone. */
+import { LOCALE } from './i18n';
 
-const L = () => locale.value;
 const unit = (n: number, u: string, unitDisplay: 'long' | 'short' = 'long') =>
-  new Intl.NumberFormat(L(), { style: 'unit', unit: u, unitDisplay }).format(n);
+  new Intl.NumberFormat(LOCALE, { style: 'unit', unit: u, unitDisplay }).format(n);
 
 /** The unit word alone, agreeing with n: unitWord(1, 'hour') → "hour", unitWord(3, 'hour') → "hours". */
 export function unitWord(n: number, u: 'minute' | 'hour' | 'day'): string {
-  return new Intl.NumberFormat(L(), { style: 'unit', unit: u, unitDisplay: 'long' }).formatToParts(n)
+  return new Intl.NumberFormat(LOCALE, { style: 'unit', unit: u, unitDisplay: 'long' }).formatToParts(n)
     .filter((x) => x.type === 'unit').map((x) => x.value).join('').trim();
 }
 
-/** 512 → "512 bytes", 48 MiB → "48 MB" ("48 Mo" in French, "48 МБ" in Russian): binary steps, the language's own unit symbols. */
+/** 512 → "512 bytes", 48 MiB → "48 MB": binary steps. */
 export function bytes(n: number): string {
   const units = ['byte', 'kilobyte', 'megabyte', 'gigabyte', 'terabyte'];
   let v = n;
@@ -20,7 +19,7 @@ export function bytes(n: number): string {
     v /= 1024;
     u++;
   }
-  return new Intl.NumberFormat(L(), { style: 'unit', unit: units[u], unitDisplay: u ? 'short' : 'long', maximumFractionDigits: u && v < 10 ? 1 : 0 }).format(v);
+  return new Intl.NumberFormat(LOCALE, { style: 'unit', unit: units[u], unitDisplay: u ? 'short' : 'long', maximumFractionDigits: u && v < 10 ? 1 : 0 }).format(v);
 }
 
 /** 3600 → "1 hour", 86400 → "1 day", 604800 → "7 days". */
@@ -43,9 +42,9 @@ export function shortDuration(seconds: number): string {
   return unit(Math.max(1, m), 'minute', 'short');
 }
 
-const dtf = () => new Intl.DateTimeFormat(L(), { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const df = () => new Intl.DateTimeFormat(L(), { weekday: 'short', day: 'numeric', month: 'short' });
-const tf = () => new Intl.DateTimeFormat(L(), { hour: '2-digit', minute: '2-digit' });
+const dtf = () => new Intl.DateTimeFormat(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const df = () => new Intl.DateTimeFormat(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
+const tf = () => new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
 
 export const dateTime = (iso: string | number | Date) => dtf().format(new Date(iso));
 export const date = (iso: string | number | Date) => df().format(new Date(iso));
@@ -57,14 +56,14 @@ export function stamp(iso: string | number | Date): string {
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return time(d);
   if (Math.abs(now.getTime() - d.getTime()) < 6 * 86400_000) {
-    return new Intl.DateTimeFormat(L(), { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(d);
+    return new Intl.DateTimeFormat(LOCALE, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(d);
   }
-  return new Intl.DateTimeFormat(L(), { day: 'numeric', month: 'short' }).format(d);
+  return new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' }).format(d);
 }
 
 export function relative(iso: string | number | Date, now = Date.now()): string {
   const diff = (new Date(iso).getTime() - now) / 1000;
-  const rtf = new Intl.RelativeTimeFormat(L(), { numeric: 'auto' });
+  const rtf = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' });
   const abs = Math.abs(diff);
   if (abs < 60) return rtf.format(Math.round(diff), 'second');
   if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
@@ -94,4 +93,4 @@ export const MIN_EXPIRES_IN = 300;
 /** Any length works; the cap only stops a pasted novel from being hashed on every try. */
 export const MAX_PASSPHRASE = 256;
 
-export const num = (n: number) => new Intl.NumberFormat(L()).format(n);
+export const num = (n: number) => new Intl.NumberFormat(LOCALE).format(n);

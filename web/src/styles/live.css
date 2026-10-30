@@ -485,7 +485,7 @@ p,.lede,.fine,.help{text-wrap:pretty}
 .stepper .now .l{color:var(--ink);font-weight:600}
 @media (max-width:1199px){.stepper li:not(.now) .l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}}
 @media (max-width:720px){
-  .wizard-hd .wordmark{display:none} /* the mark alone, so the steps keep their room between it and the language */
+  .wizard-hd .wordmark{display:none} /* the mark alone, so the steps keep their room between it and the theme */
   .stepper{gap:8px}
   .stepper li + li::before{width:18px;margin-right:0}
   .stepper .l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%)}
@@ -507,12 +507,9 @@ p,.lede,.fine,.help{text-wrap:pretty}
   .wizard-f .btn.lg{min-width:0;height:50px}
   .wizard .qrbox svg{width:200px;height:200px}
 }
-/* language: account menu picker and Server › Language */
-.menu-pop label.lbl{display:block}
+/* Selects drawn like inputs, with their own arrow. */
 select.input.select{appearance:none;-webkit-appearance:none;cursor:pointer;padding:0 32px 0 12px;
   background:var(--surface) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%235E6A75' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") no-repeat right 12px center}
-.menu-pop .menu-lang{display:block;width:calc(100% - 16px);margin:4px 8px 8px;height:34px;font-size:13.5px}
-.radio .in select.input{max-width:280px;height:38px}
 /* Empty state: icon, then title + text as one group, then the action, then the quieter link. */
 .empty{gap:0;padding:64px 24px}
 .empty .tint{margin-bottom:24px}
@@ -665,6 +662,8 @@ p,.lede{text-wrap:pretty}
 .demo-quota.pill.out .q-meter{background:color-mix(in srgb,var(--demo-ink) 20%,transparent)}
 /* Small phones: the Demo badge needs the wordmark's room, and Expand keeps only its icon so the toolbar stays on one line. */
 @media (max-width:380px){.hd:has(.demo-chip) .brand .wordmark{display:none}}
+/* The narrowest phones: setup's steps need the header's width, so the theme follows the device there. */
+@media (max-width:340px){.wizard-hd .theme-pick{display:none}}
 /* Footer parts: a dot before each one after the first (decorative, not read out); on phones they stack without it. */
 .ft-i,.ft .dot{display:inline-flex;align-items:center;gap:8px;white-space:nowrap}
 .ft .dot::before{content:"·";content:"·" / ""}
@@ -799,23 +798,20 @@ p,.lede{text-wrap:pretty}
 @media (prefers-reduced-motion:reduce){.cmp-title .hint-wrap{transition:none}}
 
 
-/* ---------- release fixes: language picker, touch targets, wrapping, small states ---------- */
-/* This device's language on pages without the account menu: the native select covers the visible label. */
-.lang-pick{position:relative;flex:none;display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 10px;border:1px solid var(--line-2);border-radius:9px;
-  color:var(--ink-2);font-size:13.5px;font-weight:500;white-space:nowrap}
-.lang-pick .ic{color:var(--muted)}
-.lang-pick select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
-.lang-pick:hover{border-color:var(--ink-2)}
-.theme-pick{width:36px;justify-content:center;padding:0}
-.hd-picks{display:flex;align-items:center;gap:8px;flex:none}
-.lang-pick:has(select:focus-visible){outline:2px solid var(--focus-c);outline-offset:2px}
-.lang-pick select:focus-visible{outline:none}
-@media (max-width:720px){.lang-pick .lang-name{display:none}.lang-pick{width:40px;justify-content:center;padding:0}}
+/* ---------- release fixes: theme picker, touch targets, wrapping, small states ---------- */
+/* This device's theme on pages without the account menu: the native select covers the icon. */
+.theme-pick{position:relative;flex:none;display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border:1px solid var(--line-2);border-radius:9px;color:var(--ink-2)}
+.theme-pick .ic{color:var(--muted)}
+.theme-pick select{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;font-size:16px}
+.theme-pick:hover{border-color:var(--ink-2)}
+.theme-pick:has(select:focus-visible){outline:2px solid var(--focus-c);outline-offset:2px}
+.theme-pick select:focus-visible{outline:none}
+@media (max-width:720px){.theme-pick{width:40px}}
 /* Fingers: icon buttons and menu items get a 44 px target (WCAG 2.5.8 asks 24; phones want more). */
 @media (pointer:coarse){
   .btn.icon,.btn.icon.sm,.pass-input .btn.icon.sm{min-width:44px;min-height:44px}
   .input .btn.icon{margin-top:-4px;margin-bottom:-4px}
-  .lang-pick{height:44px;min-width:44px}
+  .theme-pick{height:44px;min-width:44px}
 }
 /* Long labels (French and Spanish 2FA buttons) wrap inside the button instead of running off a phone screen. */
 .set .row .btn,.dialog-f .btn,.outcome-actions .btn{white-space:normal;height:auto;min-height:40px;padding-top:9px;padding-bottom:9px;line-height:1.25;text-align:center}
@@ -840,7 +836,7 @@ select.chip.select{border-color:var(--line-input)} /* a form control too: its ed
   button.avatar,.btn.sm:not(.icon):not(.change),.demo-chip{position:relative}
   button.avatar::after,.btn.sm:not(.icon):not(.change)::after,.demo-chip::after{content:"";position:absolute;left:50%;top:50%;width:max(100%,44px);height:max(100%,44px);transform:translate(-50%,-50%)}
 }
-/* A button never runs off a narrow screen: a long label (a long brand name, a long translation) wraps inside it. */
+/* A button never runs off a narrow screen: a long label (a long brand name) wraps inside it. */
 .btn{max-width:100%}
 .row > .btn{white-space:normal;height:auto;min-height:40px;padding-top:8px;padding-bottom:8px;line-height:1.25;text-align:center}
 .row > .btn.lg{min-height:48px}
@@ -865,7 +861,7 @@ select.chip.select{border-color:var(--line-input)} /* a form control too: its ed
   .actions-m.between .btn{flex:1 1 max-content}
 }
 /* Phones: the expand button keeps only its icon, and the bar's buttons sit closer, so Attach files, Add field and expand
-   stay on one line at 375 px in every language (in German, French, Dutch and Russian the icon wrapped onto a line alone). */
+   stay on one line on a phone. */
 @media (max-width:420px){.cmp-expand-l{display:none}.cmp-bar,.composer:not(.big) .cmp-bar{gap:0;padding-left:6px;padding-right:6px}.cmp-bar .btn.sm{padding-left:6px;padding-right:6px;gap:4px;font-size:13px}}
 /* Setup's summaries (the owner once made, the overview): a label, the value, and Change where it can be changed. */
 .summary{margin:0;display:grid}
@@ -904,7 +900,7 @@ select.chip.select{border-color:var(--line-input)} /* a form control too: its ed
   .page-head > .page-acts{grid-column:2;grid-row:1}
   .page-acts .ask-l{display:none}
 }
-/* A short server section starts at the top: its rows don't spread over the screen (Language on a phone). */
+/* A short server section starts at the top: its rows don't spread over the screen on a phone. */
 .srv{align-content:start}
 @media (max-width:720px){
   /* A page with a bottom bar keeps it at the bottom, under the content, however short the page (a link's ready page,
@@ -912,8 +908,6 @@ select.chip.select{border-color:var(--line-input)} /* a form control too: its ed
   .main:has(> .actions-m){display:flex;flex-direction:column}
   .main > .actions-m{margin-top:auto}
   .main:has(> .actions-m) > .btn{align-self:flex-start}
-  /* Setup's steps need the header's width: the theme follows the device there. */
-  .wizard-hd .theme-pick{display:none}
   /* "211 bytes stored": the unit goes under the number rather than out of the card. */
   .metric b{white-space:normal}
 }

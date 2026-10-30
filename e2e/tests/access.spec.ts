@@ -298,14 +298,6 @@ test('Server tab: limits validate, branding shows to recipients, audit records i
   await page.getByLabel('Name', { exact: true }).fill('Acme');
   await page.getByRole('button', { name: 'Save changes' }).click();
 
-  // Language saves like Limits and Branding: nothing changes until Save.
-  await page.goto('/server/language');
-  await page.getByText('Always the same language').click();
-  await expect(page.getByRole('region', { name: 'Unsaved changes' })).toBeVisible();
-  await page.getByRole('button', { name: 'Discard' }).click();
-  await expect(page.getByRole('region', { name: 'Unsaved changes' })).toBeHidden();
-  await expect(page.getByRole('radio', { checked: true })).toBeFocused();
-
   await page.goto('/server/audit');
   await expect(page.getByText('Kept 365 days', { exact: false })).toBeVisible(); // the real retention setting
   await expect(page.locator('table')).toContainText('Setting changed · file size 100 MB → 200 MB');

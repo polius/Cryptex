@@ -12,7 +12,6 @@ The server stores only ciphertext: it can't read the secret, its title, its file
 - **Know when it's opened.** See when each link was opened, and destroy it at any time.
 - **Ask for a secret.** Send someone a link to put a secret in, no account needed. Only you can open what they send.
 - **Built for teams.** Invite your colleagues, set limits, add your logo and review an activity log that never contains secrets.
-- **17 languages.** Everyone sees Cryptex in their own language.
 
 ## Quick start
 
@@ -109,7 +108,6 @@ These can also be changed in the **Server** tab. Setting the variable locks them
 | `MAX_FILES` | `5` | Files per link (`0` turns files off). |
 | `MAX_FILE_SIZE` | `100mb` | Size per file. |
 | `BRAND_NAME` | none | Organization name shown to recipients. |
-| `DEFAULT_LANGUAGE` | `auto` | `auto` (the visitor's browser language) or one of `en`, `es`, `ca`, `fr`, `de`, `it`, `pt`, `nl`, `pl`, `tr`, `ru`, `uk`, `hi`, `id`, `ja`, `ko`, `zh-CN`. |
 | `AUDIT_RETENTION_DAYS` | `365` | Audit events older than this are deleted. |
 
 ### Rate limits

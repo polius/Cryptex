@@ -162,7 +162,7 @@ export function Composer(props: {
     }
   }, []);
 
-  // "Or drop files here" shows only when it fits on the toolbar's line; in longer languages or narrow windows it would push Create link down.
+  // "Or drop files here" shows only when it fits on the toolbar's line; in narrow windows it would push Create link down.
   useEffect(() => {
     const bar = barRef.current;
     if (!bar || typeof ResizeObserver === 'undefined') return;

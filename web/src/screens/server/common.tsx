@@ -2,7 +2,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useRef, useState } from 'preact/hooks';
 import { ApiError, api } from '../../api/client';
-import { locale, rich, t } from '../../lib/i18n';
+import { LOCALE, rich, t } from '../../lib/i18n';
 import { config, toast } from '../../lib/state';
 import { Banner, Btn, ErrMsg, PasswordInput } from '../../ui/bits';
 import { AppHeader, Page } from '../../ui/chrome';
@@ -16,7 +16,6 @@ export const SECTIONS: Array<{ path: string; key: string; icon: IconName }> = [
   { path: '/server/access', key: 'access', icon: 'users' },
   { path: '/server/limits', key: 'limits', icon: 'sliders' },
   { path: '/server/branding', key: 'branding', icon: 'brush' },
-  { path: '/server/language', key: 'language', icon: 'globe' },
   { path: '/server/audit', key: 'audit', icon: 'list' },
 ];
 
@@ -198,9 +197,9 @@ export function SaveBar({ summary, busy, invalid, onDiscard, onSave, back }: {
 }
 
 export function Lock({ vars }: { vars: string }) {
-  // "A and B" in the language on screen, with each variable name in <code>.
+  // "A and B", with each variable name in <code>.
   const names = vars.split(',').map((v) => v.trim());
-  const list = new Intl.ListFormat(locale.value, { type: 'conjunction' }).formatToParts(names)
+  const list = new Intl.ListFormat(LOCALE, { type: 'conjunction' }).formatToParts(names)
     .map((p, i) => (p.type === 'element' ? <code key={i}>{p.value}</code> : p.value));
   return <span class="lock"><Icon name="lock" size="sm" /><span>{rich('server.locked_by_env', { vars: <>{list}</> })}</span></span>;
 }

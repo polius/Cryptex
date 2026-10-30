@@ -53,7 +53,6 @@ def config(request: Request) -> dict[str, Any]:
         # The send form starts with one-time off: a link opens until it expires.
         "defaults": {"views": None, "expires_in": min(86400, max_exp)},
         "features": {"sign_in": not e.demo},
-        "language": state.setting("language"),
     }
     if c.via == "session":
         out["csrf"] = db.val("SELECT csrf FROM sessions WHERE id_hash = ?", c.session_hash)

@@ -2,9 +2,9 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useLayoutEffect, useState } from 'preact/hooks';
 import { initials, shortDuration } from '../lib/format';
-import { LANGUAGES, locale, pick, rich, t } from '../lib/i18n';
+import { rich, t } from '../lib/i18n';
 import { navigate, route } from '../lib/router';
-import { config, deviceLanguage, shownUser, dismiss, linksCount, setDeviceLanguage, setTheme, theme, toast, toasts, type Theme } from '../lib/state';
+import { config, shownUser, dismiss, linksCount, setTheme, theme, toast, toasts, type Theme } from '../lib/state';
 import { arrowSelect } from './bits';
 import { useFocusTrap } from './dialog';
 import { Icon, Mark } from './icons';
@@ -35,47 +35,24 @@ export function host(): string {
   return location.host;
 }
 
-/** Recipient and responder pages: brand plus the address with a lock, nothing to click away to, and a language
- *  picker (there's no account menu here). */
+/** Recipient and responder pages: the brand, nothing to click away to, and a theme picker (there's no account menu
+ *  here). */
 export function RecipientHeader() {
   return (
     <header class="hd">
       <Brand link={false} />
       <span class="sp" />
-      <span class="hd-picks"><ThemePicker /><LanguagePicker /></span>
+      <ThemePicker />
     </header>
-  );
-}
-
-const languageName = (code: string) => LANGUAGES.find((l) => l.code === code)?.name ?? code;
-
-/** "Automatic (…)" then every language by its own name; the value is this device's choice ("" follows the server). */
-function LanguageOptions() {
-  return <>
-    <option value="">{t('app.language_auto', { language: languageName(pick(null, config.value?.language, navigator.languages ?? [navigator.language])) })}</option>
-    {LANGUAGES.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.name}</option>)}
-  </>;
-}
-
-const pickLanguage = (e: Event) => void setDeviceLanguage((e.target as HTMLSelectElement).value || null);
-
-/** This device's language on pages without the account menu: a globe (and the language's name on wide screens)
- *  over a native select, so phones get their own picker. */
-export function LanguagePicker() {
-  return (
-    <span class="lang-pick">
-      <Icon name="globe" size="sm" /><span class="lang-name" aria-hidden="true">{languageName(locale.value)}</span>
-      <select aria-label={t('app.menu_language')} value={deviceLanguage.value ?? ''} onChange={pickLanguage}><LanguageOptions /></select>
-    </span>
   );
 }
 
 const THEME_ICON = { auto: 'contrast', light: 'sun', dark: 'moon' } as const;
 
-/** This device's theme on pages without the account menu, beside the language: its icon over a native select. */
+/** This device's theme on pages without the account menu: its icon over a native select. */
 export function ThemePicker() {
   return (
-    <span class="lang-pick theme-pick" title={t('app.menu_theme')}>
+    <span class="theme-pick" title={t('app.menu_theme')}>
       <Icon name={THEME_ICON[theme.value]} size="sm" />
       <select aria-label={t('app.menu_theme')} value={theme.value} onChange={(e) => setTheme((e.target as HTMLSelectElement).value as Theme)}>
         {(['auto', 'light', 'dark'] as const).map((x) => <option key={x} value={x}>{t(`app.theme_${x}`)}</option>)}
@@ -116,7 +93,7 @@ export function AppHeader({ active }: { active?: 'new' | 'links' | 'server' }) {
   );
 }
 
-/** A panel of links and settings (not an ARIA menu: it holds a radio group and a select). Esc closes it. */
+/** A panel of links and settings (not an ARIA menu: it holds a radio group). Esc closes it. */
 function AccountMenu({ onClose }: { onClose: () => void }) {
   const c = config.value;
   const user = shownUser(c);
@@ -162,8 +139,6 @@ function AccountMenu({ onClose }: { onClose: () => void }) {
             </button>
           ))}
         </div>
-        <label class="lbl" for="lang-select">{t('app.menu_language')}</label>
-        <select id="lang-select" class="input select menu-lang" value={deviceLanguage.value ?? ''} onChange={pickLanguage}><LanguageOptions /></select>
         {user ? <><hr /><button class="mi" onClick={signOut} aria-disabled={c?.demo || undefined} title={c?.demo ? t('policy.not_in_demo') : undefined}><Icon name="logout" size="sm" />{t('app.menu_signout')}</button></>
           : c?.features.sign_in && <><hr /><button class="mi" onClick={go('/signin')}><Icon name="user" size="sm" />{t('app.nav_signin')}</button></>}
       </div>

@@ -253,33 +253,6 @@ def put_limits(body: dict[str, Any], request: Request) -> Response:
     return Response(status_code=204)
 
 
-# ------------------------------------------------------------------ language
-@router.get("/server/language")
-def get_language(request: Request) -> dict[str, Any]:
-    require_owner(request)
-    r = state.resolve("language")
-    return {"language": r.value, "locked_by": r.locked_by}
-
-
-class LanguageBody(Body):
-    language: str
-
-
-@router.put("/server/language", status_code=204)
-def put_language(body: LanguageBody, request: Request) -> Response:
-    c = require_owner(request)
-    r = state.resolve("language")
-    if r.locked_by:
-        raise invalid("language", f"Set by {r.locked_by} in your environment.")
-    try:
-        value = validate_setting("language", body.language)
-    except ValueError as err:
-        raise invalid("language", str(err)) from None
-    state.save("language", value, c.user_id)
-    _changed(c.user_id, "language", r.value, value)
-    return Response(status_code=204)
-
-
 # ------------------------------------------------------------------ branding
 @router.get("/server/branding")
 def get_branding(request: Request) -> dict[str, Any]:

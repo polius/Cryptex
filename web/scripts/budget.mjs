@@ -36,17 +36,9 @@ const route = (screen) => {
 };
 const js = (keys) => [...keys].reduce((n, k) => n + gz(manifest[k].file), 0);
 const css = [...new Set(Object.values(manifest).flatMap((m) => m.css ?? []))].reduce((n, f) => n + gz(f), 0);
-// English is in the main bundle; a visitor in another language also loads that language's deck (one chunk each,
-// one extra request). The largest is checked on its own and counted in the sender route, so no language goes over.
-const decks = Object.keys(manifest).filter((k) => /(^|\/)copy\/[^/]+\.json$/.test(k));
-if (!decks.length) throw new Error('no copy deck chunks in the manifest');
-const deck = decks.reduce((a, b) => (gz(manifest[b].file) > gz(manifest[a].file) ? b : a));
-const deckName = deck.replace(/^.*\//, '');
-
 const budgets = [
-  ['Recipient route /s/ (JS, without Argon2 or a language deck)', js(route('screens/reveal/Reveal.tsx')), 60 * KB],
-  [`Largest language deck (${deckName}), loaded besides English`, js([deck]), 20 * KB],
-  [`Sender route / (JS, with the largest language deck)`, js(new Set([...route('screens/Home.tsx'), deck])), 90 * KB],
+  ['Recipient route /s/ (JS, without Argon2)', js(route('screens/reveal/Reveal.tsx')), 60 * KB],
+  ['Sender route / (JS)', js(route('screens/Home.tsx')), 75 * KB],
   ['CSS', css, 25 * KB],
 ];
 let failed = false;

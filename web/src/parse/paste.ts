@@ -15,7 +15,7 @@ export type Parsed =
   | { kind: 'note'; text: string };
 
 const SECRET_KEY = /pass|secret|token|key|pwd|private|credential|mnemonic|seed[\s_.-]*phrase|recovery[\s_.-]*(?:phrase|code)/i;
-// The same words in the other languages of the copy decks. Words are matched as the start of a word (so inflected
+// The same words in other common languages, since people paste labels in their own. Words are matched as the start of a word (so inflected
 // forms count: "Wi-Fi şifresi", "секретный"); short or ambiguous ones only as a whole word ("cle" isn't "clear",
 // "пин" isn't "пингвин", "sandi" isn't "sandiwara", "pin" isn't "spin" or "pinned"). Japanese and Chinese have no
 // spaces: their words match anywhere, and the one-character ones only at the end of a word ("APIキー", "秘密鍵", not
@@ -51,7 +51,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const isSecretKey = (k: string) => SECRET_KEY.test(k) || SECRET_KEY_I18N.test(k.replace(/İ/g, 'i')); // Turkish capital İ doesn't case-fold
 
-/** A field for a password or a secret, in any of the copy decks' languages: the composer offers "Generate" there. */
+/** A field for a password or a secret, in English or another of those languages: the composer offers "Generate" there. */
 export const isPasswordKey = (k: string) => PASSWORD_KEY.test(k) || PASSWORD_KEY_I18N.test(k.replace(/İ/g, 'i'));
 
 /** A value that holds a secret whatever its name: a URL with a password in it (scheme://user:password@host), or with

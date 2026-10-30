@@ -146,8 +146,6 @@ export interface Config {
   /** views: 1 for one-time links, null for links that open until they expire. */
   defaults: { views: 1 | null; expires_in: number };
   features: { sign_in: boolean };
-  /** 'auto' (each visitor's browser) or a language code from LANGUAGES. */
-  language: string;
   quota?: { used: number; limit: number; reset_at: string };
   pow_bits?: number;
 }

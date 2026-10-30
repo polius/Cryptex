@@ -1,6 +1,6 @@
 /** Human text for audit events (E1 recent events, E7 audit log). Events never hold content. */
 import { bytes, duration, num } from '../../lib/format';
-import { LANGUAGES, locale, t } from '../../lib/i18n';
+import { LOCALE, t } from '../../lib/i18n';
 
 export interface AuditRow {
   id: number;
@@ -15,7 +15,7 @@ export interface AuditRow {
 /** Settings that have a name in the copy deck (events.key_<setting>); others show their raw key. */
 const KEY_NAMES = new Set([
   'max_expiration', 'max_file_size', 'max_files', 'max_message_length',
-  'audit_retention_days', 'access', 'brand_name', 'brand_logo', 'language',
+  'audit_retention_days', 'access', 'brand_name', 'brand_logo',
 ]);
 
 /** Limits in the units the Limits page uses; a logo is only ever "uploaded" (the event holds no file name). */
@@ -31,7 +31,6 @@ function settingValue(key: string, v: unknown): string {
   }
   if (key === 'brand_logo') return t('events.value_uploaded');
   if (key === 'access') return v === 'anyone' ? t('events.value_anyone') : t('events.value_signed_in');
-  if (key === 'language') return v === 'auto' ? t('events.value_browser_language') : LANGUAGES.find((l) => l.code === v)?.name ?? String(v);
   return String(v);
 }
 
@@ -42,7 +41,7 @@ export function eventText(e: Pick<AuditRow, 'type' | 'detail'>): string {
       const parts = [d.views === 1 ? t('events.part_once') : t('events.part_until_expiry'), duration(Number(d.expires_in))];
       if (d.passphrase) parts.push(t('events.part_passphrase'));
       if (Number(d.files)) parts.push(t('events.part_files', { n: Number(d.files) }));
-      return t('events.created', { details: new Intl.ListFormat(locale.value, { type: 'unit', style: 'short' }).format(parts) });
+      return t('events.created', { details: new Intl.ListFormat(LOCALE, { type: 'unit', style: 'short' }).format(parts) });
     }
     case 'secret.revealed':
       return d.views_left === 0 ? t('events.revealed_destroyed') : t('events.revealed_still_works'); // one-time, or until it expires

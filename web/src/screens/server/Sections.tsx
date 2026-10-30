@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api } from '../../api/client';
 import { bytes, dateTime, fold, num, relative, stamp, USERNAME } from '../../lib/format';
-import { LANGUAGES, rich, t } from '../../lib/i18n';
+import { rich, t } from '../../lib/i18n';
 import { loadConfig, toast } from '../../lib/state';
 import { Btn, copyText, ErrMsg, Radio, Status } from '../../ui/bits';
 import { confirmDialog } from '../../ui/confirm';
@@ -451,66 +451,6 @@ export function BrandingSection() {
       {name !== null && (
         <SaveBar summary={t('server.unsaved', { n: 1 })} busy={busy} onDiscard={() => { setName(null); setErr(null); }} onSave={save}
           back={() => document.getElementById('b-name')} />
-      )}
-    </ServerShell>
-  );
-}
-
-// ------------------------------------------------------------------ language
-/** Like Limits and Branding, a choice here only takes effect with Save: it changes the language for every visitor. */
-export function LanguageSection() {
-  const { data, error: loadErr, reload } = useServer<{ language: string; locked_by: string | null }>('/server/language');
-  const [err, setErr] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState<string | null>(null); // 'auto' or a language code, not saved yet
-  const lastFixed = data && data.language !== 'auto' ? data.language : 'en'; // what "Always" starts on
-  const value = draft ?? data?.language ?? 'auto';
-  const changed = !!data && draft !== null && draft !== data.language;
-  const save = async () => {
-    setErr(null);
-    setBusy(true);
-    try {
-      await api('PUT', '/server/language', { body: { language: value } });
-      setDraft(null);
-      toast(t('server.saved'));
-      reload();
-      await loadConfig();
-    } catch (e) {
-      setErr(errorText(e));
-    } finally {
-      setBusy(false);
-    }
-  };
-  const off = data?.locked_by || readOnly() ? ' ' : undefined;
-  const always = value !== 'auto';
-  const chosen = always ? value : lastFixed;
-  const name = (code: string | undefined) => LANGUAGES.find((l) => l.code === code)?.name ?? '';
-  return (
-    <ServerShell active="language">
-      <Heading title={t('server.language')} lede={t('server.language_lede')} />
-      {loadErr && <LoadError error={loadErr} retry={reload} />}
-      {data && (
-        <section class="card"><div class="card-b">
-          <div class="set"><div class="k"><b>{t('server.language_label')}</b><small>{t('server.language_device')}</small></div>
-            <div class="stack">
-              <div class="radios" role="radiogroup" aria-label={t('server.language_label')}>
-                <Radio name="language" on={!always} onSelect={() => { setErr(null); setDraft('auto'); }} title={t('server.language_auto')} help={t('server.language_auto_help')} disabled={off} />
-                <Radio name="language" on={always} onSelect={() => { setErr(null); setDraft(chosen); }} title={t('server.language_fixed')}
-                  help={always ? t('server.language_fixed_help', { language: name(chosen) }) : undefined} disabled={off}>
-                  <select class="input select" value={chosen} aria-label={t('server.language_fixed')} disabled={!!off}
-                    onChange={(e) => { setErr(null); setDraft((e.target as HTMLSelectElement).value); }}>
-                    {LANGUAGES.map((l) => <option key={l.code} value={l.code} lang={l.code}>{l.name}</option>)}
-                  </select>
-                </Radio>
-              </div>
-              {data.locked_by && <Lock vars={data.locked_by} />}
-              {err && <ErrMsg>{err}</ErrMsg>}
-            </div></div>
-        </div></section>
-      )}
-      {changed && (
-        <SaveBar summary={t('server.unsaved', { n: 1 })} busy={busy} onDiscard={() => { setDraft(null); setErr(null); }} onSave={save}
-          back={() => document.querySelector<HTMLElement>('[name=language]:checked')} />
       )}
     </ServerShell>
   );

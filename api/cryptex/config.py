@@ -90,9 +90,6 @@ class Setting:
     demo: Any = None
 
 
-# Languages with a copy deck in web/src/copy/ (LANGUAGES in web/src/lib/i18n.ts).
-LANGUAGES = ("en", "es", "ca", "fr", "de", "it", "pt", "nl", "pl", "tr", "ru", "uk", "hi", "id", "ja", "ko", "zh-CN")
-
 # Settings an owner can change in the Server tab (unless an env var locks them).
 EDITABLE: dict[str, Setting] = {s.key: s for s in [
     Setting("access", "ACCESS", lambda v: _choice(v, ("anyone", "signed_in")), "anyone", demo="anyone"),
@@ -102,7 +99,6 @@ EDITABLE: dict[str, Setting] = {s.key: s for s in [
     Setting("max_file_size", "MAX_FILE_SIZE", parse_size, 100 * MB, 1 * KB, None, demo=1 * MB),
     Setting("audit_retention_days", "AUDIT_RETENTION_DAYS", parse_int, 365, 1, 3650),
     Setting("brand_name", "BRAND_NAME", lambda v: _text(v, 40), "", demo=""),
-    Setting("language", "DEFAULT_LANGUAGE", lambda v: _choice(v, ("auto", *LANGUAGES)), "auto", demo="auto"),
 ]}
 
 

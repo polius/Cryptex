@@ -15,7 +15,6 @@ const INVALID: Record<string, string> = {
   logo: 'errors.logo',
   user_id: 'errors.stale', // people changed in another tab: joined, removed, or it's you
   mode: 'errors.locked', // fixed choices: only an environment variable can refuse them
-  language: 'errors.locked',
   name: 'errors.locked',
   max_expiration: 'errors.out_of_range',
   max_file_size: 'errors.out_of_range',

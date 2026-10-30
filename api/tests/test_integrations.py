@@ -408,31 +408,6 @@ def test_branding_and_logo_sanitizing(client):
     assert client.get("/api/v1/config").json()["brand"]["logo_url"] is None
 
 
-def test_language_setting(client):
-    assert client.get("/api/v1/config").json()["language"] == "auto"
-    assert client.get("/api/v1/server/language").json() == {"language": "auto", "locked_by": None}
-    assert client.put("/api/v1/server/language", json={"language": "ca"}).status_code == 204
-    assert anon(client).get("/api/v1/config").json()["language"] == "ca"
-    r = client.put("/api/v1/server/language", json={"language": "xx"})
-    assert r.status_code == 400 and r.json()["error"]["field"] == "language"
-    audit = client.get("/api/v1/server/audit?type=setting.changed").json()["items"]
-    assert audit[0]["detail"] == {"key": "language", "from": "auto", "to": "ca"}
-
-
-def test_language_locked_by_env(server):
-    locked = server(DEFAULT_LANGUAGE="es")
-    assert locked.get("/api/v1/server/language").json() == {"language": "es", "locked_by": "DEFAULT_LANGUAGE"}
-    assert locked.put("/api/v1/server/language", json={"language": "en"}).status_code == 400
-
-
-def test_every_language_has_a_copy_deck():
-    from pathlib import Path
-
-    from cryptex.config import LANGUAGES
-    copy = Path(__file__).resolve().parents[2] / "web" / "src" / "copy"
-    assert sorted(LANGUAGES) == sorted(p.stem for p in copy.glob("*.json"))
-
-
 def test_audit_filters_and_csv(client):
     s = send(client)
     reveal(anon(client), s)

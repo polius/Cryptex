@@ -9,7 +9,7 @@ import { t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
 import { config, loadConfig, toast } from '../../lib/state';
 import { Banner, Btn, Command, ErrMsg, H1, PasswordInput, Radio, useViewFocus } from '../../ui/bits';
-import { BrandLockup, LanguagePicker, ThemePicker } from '../../ui/chrome';
+import { BrandLockup, ThemePicker } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
 import { LogoDrop } from '../../ui/logo';
 import { errorText } from '../errors';
@@ -55,7 +55,7 @@ export function Setup() {
 
   /** The steps sit in the middle of the header, so the step itself starts at the top of the page. */
   const header = (steps?: ComponentChildren) => (
-    <header class="hd wizard-hd"><span class="brand"><Mark /><span class="wordmark">cryptex</span></span>{steps}<span class="sp" /><span class="hd-picks"><ThemePicker /><LanguagePicker /></span></header>
+    <header class="hd wizard-hd"><span class="brand"><Mark /><span class="wordmark">cryptex</span></span>{steps}<span class="sp" /><ThemePicker /></header>
   );
   if (!info && loadErr) {
     return (

@@ -11,7 +11,6 @@ const recent = [
 ];
 
 export const FIXTURES = {
-  '/server/language': { language: 'auto', locked_by: null },
   '/server/overview': {
     version: '3.0.0', update_available: null,
     storage: { used: 1.2 * 1024 ** 3, disk_total: 50 * 1024 ** 3, disk_free: 38 * 1024 ** 3 },

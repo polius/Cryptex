@@ -1,4 +1,4 @@
-/** API errors are shown in the language on screen: by code, field and reason, never the server's English message. */
+/** API errors are shown in the app's own words: by code, field and reason, never the server's message. */
 import { describe, expect, it } from 'vitest';
 import { ApiError } from '../api/client';
 import { errorText } from './errors';

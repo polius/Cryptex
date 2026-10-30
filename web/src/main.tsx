@@ -6,11 +6,11 @@ import { render } from 'preact';
 import type { ComponentType } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { isId, match, navigate, route } from './lib/router';
-import { applyTheme, bootError, config, countLinks, deviceLanguage, loadConfig } from './lib/state';
+import { applyTheme, bootError, config, countLinks, loadConfig } from './lib/state';
 import { ReauthDialog } from './screens/server/common';
 import { Toasts } from './ui/chrome';
 import { ConfirmHost } from './ui/confirm';
-import { pick, setLocale, t } from './lib/i18n';
+import { t } from './lib/i18n';
 
 applyTheme();
 // Phones and tablets, iPads included (they report a Mac, and a fine pointer with a trackpad): no "drop files" hints.
@@ -66,7 +66,6 @@ const OverviewSection = lazy(() => import('./screens/server/Sections').then((m) 
 const AccessSection = lazy(() => import('./screens/server/Sections').then((m) => m.AccessSection));
 const LimitsSection = lazy(() => import('./screens/server/Sections').then((m) => m.LimitsSection));
 const BrandingSection = lazy(() => import('./screens/server/Sections').then((m) => m.BrandingSection));
-const LanguageSection = lazy(() => import('./screens/server/Sections').then((m) => m.LanguageSection));
 const AuditSection = lazy(() => import('./screens/server/Sections').then((m) => m.AuditSection));
 
 function Screen() {
@@ -112,7 +111,6 @@ function Screen() {
       case '/access': return <AccessSection />;
       case '/limits': return <LimitsSection />;
       case '/branding': return <BrandingSection />;
-      case '/language': return <LanguageSection />;
       case '/audit': return <AuditSection />;
     }
   }
@@ -171,7 +169,6 @@ async function boot() {
       bootError.value = 'offline';
     }
   }
-  if (!config.value) await setLocale(pick(deviceLanguage.value, null, navigator.languages ?? [navigator.language])).catch(() => undefined);
   const root = document.getElementById('app')!;
   root.textContent = '';
   render(<App />, root);

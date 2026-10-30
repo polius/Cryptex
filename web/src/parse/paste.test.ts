@@ -164,7 +164,7 @@ describe('paste parser', () => {
   });
 });
 
-describe('secret field names in the 17 languages', () => {
+describe('secret field names in other languages', () => {
   it('knows the words for password, secret, key and token', () => {
     const names = [
       'Contraseña', 'clave API', 'Secreto', 'Contrasenya', 'Clau', 'Mot de passe', 'mdp', 'Clé', 'cle', 'Jeton', 'Passwort',

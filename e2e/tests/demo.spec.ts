@@ -85,22 +85,6 @@ test('the menu shows a sample owner, "demo"; Your account is a read-only tour an
   await expect(page.getByRole('button', { name: 'Change password' })).toBeDisabled();
 });
 
-test.describe('language', () => {
-  test.use({ locale: 'ca-ES' });
-
-  test('follows the browser, and the menu choice sticks on this device', async ({ page }) => {
-    await page.goto('/');
-    await expect(page.getByRole('heading', { name: 'Envia un secret' })).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('lang', 'ca');
-    await page.locator('#account-button').click();
-    await page.locator('#lang-select').selectOption('en');
-    await expect(page.getByRole('heading', { name: 'Send a secret' })).toBeVisible();
-    await page.reload();
-    await expect(page.getByRole('heading', { name: 'Send a secret' })).toBeVisible();
-    await expect(page.locator('html')).toHaveAttribute('lang', 'en');
-  });
-});
-
 test('asking for a secret counts toward today\'s demo links', async ({ page }) => {
   // The quota test above used them all: a request is one more link, so it leads to the limit page too.
   await page.goto('/');

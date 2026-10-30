@@ -3,7 +3,7 @@ import { expect, test } from '@playwright/test';
 import { owner, sendText, stranger } from './helpers';
 
 const PAGES = ['/', '/links', '/account', '/privacy', '/server', '/server/access', '/server/limits', '/server/branding',
-  '/server/language', '/server/audit', '/signin'];
+  '/server/audit', '/signin'];
 
 for (const width of [320, 390]) {
   test(`nothing overflows sideways at ${width} px`, async ({ browser }) => {

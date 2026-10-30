@@ -1,7 +1,7 @@
 /** App-wide state as signals: server config, the signed-in user, toasts, theme. */
 import { signal } from '@preact/signals';
 import { api, onSessionEnded, setCsrf, setSignedInAs, signedInUid, type Config, type User } from '../api/client';
-import { locale, pick, setLocale, t } from './i18n';
+import { t } from './i18n';
 
 export const config = signal<Config | null>(null);
 export const bootError = signal<string | null>(null);
@@ -25,8 +25,6 @@ export async function loadConfig(): Promise<Config> {
   }
   setCsrf(c.csrf);
   setSignedInAs(uid);
-  const lang = pick(deviceLanguage.value, c.language, navigator.languages ?? [navigator.language]);
-  if (lang !== locale.value) await setLocale(lang).catch(() => undefined);
   config.value = c;
   if (uid) {
     vaultModule ??= await import('../store/vault');
@@ -154,27 +152,3 @@ export function countLinks(): void {
   }, () => undefined);
 }
 
-// ------------------------------------------------------------------ language (this device's choice; null follows the server)
-const LANG_KEY = 'cx-lang';
-export const deviceLanguage = signal<string | null>(readLanguage());
-
-function readLanguage(): string | null {
-  try {
-    return localStorage.getItem(LANG_KEY);
-  } catch {
-    return null;
-  }
-}
-
-export async function setDeviceLanguage(code: string | null): Promise<void> {
-  deviceLanguage.value = code;
-  try {
-    if (code) localStorage.setItem(LANG_KEY, code);
-    else localStorage.removeItem(LANG_KEY);
-  } catch {
-    /* private mode: the choice lasts for this page only */
-  }
-  await setLocale(pick(code, config.value?.language, navigator.languages ?? [navigator.language]));
-  const c = config.value;
-  if (c) document.title = c.brand.name ? `${c.brand.name} · ${t('app.brand_suffix')}` : 'Cryptex';
-}

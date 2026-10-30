@@ -26,7 +26,7 @@ for (const colorScheme of ['light', 'dark'] as const) {
     await page.goto('/account');
     await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible();
     await audit(page, 'account');
-    for (const s of ['', '/access', '/limits', '/branding', '/language', '/audit']) {
+    for (const s of ['', '/access', '/limits', '/branding', '/audit']) {
       await page.goto(`/server${s}`);
       await expect(page.locator('.srv-main h1')).toBeVisible();
       await audit(page, `server${s || '/overview'}`);
