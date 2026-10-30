@@ -48,7 +48,12 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
         await snap(page, `send-options-${tag}`, ['.count']);
         await page.getByRole('button', { name: 'Done', exact: true }).first().click();
         await createLink(page);
-        await snap(page, `send-sent-${tag}`, ['.count', '.linkbox .url', '.facts > div:nth-child(2)']);
+        // The expiry date's length (2:09 or 10:09) moves its line breaks on phones: a fixed one instead.
+        await page.locator('.facts > div:nth-child(2)').evaluate((el) => {
+          el.querySelector('b')!.textContent = 'Fri, Oct 30, 10:09 AM';
+          el.querySelector('span')!.textContent = 'in 1 day';
+        });
+        await snap(page, `send-sent-${tag}`,['.count', '.linkbox .url', '.facts > div:nth-child(2)']);
       });
 
       test('reveal', async ({ browser }) => {
