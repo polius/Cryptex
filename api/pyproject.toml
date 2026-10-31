@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.1.1", "httpx==0.28.1", "ruff==0.17.2", "mypy"]
+dev = ["pytest==9.2.0", "httpx==0.28.1", "ruff==0.17.3", "mypy"]
 
 [tool.setuptools]
 packages = ["cryptex", "cryptex.routes", "cryptex.migrations"]
