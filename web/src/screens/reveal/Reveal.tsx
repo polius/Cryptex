@@ -7,7 +7,7 @@ import { bytes, dateTime, MAX_PASSPHRASE } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { dropFragment } from '../../lib/router';
 import { config, toast } from '../../lib/state';
-import { Banner, Btn, ErrMsg, H1, Outcome, Status, useViewFocus } from '../../ui/bits';
+import { Banner, Btn, ErrMsg, H1, masked, Outcome, Status, useViewFocus } from '../../ui/bits';
 import { AppHeader, host, Page, RecipientHeader } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
 import { errorText } from '../errors';
@@ -265,7 +265,7 @@ export function Reveal({ id }: { id: string }) {
           <div>
             <label class="label" for="pass">{t('reveal.passphrase_label')}</label>
             <div class={`input mono${err ? ' err' : ''}`}>
-              <input id="pass" class="bare" type={passShown ? 'text' : 'password'} value={pass} maxLength={MAX_PASSPHRASE} autoComplete="off" spellcheck={false} data-autofocus
+              <input id="pass" class="bare" {...masked(!passShown)} value={pass} maxLength={MAX_PASSPHRASE} autoComplete="off" spellcheck={false} data-autofocus
                 readOnly={busy || revealing} aria-invalid={!!err} aria-describedby={err ? 'pass-err' : 'pass-hint'}
                 onInput={(e) => setPass((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && pass && void doReveal(o)} />
               <button type="button" class="btn icon sm ghost" aria-label={passShown ? t('reveal.hide') : t('reveal.show')} onClick={() => setPassShown(!passShown)}><Icon name={passShown ? 'eyeoff' : 'eye'} size="sm" /></button>

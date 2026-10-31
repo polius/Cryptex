@@ -198,14 +198,18 @@ export function Command({ text, skipTab }: { text: string; skipTab?: boolean }) 
   );
 }
 
+/** An input's type, hidden or shown: `{...masked(hide)}`. Preact types an input by its literal type, so a
+ *  `type={hide ? 'password' : 'text'}` doesn't typecheck. */
+export const masked = (hide: boolean) => (hide ? { type: 'password' as const } : { type: 'text' as const });
+
 /** A password field with Show/Hide, wherever someone types a password (setup, sign-in, invites, resets, re-auth,
  *  unlock, change password). `invalid` marks it as the field an error is about. */
-export function PasswordInput({ invalid, ...props }: Omit<JSX.IntrinsicElements['input'], 'type' | 'class'> & { invalid?: boolean }) {
+export function PasswordInput({ invalid, ...props }: Omit<JSX.IntrinsicElements['input'], 'type' | 'class' | 'role'> & { invalid?: boolean }) {
   const [shown, setShown] = useState(false);
   const label = shown ? t('reveal.hide') : t('reveal.show');
   return (
     <div class={`input${invalid ? ' err' : ''}`}>
-      <input {...props} class="bare" type={shown ? 'text' : 'password'} spellcheck={false} autoCapitalize="none" autoCorrect="off" />
+      <input {...props} class="bare" {...masked(!shown)} spellcheck={false} autoCapitalize="none" autoCorrect="off" />
       <button type="button" class="btn icon sm ghost" aria-label={label} title={label} aria-pressed={shown} onClick={() => setShown(!shown)}>
         <Icon name={shown ? 'eyeoff' : 'eye'} size="sm" /></button>
     </div>
