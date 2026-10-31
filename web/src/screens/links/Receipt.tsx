@@ -70,7 +70,7 @@ function ReceiptPage({ id }: { id: string }) {
     if (local?.kind === 'request') remote = (await lookupRequests([local]))[0] ?? null;
     if (local?.kind === 'request' && !remote && !local.ended_at) {
       local = { ...local, last_status: 'gone', link: undefined, key: undefined, ended_at: new Date().toISOString() }; // closed or long gone
-      await receipts.put(local);
+      await receipts.put(local, true);
     } else if (!remote && local?.kind !== 'request') {
       try {
         remote = await api<R>('GET', `/receipts/${id}`, local ? { headers: { Authorization: `Manage ${local.manage_token}` } } : {});

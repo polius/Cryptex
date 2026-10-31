@@ -21,7 +21,7 @@ vi.mock('../api/client', async () => {
   const real = await vi.importActual<typeof import('../api/client')>('../api/client');
   return {
     ...real,
-    api: async (m: string, p: string, o: { body?: Record<string, unknown> } = {}) => {
+    api: async (m: string, p: string, o: { body?: Record<string, unknown>; headers?: Record<string, string> } = {}) => {
       calls.push(`${m} ${p}`);
       if (p === '/me/receipts' && m === 'POST') {
         const items = o.body!.items as Array<{ id: string; manage_token: string }>;
@@ -39,7 +39,12 @@ vi.mock('../api/client', async () => {
         return { key: 'A'.repeat(43) };
       }
       if (p === '/me/vault/keys' && m === 'PUT') puts.push(o.body!);
-      if (p.startsWith('/me/vault/items/') && m === 'PUT') serverItems.set(p.split('/').pop()!, o.body!.ct as string);
+      if (p.startsWith('/me/vault/items/') && m === 'PUT') {
+        const id = p.split('/').pop()!;
+        if (o.headers?.['If-Match'] === '*' && !serverItems.has(id)) throw new real.ApiError('deleted', 412); // as the server: replace only
+        serverItems.set(id, o.body!.ct as string);
+      }
+      if (p.startsWith('/me/vault/items/') && m === 'DELETE') serverItems.delete(p.split('/').pop()!);
       if (p === '/me/vault/items') return { items: [...serverItems].map(([id, ct]) => ({ id, ct })) };
       return undefined;
     },
@@ -155,5 +160,17 @@ describe('account vault', () => {
     expect(localItems.map((x) => x.id)).toEqual(['Local00007']); // the server didn't take it: it stays here
     expect(v.adoptOffer.value).toBe(0);
     expect(kv.get('adopt_skip|u1')).toEqual(['Local00007']); // and isn't offered again
+  });
+  it('doesn\'t write back a link another device deleted after this one read it (Clear expired, Delete)', async () => {
+    const v = await import('./vault');
+    await v.openAfterSignIn('u1', new Uint8Array(32), bundle, { shared: false });
+    await v.vaultItems.put(item('Secret0001'));
+    const read = (await v.vaultItems.get('Secret0001'))!; // this tab reads it (Your links' status read)...
+    serverItems.delete('Secret0001'); // ...another device deletes it...
+    await v.vaultItems.put({ ...read, last_status: 'expired' }, true); // ...and this tab saves the newer status
+    expect(serverItems.has('Secret0001')).toBe(false);
+    expect(await v.vaultItems.get('Secret0001')).toBeUndefined();
+    await v.vaultItems.put(item('Secret0002')); // a new link is still added
+    expect(serverItems.has('Secret0002')).toBe(true);
   });
 });

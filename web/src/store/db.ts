@@ -91,11 +91,13 @@ export const receipts = {
     if (!signedInUid()) return localReceipts.get(id);
     return (vaultItems.isOpen() ? await vaultItems.get(id) : undefined) ?? (localShown() ? await localReceipts.get(id) : undefined);
   },
-  async put(r: StoredReceipt): Promise<void> {
+  /** `ifThere`: a newer copy of a stored link, written only if the account still has it (another device may have
+   *  deleted it meanwhile). Leave it out for a new link. */
+  async put(r: StoredReceipt, ifThere = false): Promise<void> {
     if (signedInUid()) {
       if (!vaultItems.isOpen()) throw new Error('locked');
       // One that lives in this browser only stays there; anything else goes to the account.
-      if (await vaultItems.get(r.id) || !localShown() || !(await localReceipts.get(r.id))) return vaultItems.put(r);
+      if (await vaultItems.get(r.id) || !localShown() || !(await localReceipts.get(r.id))) return vaultItems.put(r, ifThere);
     }
     if (!localShown()) throw new Error('locked');
     await localReceipts.put(r);
@@ -106,7 +108,7 @@ export const receipts = {
   },
   async patch(id: string, p: Partial<StoredReceipt>): Promise<void> {
     const r = await receipts.get(id);
-    if (r) await receipts.put({ ...r, ...p });
+    if (r) await receipts.put({ ...r, ...p }, true);
   },
 };
 

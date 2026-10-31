@@ -79,11 +79,15 @@ class Item(Body):
 
 @router.put("/me/vault/items/{item_id}", status_code=204)
 def put_item(item_id: str, body: Item, request: Request) -> Response:
+    """Add an item, or replace it. `If-Match: *` replaces only: a device saving a newer status of a link that another
+    device deleted meanwhile is refused (412), instead of bringing the link back."""
     c = require_session(request)
     if not re.match(ITEM_ID, item_id):
         raise ApiError("invalid", "Not a link id.", field="item_id")
     with db.tx() as conn:
         exists = conn.execute("SELECT 1 FROM vault_items WHERE user_id = ? AND item_id = ?", (c.user_id, item_id)).fetchone()
+        if not exists and request.headers.get("if-match", "").strip() == "*":
+            raise ApiError("deleted")
         if not exists and conn.execute("SELECT count(*) FROM vault_items WHERE user_id = ?", (c.user_id,)).fetchone()[0] >= MAX_ITEMS:
             raise ApiError("limit_exceeded", "Your links are full. Remove some first.", limit=MAX_ITEMS)
         conn.execute("INSERT INTO vault_items(user_id, item_id, ct, updated_at) VALUES (?,?,?,?) "

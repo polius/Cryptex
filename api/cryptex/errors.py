@@ -23,6 +23,7 @@ MESSAGES = {
     "already_sealed": "This link is already complete.",
     "setup_done": "Setup is already finished.",
     "gone": "This is no longer available.",
+    "deleted": "This was deleted meanwhile.",
     "too_large": "That’s too large for this server.",
     "wrong_passphrase": "That passphrase didn’t work.",
     "rate_limited": "Too many tries. Try again later.",
@@ -34,7 +35,7 @@ MESSAGES = {
 STATUS = {
     "invalid": 400, "limit_exceeded": 400, "sign_in_required": 401, "forbidden": 403,
     "reauth_required": 403, "wrong_code": 403, "wrong_password": 401, "not_found": 404,
-    "already_sealed": 409, "setup_done": 409, "gone": 410,
+    "already_sealed": 409, "setup_done": 409, "gone": 410, "deleted": 412,
     "too_large": 413, "wrong_passphrase": 422, "rate_limited": 429, "demo_locked": 403,
     "storage_full": 507, "internal": 500,
 }

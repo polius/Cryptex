@@ -358,10 +358,18 @@ export const vaultItems = {
     if (!cache) await vaultItems.all();
     return cache?.get(id);
   },
-  async put(r: StoredReceipt): Promise<void> {
+  /** Add or replace an item. `ifThere`: replace only, so a newer copy of a link another device (or tab) deleted
+   *  meanwhile isn't written back: the server refuses it, and it's dropped here too. */
+  async put(r: StoredReceipt, ifThere = false): Promise<void> {
     const o = opened();
     const ct = await seal(o.key, utf8(JSON.stringify(r)), ITEM(o.uid, r.id));
-    await api('PUT', `/me/vault/items/${encodeURIComponent(r.id)}`, { body: { ct } });
+    try {
+      await api('PUT', `/me/vault/items/${encodeURIComponent(r.id)}`, { body: { ct }, ...(ifThere ? { headers: { 'If-Match': '*' } } : {}) });
+    } catch (e) {
+      if (!(ifThere && e instanceof ApiError && e.code === 'deleted')) throw e;
+      if (open === o) cache?.delete(r.id);
+      return;
+    }
     if (open === o) cache?.set(r.id, r);
   },
   async remove(id: string): Promise<void> {

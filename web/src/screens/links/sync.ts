@@ -36,9 +36,10 @@ function oneAtATime<T>(write: () => Promise<T>): Promise<T> {
   return run;
 }
 
-/** Store a newer copy of a link, unless it was deleted meanwhile. */
+/** Store a newer copy of a link, unless it was deleted meanwhile: here (checked first), or on another device or tab
+ *  (the account's vault refuses it). */
 const update = (r: StoredReceipt) => oneAtATime(async () => {
-  if (await receipts.get(r.id)) await receipts.put(r);
+  if (await receipts.get(r.id)) await receipts.put(r, true);
 });
 /** The most IDs one /receipts/lookup takes. */
 export const BATCH = 2000;

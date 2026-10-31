@@ -552,6 +552,18 @@ def test_vault_items_are_per_account_and_session_only(client):
     assert client.get("/api/v1/me/vault/items").json()["items"] == []
 
 
+def test_a_newer_status_from_another_device_doesnt_bring_back_a_deleted_link(client):
+    only_if_there = {"If-Match": "*"}
+    assert client.put("/api/v1/me/vault/items/k7Qp2vR9mL", json={"ct": ITEM}, headers=only_if_there).status_code == 412  # never added
+    assert client.put("/api/v1/me/vault/items/k7Qp2vR9mL", json={"ct": ITEM}).status_code == 204  # a new link: added
+    assert client.put("/api/v1/me/vault/items/k7Qp2vR9mL", json={"ct": ITEM + "y"}, headers=only_if_there).status_code == 204
+    # One device clears it; another, which read it just before, saves the status it has since read.
+    assert client.delete("/api/v1/me/vault/items/k7Qp2vR9mL").status_code == 204
+    r = client.put("/api/v1/me/vault/items/k7Qp2vR9mL", json={"ct": ITEM + "z"}, headers=only_if_there)
+    assert r.status_code == 412 and r.json()["error"]["code"] == "deleted"
+    assert client.get("/api/v1/me/vault/items").json()["items"] == []
+
+
 def test_a_password_reset_clears_the_vault_and_keeps_the_links(client):
     assert client.put("/api/v1/me/vault/keys", json={"vault_pw": WRAP}).status_code == 204
     assert client.put("/api/v1/me/vault/items/k7Qp2vR9mL", json={"ct": ITEM}).status_code == 204
