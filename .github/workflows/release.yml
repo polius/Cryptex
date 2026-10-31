@@ -3,6 +3,12 @@ name: Release
 on:
   release:
     types: [published]
+  # Only the SHA256SUMS of an image a release already pushed (when that step failed): the image isn't built again.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag (vX.Y.Z) whose pushed image is hashed
+        required: true
 
 permissions: {}
 
@@ -10,11 +16,13 @@ permissions: {}
 jobs:
   ci:
     name: Full CI on the release commit
+    if: github.event_name == 'release'
     permissions: { contents: read }
     uses: ./.github/workflows/ci.yml
 
   image:
     name: Push the container image
+    if: github.event_name == 'release'
     needs: [ci]
     runs-on: ubuntu-latest
     permissions:
@@ -94,20 +102,39 @@ jobs:
   web-hashes:
     name: Publish SHA256SUMS of the web files
     needs: [image]
+    if: ${{ !cancelled() && (needs.image.result == 'success' || github.event_name == 'workflow_dispatch') }}
     runs-on: ubuntu-latest
     permissions:
       contents: write       # uploads the release asset
       id-token: write
       attestations: write
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
+      # Run by hand, the image is the one the release's version tag points to.
+      - name: The pushed image
+        id: image
+        env:
+          DIGEST: ${{ needs.image.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ -z "$DIGEST" ]; then
+            if ! [[ "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then echo "::error::$TAG isn't vX.Y.Z"; exit 1; fi
+            gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json tagName >/dev/null
+            DIGEST=$(docker buildx imagetools inspect "poliuscorp/cryptex:${TAG#v}" --format '{{json .Manifest}}' | jq -r .digest)
+          fi
+          echo "image=poliuscorp/cryptex@$DIGEST" >> "$GITHUB_OUTPUT"
       - name: Hash the web files of the pushed image (both platforms must match)
         env:
-          IMAGE: poliuscorp/cryptex@${{ needs.image.outputs.digest }}
+          IMAGE: ${{ steps.image.outputs.image }}
+        # The image goes between platforms: a newer Docker won't pull a second platform under the same digest
+        # ("cannot overwrite digest").
         run: |
           for platform in linux/amd64 linux/arm64; do
             docker pull -q --platform "$platform" "$IMAGE"
             cid=$(docker create --platform "$platform" "$IMAGE")
             rm -rf web && docker cp "$cid:/usr/share/cryptex/web" web && docker rm "$cid"
+            docker rmi "$IMAGE"
             (cd web && find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum) > "SHA256SUMS.${platform#linux/}"
           done
           cmp SHA256SUMS.amd64 SHA256SUMS.arm64
@@ -119,5 +146,4 @@ jobs:
       - name: Attach to the release
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name }}
         run: gh release upload "$TAG" SHA256SUMS --clobber --repo "$GITHUB_REPOSITORY"
