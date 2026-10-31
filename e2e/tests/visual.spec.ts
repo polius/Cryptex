@@ -45,6 +45,9 @@ for (const [vp, viewport] of Object.entries(VIEWPORTS)) {
         await page.locator('.cmp-title input').blur();
         await snap(page, `send-filled-${tag}`, ['.count']);
         await page.getByRole('button', { name: 'Change', exact: true }).click();
+        // The panel focuses its chosen expiry just after it opens, which scrolls phones down to it: wait for that, so
+        // snap's scroll back to the top comes after it, not before.
+        await expect(page.locator('#options [role=radio][aria-checked=true]').first()).toBeFocused();
         await snap(page, `send-options-${tag}`, ['.count']);
         await page.getByRole('button', { name: 'Done', exact: true }).first().click();
         await createLink(page);
