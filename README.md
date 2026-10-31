@@ -1,11 +1,32 @@
-# Cryptex
+<div align="center">
 
-**Share passwords, keys and files through links that are encrypted in your browser.**
-The server stores only ciphertext: it can't read the secret, its title, its file names or who sent it.
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/icon-dark.svg">
+  <img src="docs/assets/icon-light.svg" alt="Cryptex logo" width="72">
+</picture>
 
-<a href="https://pol.alzina.dev/videos/cryptex.mp4"><img src="docs/video-poster.png" alt="Cryptex's Send a secret page with a database login filled in. Click to watch the video (about a minute): sealing a secret into a link, why your server can’t read it, and what else Cryptex does" width="100%"></a>
+<h1>Cryptex</h1>
+
+<p><strong>Share passwords, keys and files through links that are encrypted in your browser.</strong></p>
+
+<p>
+  <a href="https://github.com/polius/Cryptex/actions/workflows/ci.yml"><img src="https://github.com/polius/Cryptex/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/polius/Cryptex/releases"><img src="https://img.shields.io/github/v/release/polius/Cryptex" alt="Release"></a>
+  <a href="https://hub.docker.com/r/poliuscorp/cryptex"><img src="https://img.shields.io/docker/pulls/poliuscorp/cryptex" alt="Docker Pulls"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
+</p>
+
+<br>
+
+<a href="https://pol.alzina.dev/videos/cryptex.mp4"><img src="docs/video-poster.png" alt="Cryptex's Send a secret page with a database login filled in. Click to watch the video" width="820"></a>
+
+<p><em>About a minute: sealing a secret into a link, why your server can’t read it, and what else Cryptex does.<br>Plays as an MP4 in your browser.</em></p>
+
+</div>
 
 ## Features
+
+The server stores only ciphertext: it can't read the secret, its title, its file names or who sent it.
 
 - **Encrypted before it leaves your browser.** The key is part of the link, so only the people you give the link to can open it.
 - **Links that expire.** Choose how long a link lasts, or make it work only once.
