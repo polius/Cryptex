@@ -5,6 +5,7 @@ import { bytes, num } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { isPasswordKey, isSecretKey, parsePaste } from '../../parse/paste';
 import { generatePassword } from '../../flows/send';
+import { masked } from '../../ui/bits';
 import { Icon } from '../../ui/icons';
 
 export interface FieldRow {
@@ -257,7 +258,7 @@ export function Composer(props: {
                   }} />
                 {f.generated && <span class="tag">{t('send.generated')}</span>}
               </span>
-              <input class={`v${f.secret && !f.shown ? ' secret' : ''}`} type={f.secret && !f.shown ? 'password' : 'text'} value={f.v}
+              <input class={`v${f.secret && !f.shown ? ' secret' : ''}`} {...masked(!!f.secret && !f.shown)} value={f.v}
                 placeholder={t('send.field_value')} aria-label={t('send.field_value_label', { name: f.k || t('send.field_n', { n: i + 1 }) })} disabled={props.disabled} autoComplete="off" spellcheck={false}
                 onInput={(e) => updateRow(f.id, { v: (e.target as HTMLInputElement).value, generated: false })} />
               <span class="acts">

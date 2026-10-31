@@ -5,7 +5,7 @@ import type { Config } from '../../api/client';
 import { generatePassword } from '../../flows/send';
 import { duration, EXPIRY_CHOICES, MAX_PASSPHRASE, MIN_EXPIRES_IN, unitWord } from '../../lib/format';
 import { t } from '../../lib/i18n';
-import { Choices, copyText } from '../../ui/bits';
+import { Choices, copyText, masked } from '../../ui/bits';
 import { Icon } from '../../ui/icons';
 
 export interface SendPolicy {
@@ -138,7 +138,7 @@ export function PassphraseBox({ value, onChange }: { value: string; onChange: (v
   return (
     <div class="pass-box">
       <div class="input mono pass-input">
-        <input ref={ref} class="bare" type={shown ? 'text' : 'password'} data-1p-ignore data-lpignore="true" value={value} maxLength={MAX_PASSPHRASE} placeholder={t('policy.passphrase_placeholder')} aria-label={t('policy.passphrase')}
+        <input ref={ref} class="bare" {...masked(!shown)} data-1p-ignore data-lpignore="true" value={value} maxLength={MAX_PASSPHRASE} placeholder={t('policy.passphrase_placeholder')} aria-label={t('policy.passphrase')}
           autoComplete="off" spellcheck={false} onInput={(e) => { setGenerated(false); onChange((e.target as HTMLInputElement).value); }} />
         <button type="button" class="btn icon sm ghost pass-eye" aria-label={shown ? t('reveal.hide') : t('reveal.show')} title={shown ? t('reveal.hide') : t('reveal.show')}
           aria-pressed={shown} onClick={() => setShown(!shown)}><Icon name={shown ? 'eyeoff' : 'eye'} size="sm" /></button>
