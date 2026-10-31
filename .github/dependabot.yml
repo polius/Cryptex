@@ -59,3 +59,8 @@ updates:
     groups:
       docker:
         patterns: ["*"]
+    # Node moves a major by hand, from one LTS to the next, together with node-version in ci.yml (odd majors are
+    # never LTS). Patches and the image digest still update here.
+    ignore:
+      - dependency-name: "node"
+        update-types: ["version-update:semver-major"]
