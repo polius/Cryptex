@@ -297,7 +297,8 @@
     }
 
     const fadeIn = ramp(t, 0, 0.5);
-    const fadeOut = 1 - ramp(t, TL.d.video_end - 1.2, TL.d.video_end - 0.05);
+    // no fade to black: the end card is the last frame, which is what stays on screen after playback
+    const fadeOut = 1;
     document.getElementById("whiteout").style.opacity = (1 - Math.min(fadeIn, fadeOut)).toFixed(4);
   }
 

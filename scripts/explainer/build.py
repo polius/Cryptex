@@ -56,7 +56,8 @@ def write_srt(timeline, path):
         return f"{h:02d}:{m:02d}:{s:02d},{ms:03d}"
 
     cues = []
-    for seg in timeline["segments"]:
+    segs = timeline["segments"]
+    for seg in segs:
         parts = [p for p in re.split(r"(?<=[.?!]) +", seg["vo"].strip()) if p]
         dur = seg["end"] - seg["start"]
         total = sum(len(p) for p in parts) or 1
@@ -65,6 +66,18 @@ def write_srt(timeline, path):
             d = dur * len(p) / total
             cues.append((tc, tc + d, p))
             tc += d
+    # readable: each cue stays at least 1.2 s and up to 1 s past the voice (never into the next cue),
+    # and long cues wrap into two balanced lines of at most 42 characters
+    out = []
+    for i, (a, b, text) in enumerate(cues):
+        nxt = cues[i + 1][0] if i + 1 < len(cues) else timeline.get("video_end", b + 2)
+        b = min(max(b + 1.0, a + 1.2), nxt - 0.05)
+        if len(text) > 42:
+            words = text.split()
+            best = min(range(1, len(words)), key=lambda k: abs(len(" ".join(words[:k])) - len(" ".join(words[k:]))))
+            text = " ".join(words[:best]) + "\n" + " ".join(words[best:])
+        out.append((a, b, text))
+    cues = out
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path, "w") as f:
         for i, (a, b, text) in enumerate(cues, 1):
@@ -151,15 +164,17 @@ def main():
         run([PY, os.path.join(HERE, "music.py"), "--timeline", args.timeline, "--cues", cues, "--out", music_raw])
         loudnorm(music_raw, music, args.music_level, -3)
         inputs += ["-i", music]
-        # the voice ducks the score: ~7 dB under speech, back up in the gaps
-        graph += ("[0:a]asplit=2[v][key];"
-                  "[2:a][key]sidechaincompress=threshold=0.025:ratio=5:attack=40:release=450:makeup=1[bed];"
-                  "[v][bed][fx]amix=inputs=3:duration=first:normalize=0[pre]")
+        # the voice ducks the score (~6-7 dB under speech, a slow release so the gaps don't pump),
+        # and tucks the effects under its consonants (~3 dB)
+        graph += ("[0:a]asplit=3[v][key][key2];"
+                  "[2:a][key]sidechaincompress=threshold=0.05:ratio=2.5:attack=60:release=900:makeup=1[bed];"
+                  "[fx][key2]sidechaincompress=threshold=0.05:ratio=2:attack=20:release=300:makeup=1[fxd];"
+                  "[v][bed][fxd]amix=inputs=3:duration=first:normalize=0[pre]")
     pre = os.path.join(HERE, "mix_pre.wav")
     run(["ffmpeg", "-v", "error", "-y", *inputs, "-filter_complex", graph, "-map", "[pre]",
          "-ar", "48000", "-ac", "2", "-c:a", "pcm_s24le", pre])
     mix = os.path.join(HERE, "mix.wav")
-    loudnorm(pre, mix, -14, -1.0)       # streaming loudness, true peak under -1 dB
+    loudnorm(pre, mix, -14, -1.5)       # streaming loudness; -1.5 dBTP leaves room for the AAC encode's overshoot
 
     # 5) video-only ----------------------------------------------------------
     print("[5/7] encode video")

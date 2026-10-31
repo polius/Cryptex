@@ -169,8 +169,10 @@ html, body {
 /* ---- the pointer and the finger ------------------------------------------------ */
 .cursor { position: absolute; left: 0; top: 0; z-index: 60; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6)); }
 .ripple { position: absolute; width: 74px; height: 74px; margin: -37px 0 0 -37px; border-radius: 50%; border: 3px solid rgba(143, 169, 240, 0.6); z-index: 59; opacity: 0; }
+/* a fingertip: a dark core with a light ring, so it reads on light buttons and dark pages alike */
 .tap { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; z-index: 60; opacity: 0;
-  background: radial-gradient(closest-side, rgba(233, 237, 242, 0.34), rgba(233, 237, 242, 0.14) 70%, rgba(233, 237, 242, 0)); }
+  background: radial-gradient(closest-side, rgba(15, 20, 25, 0.34), rgba(15, 20, 25, 0.18) 72%, rgba(15, 20, 25, 0));
+  box-shadow: 0 0 0 2px rgba(233, 237, 242, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35); }
 
 /* ---- things the film adds over the app ----------------------------------------- */
 /* the clipboard: what is pasted, before the app reads it */
@@ -206,7 +208,7 @@ html, body {
   font: 600 30px/1 var(--text); white-space: nowrap; box-shadow: 0 24px 50px -20px rgba(0, 0, 0, 0.7);
 }
 .pill svg { width: 32px; height: 32px; }
-.meta { font: 500 24px/1 var(--text); color: var(--muted); white-space: nowrap; }
+.meta { font: 500 28px/1 var(--text); color: var(--ink-2); white-space: nowrap; }
 .meta b { margin: 0 14px; color: var(--faint); font-weight: 500; }
 
 /* the README poster's play button */
@@ -222,7 +224,7 @@ html, body {
 /* ---- the film's grammar: big type, the product large ------------------------ */
 .headline.big { letter-spacing: -0.045em; line-height: 1.02; text-shadow: 0 8px 50px rgba(0, 0, 0, 0.55); z-index: 40; }
 .card-cut { transform-origin: 70% 50%; }
-.biglink { font: 500 50px/1 var(--mono); letter-spacing: -0.01em; color: var(--ink); white-space: pre; }
+.biglink { font: 500 44px/1 var(--mono); letter-spacing: -0.01em; color: var(--ink); white-space: pre; }
 .biglink .h { display: inline-block; color: var(--ink-2); }
 .biglink .frag { position: relative; display: inline-block; color: var(--accent); transform-origin: 50% 50%;
   text-shadow: 0 0 calc(var(--hi, 0) * 28px) rgba(143, 169, 240, calc(var(--hi, 0) * 0.7)); }
@@ -244,3 +246,12 @@ html, body {
 .ghcard b { font: 600 44px/1 var(--text); color: var(--ink); white-space: nowrap; }
 .ghcard span { font: 500 30px/1 var(--text); color: var(--muted); }
 .biglink .frag .ktag { position: absolute; left: 50%; top: 100%; margin-top: 46px; }
+
+/* ---- the send scene's captions: one short line per step, low on the frame -- */
+.capscrim { left: 0; top: 800px; width: 1920px; height: 280px; z-index: 39; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(10, 13, 18, 0) 0%, rgba(10, 13, 18, 0.95) 45%, rgba(10, 13, 18, 0.97) 100%); }
+.headline.caption { left: 110px; top: 930px; font-size: 64px; letter-spacing: -0.04em; z-index: 40; text-shadow: 0 6px 40px rgba(0, 0, 0, 0.6); }
+
+/* whose screen it is, above a phone */
+.tag.devtag { font-size: 24px; gap: 10px; color: var(--muted); }
+.tag.devtag svg { width: 24px; height: 24px; }

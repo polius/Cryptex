@@ -34,7 +34,7 @@ SR = 48000
 BPM = 100
 BEAT = 60 / BPM
 BAR = 4 * BEAT
-END = 2.4                          # the last chord, alone under the end card
+END = 1.0                          # a short fade at the very end; the end card holds lit to the last frame
 
 # (bass, voicing) per bar, four-bar loops
 SEALED = [(38, [57, 60, 64, 65]),      # Dm9      (A C E F over D)
@@ -272,7 +272,7 @@ def build(timeline, cues):
             for j, m in enumerate(voice):
                 x = piano(m, d * BEAT, v * (0.8 if live else 0.6))
                 add(keys, t + at_beat * BEAT + j * 0.01, x, pan=-0.3 + 0.18 * j); add(send, t + at_beat * BEAT, x * 0.3)
-        add(keys, t, pad(voice[:3], BAR + 0.3, 1.0 if live else 0.4))
+        add(keys, t, pad(voice[:3], BAR + 0.3, 1.0 if live else 0.8))
         for s in range(16):
             v = (0.4 if s % 4 == 0 else 0.22) * (1.0 if live else 0.8)
             x = celesta(voice[FIGURE[s]] + 12, v)
@@ -305,17 +305,26 @@ def build(timeline, cues):
                 add(drums, b + s * BEAT / 4, hat() * (0.5, 0.2, 0.36, 0.2)[s], pan=0.3)
             if bb == 3:
                 add(drums, b + BEAT / 2, hat(open_=True) * 0.3, pan=0.3)
-    # the breakdown keeps the clock ticking
+    # the breakdown keeps the clock ticking, over a half-time kick, so the bed never empties
     for i in range(int((end_hit - brk) / BEAT) + 1):
         b = brk + i * BEAT
         if b < end_hit - 0.05:
             add(drums, b + BEAT / 2, tick() * 0.7, pan=0.25)
+            if i % 4 == 0:
+                add(drums, b, K * 0.45)
 
     # the end: the last ring locks, D major rings, the celesta rolls up
     for j, m in enumerate(FINAL[1]):
         x = piano(m, dur - end_hit - 0.8, 0.8)
         add(keys, end_hit + j * 0.025, x * 1.6, pan=-0.35 + 0.14 * j); add(send, end_hit + j * 0.025, x * 0.8)
-    add(keys, end_hit, pad(FINAL[1][:4], dur - end_hit, 0.8) * 1.3)
+    add(keys, end_hit, pad(FINAL[1][:4], dur - end_hit, 0.8) * 2.2)
+    # struck again, softer and open, as the last word ends: the end card gets its own chord, not a tail
+    last_word = max(sg["end"] for sg in timeline["segments"])
+    if last_word + 0.6 < dur:
+        for j, m in enumerate(FINAL[1]):
+            x = piano(m, dur - last_word, 0.55)
+            add(keys, last_word + 0.05 + j * 0.03, x * 1.3, pan=-0.35 + 0.14 * j); add(send, last_word + 0.05 + j * 0.03, x * 0.9)
+        add(keys, last_word, pad(FINAL[1][:4], dur - last_word, 0.9) * 1.4)
     add(bass, end_hit, bass_note(FINAL[0], dur - end_hit - 0.5, 0.9))
     for k, m in enumerate([66, 69, 73, 76, 78, 81, 85, 90]):
         x = celesta(m, 1.3 * np.exp(-k / 7))

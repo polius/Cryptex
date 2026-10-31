@@ -14,10 +14,11 @@ Design rules the film follows, so any future edit stays on-model:
 
 - **The product from the first seconds.** No problem set-up: the film opens
   on the name and is in the app within six seconds.
-- **One idea per shot, and the voice never stops for long.** About 90 spoken
-  words. On-screen type is used only where the idea is the message (the key
+- **One idea per shot, and the voice never stops for long.** About 130 spoken
+  words, and no silence longer than about three seconds. On-screen type is used where the idea is the message (the key
   scene, opening, tracking, asking, self-hosting), and it complements the voice rather than reading
-  it back.
+  it back. The send scene, all app, carries a short caption per step low on
+  the frame, so the film still reads with the sound off.
 - **The product is the hero, shown big.** Every app screen is the real one:
   the built stylesheet, fonts and icons from `web/`, in an iframe, filled with
   the markup the app renders and its own copy (`web/src/copy/en.json`), in its
@@ -33,9 +34,9 @@ Design rules the film follows, so any future edit stays on-model:
 - **The app's own moments.** Create link plays the app's seal (the text
   scrambles, the guilloche sweeps over it, the mark clasps shut), with its own
   CSS animations, seeked frame by frame.
-- **The cryptex.** The film opens and closes on the mark: glyphs gather into
-  it, it clasps shut as in the app's seal, and the name decrypts behind a
-  sweep of light. The background is security print: the app's sealed pattern
+- **The cryptex.** The film opens and closes on the mark: in the opening,
+  glyphs gather into it; both times it clasps shut as in the app's seal, and
+  the name decrypts behind a sweep of light. The background is security print: the app's sealed pattern
   drawn in the round. One accent, the sealed indigo; green means opened.
 - **Only true claims.** Everything said or shown matches the app, the README,
   `docs/crypto.md` and `docs/threat-model.md`. Check there before changing a line.
@@ -64,11 +65,12 @@ Scene arc, timed to the narration (about 70 s):
 
 ```
 open ("Meet Cryptex": the mark clasps, the name decrypts)
-  →  send (paste, choose how long it lasts, create the link: the app's seal)
+  →  send (paste, choose how long it lasts, make it open once, create the link:
+           the app's seal, as the voice says it's encrypted on your device)
   →  key (the key lifts out of the link; what you send / what your server stores)
   →  reveal (they open it once; then it's gone)  →  track (the link's own page)
-  →  ask (Maya asks in the real dialog; Sam answers on their phone)
-  →  selfhost (free and open source; run your own: the Docker command)  →  outro
+  →  ask (Maya asks in the real dialog; Sam answers on their phone; Maya opens it)
+  →  selfhost (free, open source, built for teams; try it: the Docker command)  →  outro
 ```
 
 ---
@@ -157,7 +159,7 @@ on the film's paper, with a play button (`POSTER` in `web/scenes.js`):
 ## Customizing
 
 - **Wording and pacing**: edit `LINES` in `narration.py`. Keep it short:
-  the whole film is about 90 spoken words. `HOLD` / `SCENE_HOLD` (how long a
+  the whole film is about 130 spoken words. `HOLD` / `SCENE_HOLD` (how long a
   scene stays on its point after its last word), `LEAD` / `SCENE_LEAD` (how
   long it shows before its first), `GAP_SAME` and `GAP_EXTRA` decide how
   fast the film feels. Adding a line?

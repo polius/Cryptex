@@ -37,30 +37,33 @@ LANG = "en-us"
 # Unhurried on purpose: every scene settles on its point before the next turns in.
 FPS = int(os.environ.get("FPS", "60"))
 GAP_SAME = 0.4             # pause between two lines in the same scene
-TAIL = 3.4                 # hold after the last line (settled end card)
+TAIL = 2.6                 # hold after the last line (settled end card)
 # A scene change is laid out from both sides of the cut: the scene leaving
 # holds on its point after its last word (HOLD; the cut starts half a second
 # before it ends), and the next one shows for a while before its first word
 # (LEAD). Unhurried on purpose: the voice never ends on a picture that is
 # already leaving.
-HOLD, LEAD = 1.6, 1.0
+HOLD, LEAD = 1.6, 0.8
 SCENE_HOLD = {
-    "send": 5.0,           # the seal plays out, slowly, and the link page settles
+    "open": 0.8,           # the name, then straight into the app
+    "send": 1.4,           # the link page, while "send it in any chat" is said
     "key": 2.0,            # what you send, next to what your server stores
-    "reveal": 1.7,         # the page that says it was already opened
-    "track": 1.8,          # the green row
-    "ask": 1.7,            # Sam's answer, sent
-    "selfhost": 1.8,       # the server comes up
+    "reveal": 1.2,         # the banner that says the link no longer works
+    "track": 1.3,          # the green row
+    "ask": 1.4,            # Maya's answer, open
+    "selfhost": 1.0,       # the server comes up
 }
-SCENE_LEAD = {"open": 1.55, "send": 0.9, "key": 1.3, "outro": 2.6}
+SCENE_LEAD = {"open": 1.2, "send": 0.9, "key": 0.8, "outro": 0.9}
 # extra pause before a line inside a scene, to let a visual land
 GAP_EXTRA = {
     "send2": 1.0,          # the paste becomes fields, the title is typed
-    "send3": 1.0,          # "Opens once" is ticked, the camera returns to Create link
-    "key2": 0.45,
+    "send3": 0.6,          # "Expires after" is set
+    "send4": 0.15,         # the seal starts on "create"; the voice says what it does
+    "send5": 0.5,          # the link page arrives
     "key3": 0.5,           # the key, apart from the address
     "open2": 1.1,          # the secret, on the phone
     "ask2": 1.2,           # Maya's note, then her request link
+    "ask3": 1.0,           # Sam's "Sent" lands, then back to Maya
     "self2": 0.2,
     "outro2": -0.2,        # keep the closing line close to the name
 }
@@ -71,20 +74,22 @@ GAP_EXTRA = {
 # this is a promo, not a manual. Every claim matches the README, docs/crypto.md
 # and the app's own copy (web/src/copy/en.json).
 LINES = [
-    ("brand1", "open", "Meet Cryptex, the secure way to share passwords, keys and files.",
-     {"secure": "secure"}),
-    ("send1", "send", "Paste a password.",
+    ("brand1", "open", "Meet Cryptex. Share passwords and logins from your own server, end-to-end encrypted.",
+     {"share": "Share", "own": "your own server"}),
+    ("send1", "send", "Paste a password, or a whole .env file.",
      {"paste": "Paste"}),
     ("send2", "send", "Choose how long it lasts.",
      {"choose": "Choose", "lasts": "lasts"}),
-    ("send3", "send", "Then create a link.",
-     {"create": "create"}),
-    ("key1", "key", "It's encrypted on your device before it leaves.",
-     {"encrypted": "encrypted", "device": "device"}),
-    ("key2", "key", "The key stays in the link, and never reaches your server.",
+    ("send3", "send", "Make it open once, then create a link.",
+     {"once": "once", "create": "create"}),
+    ("send4", "send", "It's encrypted on your device before it leaves.",
+     {"encrypted": "encrypted", "device": "device", "leaves": "leaves"}),
+    ("send5", "send", "Send the link in any chat.",
+     {"send": "Send"}),
+    ("key2", "key", "The key travels in the link, and your server never sees it.",
      {"key": "key", "never": "never"}),
-    ("key3", "key", "So your server can't read it.",
-     {"server": "server", "read": "read"}),
+    ("key3", "key", "So it can't read what you sent.",
+     {"read": "read"}),
     ("open1", "reveal", "They open it once.",
      {"opens": "open it"}),
     ("open2", "reveal", "Then it's gone for good.",
@@ -93,12 +98,14 @@ LINES = [
      {"see": "see", "opened": "opened"}),
     ("ask1", "ask", "Need a secret from someone? Send them a request link.",
      {"need": "Need", "request": "request"}),
-    ("ask2", "ask", "Whatever they send is encrypted for you, and only you can open it.",
-     {"encrypted": "encrypted", "only": "only you"}),
-    ("self1", "selfhost", "Cryptex is free and open source.",
-     {"free": "free", "open": "open source"}),
-    ("self2", "selfhost", "Run your own with a single Docker command.",
-     {"own": "your own", "command": "Docker command"}),
+    ("ask2", "ask", "They answer on their phone, encrypted for you.",
+     {"answer": "answer", "encrypted": "encrypted"}),
+    ("ask3", "ask", "Only you can open it.",
+     {"only": "Only", "open": "open"}),
+    ("self1", "selfhost", "Cryptex is free, open source, and built for teams.",
+     {"free": "free", "open": "open source", "teams": "teams"}),
+    ("self2", "selfhost", "Try it with one Docker command. It's on GitHub.",
+     {"try": "Try", "docker": "Docker", "command": "command", "github": "GitHub"}),
     ("outro1", "outro", "Cryptex.",
      {}),
     ("outro2", "outro", "Share a secret. Keep it secret.",
@@ -106,7 +113,7 @@ LINES = [
 ]
 
 # How the voice should say a few written forms (the captions keep the text).
-SAY = {}
+SAY = {".env": "dot E N V"}
 
 
 def run(cmd):
