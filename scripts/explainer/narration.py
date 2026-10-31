@@ -1,0 +1,339 @@
+#!/usr/bin/env python3
+"""Narration: the single source of truth for the Cryptex video's words and timing.
+
+Audio-first: every line is synthesized and measured, then a timeline is laid
+out so the visuals can track the voice. On top of that we export *word onsets* — for each line you can tag a spoken substring
+(an "anchor") and get the moment it is said; the web scenes use those to reveal
+things exactly in step with the narration.
+
+Outputs (all git-ignored):
+  audio/<id>.wav      one clip per line (Kokoro neural TTS)
+  narration.wav       the stitched voice track (48 kHz stereo)
+  timeline.json       segments + scene windows + onsets, consumed by the renderer
+
+Usage:
+  python narration.py              # synthesize (Kokoro) then lay out the timeline
+  python narration.py --reuse      # reuse audio/*.wav, just re-lay out the timeline
+"""
+from __future__ import annotations
+
+import argparse
+import json
+import os
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+AUD = os.path.join(HERE, "audio")
+
+# ---- voice -----------------------------------------------------------------
+MODEL = os.environ.get("KOKORO_MODEL", os.path.join(HERE, "models", "kokoro-v1.0.onnx"))
+VOICES = os.environ.get("KOKORO_VOICES", os.path.join(HERE, "models", "voices-v1.0.bin"))
+VOICE = os.environ.get("KOKORO_VOICE", "af_heart")   # warm, confident
+SPEED = float(os.environ.get("KOKORO_SPEED", "1.02"))
+LANG = "en-us"
+
+# ---- pacing ----------------------------------------------------------------
+# Unhurried on purpose: every scene settles on its point before the next turns in.
+FPS = int(os.environ.get("FPS", "60"))
+GAP_SAME = 0.4             # pause between two lines in the same scene
+TAIL = 2.6                 # hold after the last line (settled end card)
+# A scene change is laid out from both sides of the cut: the scene leaving
+# holds on its point after its last word (HOLD; the cut starts half a second
+# before it ends), and the next one shows for a while before its first word
+# (LEAD). Unhurried on purpose: the voice never ends on a picture that is
+# already leaving.
+HOLD, LEAD = 1.6, 0.8
+SCENE_HOLD = {
+    "open": 0.8,           # the name, then straight into the app
+    "send": 1.4,           # the link page, while "send it in any chat" is said
+    "key": 2.0,            # what you send, next to what your server stores
+    "reveal": 1.2,         # the banner that says the link no longer works
+    "track": 1.3,          # the green row
+    "ask": 1.4,            # Maya's answer, open
+    "selfhost": 1.0,       # the server comes up
+}
+SCENE_LEAD = {"open": 1.2, "send": 0.9, "key": 0.8, "outro": 0.9}
+# extra pause before a line inside a scene, to let a visual land
+GAP_EXTRA = {
+    "send2": 1.0,          # the paste becomes fields, the title is typed
+    "send3": 0.6,          # "Expires after" is set
+    "send4": 0.15,         # the seal starts on "create"; the voice says what it does
+    "send5": 0.5,          # the link page arrives
+    "key3": 0.5,           # the key, apart from the address
+    "open2": 1.1,          # the secret, on the phone
+    "ask2": 1.2,           # Maya's note, then her request link
+    "ask3": 1.0,           # Sam's "Sent" lands, then back to Maya
+    "self2": 0.2,
+    "outro2": -0.2,        # keep the closing line close to the name
+}
+
+# ---- the script ------------------------------------------------------------
+# id, scene, voice-over, anchors {label: spoken substring} — anchors mark when a
+# word is actually spoken so the visuals can reveal in sync. Short, plain lines:
+# this is a promo, not a manual. Every claim matches the README, docs/crypto.md
+# and the app's own copy (web/src/copy/en.json).
+LINES = [
+    ("brand1", "open", "Meet Cryptex. Share passwords and logins from your own server, end-to-end encrypted.",
+     {"share": "Share", "own": "your own server"}),
+    ("send1", "send", "Paste a password, or a whole .env file.",
+     {"paste": "Paste"}),
+    ("send2", "send", "Choose how long it lasts.",
+     {"choose": "Choose", "lasts": "lasts"}),
+    ("send3", "send", "Make it open once, then create a link.",
+     {"once": "once", "create": "create"}),
+    ("send4", "send", "It's encrypted on your device before it leaves.",
+     {"encrypted": "encrypted", "device": "device", "leaves": "leaves"}),
+    ("send5", "send", "Send the link in any chat.",
+     {"send": "Send"}),
+    ("key2", "key", "The key travels in the link, and your server never sees it.",
+     {"key": "key", "never": "never"}),
+    ("key3", "key", "So it can't read what you sent.",
+     {"read": "read"}),
+    ("open1", "reveal", "They open it once.",
+     {"opens": "open it"}),
+    ("open2", "reveal", "Then it's gone for good.",
+     {"gone": "gone"}),
+    ("track1", "track", "And you see the moment it's opened.",
+     {"see": "see", "opened": "opened"}),
+    ("ask1", "ask", "Need a secret from someone? Send them a request link.",
+     {"need": "Need", "request": "request"}),
+    ("ask2", "ask", "They answer on their phone, encrypted for you.",
+     {"answer": "answer", "encrypted": "encrypted"}),
+    ("ask3", "ask", "Only you can open it.",
+     {"only": "Only", "open": "open"}),
+    ("self1", "selfhost", "Cryptex is free, open source, and built for teams.",
+     {"free": "free", "open": "open source", "teams": "teams"}),
+    ("self2", "selfhost", "Try it with one Docker command. It's on GitHub.",
+     {"try": "Try", "docker": "Docker", "command": "command", "github": "GitHub"}),
+    ("outro1", "outro", "Cryptex.",
+     {}),
+    ("outro2", "outro", "Share a secret. Keep it secret.",
+     {"share": "Share", "keep": "Keep"}),
+]
+
+# How the voice should say a few written forms (the captions keep the text).
+SAY = {".env": "dot E N V"}
+
+
+def run(cmd):
+    subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+
+def duration(path):
+    out = subprocess.check_output([
+        "ffprobe", "-v", "error", "-show_entries", "format=duration",
+        "-of", "default=noprint_wrappers=1:nokey=1", path])
+    return float(out.strip())
+
+
+# Words the voice should say differently: (Kokoro's phonemes, ours). "Cryptex" gets a
+# secondary stress on "tex", so it is never swallowed into "Cryptax".
+PHONEMES = [("kɹˈɪptɛks", "kɹˈɪptˌɛks"),
+            # "forever" with a light first syllable and a closed stressed e: fo-RE-ver
+            ("fɚɹˈɛvɚ", "fəɹˈevɚ")]
+
+
+def synth():
+    """Synthesize every line with the local Kokoro neural voice -> audio/<id>.wav."""
+    os.makedirs(AUD, exist_ok=True)
+    if not os.path.exists(MODEL) or not os.path.exists(VOICES):
+        sys.exit(f"missing Kokoro models:\n  {MODEL}\n  {VOICES}\n"
+                 "run ./setup.sh (or set KOKORO_MODEL / KOKORO_VOICES)")
+    import soundfile as sf
+    from kokoro_onnx import Kokoro
+    kokoro = Kokoro(MODEL, VOICES)
+    for sid, _scene, vo, _anchors in LINES:
+        path = os.path.join(AUD, f"{sid}.wav")
+        said = vo
+        for a, b in SAY.items():
+            said = said.replace(a, b)
+        ph = kokoro.tokenizer.phonemize(said, LANG)
+        for a, b in PHONEMES:
+            ph = ph.replace(a, b)
+        samples, sr = kokoro.create(ph, voice=VOICE, speed=SPEED, is_phonemes=True)
+        sf.write(path, samples, sr)
+        print(f"  synth {sid:8s} {len(samples) / sr:5.2f}s  {vo}")
+
+
+_WHISPER = []
+
+
+def whisper_map(path, vo):
+    """Map character positions in `vo` to seconds inside its clip from real word
+    timestamps (faster-whisper). Also prints what was heard, so a mispronounced
+    word shows up in the build log. Returns None when whisper is unavailable."""
+    try:
+        from faster_whisper import WhisperModel
+    except ImportError:
+        return None
+    import difflib
+    import re
+    import numpy as np
+    import soundfile as sf
+    from scipy.signal import resample_poly
+    if not _WHISPER:
+        _WHISPER.append(WhisperModel("small.en", device="cpu", compute_type="int8",
+                                     download_root=os.path.join(HERE, "models", "whisper")))
+    x, sr = sf.read(path, dtype="float32")
+    x = resample_poly(x if x.ndim == 1 else x.mean(axis=1), 16000, sr).astype(np.float32)
+    segs, _ = _WHISPER[0].transcribe(x, word_timestamps=True, language="en")
+    heard = [w for s in segs for w in s.words]
+    print(f"    heard: {' '.join(w.word.strip() for w in heard)}")
+    if not heard:
+        return None
+    # align letters only: whisper splits and spells words its own way
+    norm = lambda c: c.lower() if c.isalnum() else ""
+    vo_pos = [i for i, c in enumerate(vo) if norm(c)]
+    vo_l = "".join(norm(vo[i]) for i in vo_pos)
+    hw_l, hw_t = "", []
+    for w in heard:
+        for c in w.word:
+            if norm(c):
+                hw_l += norm(c); hw_t.append(w.start)
+    at = {}
+    for a, b, n in difflib.SequenceMatcher(None, vo_l, hw_l, autojunk=False).get_matching_blocks():
+        for k in range(n):
+            at[vo_pos[a + k]] = hw_t[b + k]
+    keys = sorted(at)
+
+    def where(i):
+        later = [k for k in keys if k >= i]
+        return at[later[0]] if later else at[keys[-1]]
+    return where
+
+
+def make_silence(sec):
+    sec = round(sec, 3)
+    path = os.path.join(AUD, f"sil_{int(sec * 1000)}.wav")
+    if not os.path.exists(path):
+        run(["ffmpeg", "-y", "-f", "lavfi", "-t", f"{sec}",
+             "-i", "anullsrc=r=24000:cl=mono", path])
+    return path
+
+
+def speech_map(path, vo):
+    """Map character positions in `vo` to seconds inside its clip.
+
+    Kokoro pauses at punctuation, so a plain character ratio drifts on lines
+    with several clauses. Find the pauses in the audio, pair the longest ones
+    with the punctuation breaks in the text, and interpolate by character
+    count only inside each clause.
+    """
+    import numpy as np
+    import soundfile as sf
+    x, sr = sf.read(path)
+    if x.ndim > 1:
+        x = x.mean(axis=1)
+    hop = int(sr * 0.01)
+    rms = np.sqrt(np.convolve(x ** 2, np.ones(hop) / hop, "same")[::hop])
+    loud = rms > max(1e-4, 0.08 * np.percentile(rms, 95))
+    idx = np.flatnonzero(loud)
+    if idx.size == 0:
+        return lambda i: len(vo) and 0.0
+    first, last = idx[0], idx[-1]
+    # silent runs (>= 90 ms) strictly inside the speech
+    pauses, run = [], None
+    for k in range(first, last + 1):
+        if not loud[k]:
+            run = k if run is None else run
+        elif run is not None:
+            if k - run >= 9:
+                pauses.append((k - run, run, k))
+            run = None
+    breaks = [m.end() for m in __import__("re").finditer(r"[,.;:?!\u2014]+\s*", vo) if m.end() < len(vo)]
+    knots = [(0, first * 0.01), (len(vo), (last + 1) * 0.01)]
+    if breaks and len(pauses) >= len(breaks):
+        chosen = sorted(sorted(pauses, reverse=True)[:len(breaks)], key=lambda p: p[1])
+        knots[1:1] = [(c, e * 0.01) for c, (_, _, e) in zip(breaks, chosen)]
+        # the clause before each break ends where its pause starts
+        ends = [(c - 1, s0 * 0.01) for c, (_, s0, _) in zip(breaks, chosen)]
+        knots = sorted(knots + ends)
+    cs, ts = zip(*knots)
+    return lambda i: float(np.interp(i, cs, ts))
+
+
+def onset(vo, start, where, sub):
+    """Time (s) at which `sub` is spoken."""
+    i = vo.find(sub)
+    if i < 0:
+        raise ValueError(f"anchor {sub!r} not found in {vo!r}")
+    return round(start + where(i), 3)
+
+
+def main():
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--reuse", action="store_true",
+                    help="reuse audio/*.wav instead of re-synthesizing")
+    args = ap.parse_args()
+
+    if not args.reuse:
+        print("synthesizing narration (Kokoro)")
+        synth()
+
+    durs = [duration(os.path.join(AUD, f"{sid}.wav")) for sid, *_ in LINES]
+
+    # ---- lay out the timeline from real audio durations --------------------
+    lead_in = SCENE_LEAD.get(LINES[0][1], LEAD)
+    segs, parts, t = [], [make_silence(lead_in)], lead_in
+    for i, (sid, scene, vo, anchors) in enumerate(LINES):
+        if i > 0:
+            prev = LINES[i - 1][1]
+            gap = (SCENE_HOLD.get(prev, HOLD) + SCENE_LEAD.get(scene, LEAD)) if scene != prev else GAP_SAME
+            gap += GAP_EXTRA.get(sid, 0.0)
+            parts.append(make_silence(gap))
+            t += gap
+        start, dur = t, durs[i]
+        clip = os.path.join(AUD, f"{sid}.wav")
+        where = whisper_map(clip, vo) or speech_map(clip, vo)
+        parts.append(os.path.join(AUD, f"{sid}.wav"))
+        t += dur
+        segs.append({
+            "id": sid, "scene": scene, "vo": vo,
+            "start": round(start, 3), "dur": round(dur, 3),
+            "end": round(start + dur, 3),
+            "onsets": {k: onset(vo, start, where, s) for k, s in anchors.items()},
+        })
+    parts.append(make_silence(TAIL))
+    video_end = round(t + TAIL, 3)
+
+    # ---- stitch the voice track -------------------------------------------
+    listfile = os.path.join(AUD, "concat.txt")
+    with open(listfile, "w") as f:
+        for p in parts:
+            f.write(f"file '{p}'\n")
+    narration = os.path.join(HERE, "narration.wav")
+    run(["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", listfile,
+         "-ar", "48000", "-ac", "2", narration])
+
+    # ---- scene windows (boundaries centred in the scene-change gaps) -------
+    order = []
+    for s in segs:
+        if not order or order[-1]["name"] != s["scene"]:
+            order.append({"name": s["scene"], "first": s["start"], "last_end": s["end"]})
+        else:
+            order[-1]["last_end"] = s["end"]
+    scenes = []
+    for i, sc in enumerate(order):
+        if i == 0:
+            start = 0.0
+        else:
+            start = order[i - 1]["last_end"] + SCENE_HOLD.get(order[i - 1]["name"], HOLD)
+        scenes.append({"name": sc["name"], "start": round(start, 3)})
+    for i in range(len(scenes)):
+        scenes[i]["end"] = round(scenes[i + 1]["start"], 3) if i + 1 < len(scenes) else video_end
+
+    timeline = {"fps": FPS, "video_end": video_end,
+                "narration_dur": round(duration(narration), 3),
+                "segments": segs, "scenes": scenes}
+    with open(os.path.join(HERE, "timeline.json"), "w") as f:
+        json.dump(timeline, f, indent=2)
+
+    print(f"\nnarration {timeline['narration_dur']:.2f}s   video {video_end:.2f}s "
+          f"({video_end / 60:.2f} min)")
+    for sc in scenes:
+        print(f"  {sc['name']:7s} {sc['start']:6.2f} -> {sc['end']:6.2f}")
+
+
+if __name__ == "__main__":
+    main()

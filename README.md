@@ -1,132 +1,178 @@
 <div align="center">
-<img src="web/assets/logo.svg" alt="Cryptex Logo" width="80">
-<h1 align="center">Cryptex</h1>
 
-**Lock down your data. Send it securely.**
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/icon-dark.svg">
+  <img src="docs/assets/icon-light.svg" alt="Cryptex logo" width="72">
+</picture>
 
-<p align="center">
-<a href="https://github.com/polius/cryptex/actions/workflows/release.yml"><img src="https://github.com/polius/cryptex/actions/workflows/release.yml/badge.svg"></a>&nbsp;<a href="https://github.com/polius/cryptex/releases"><img alt="GitHub Release" src="https://img.shields.io/github/v/release/polius/cryptex"></a>&nbsp;<a href="https://hub.docker.com/r/poliuscorp/cryptex"><img alt="Docker Pulls" src="https://img.shields.io/docker/pulls/poliuscorp/cryptex"></a>
+<h1>Cryptex</h1>
+
+<p><strong>Share passwords, keys and files through links that are encrypted in your browser.</strong></p>
+
+<p>
+  <a href="https://github.com/polius/Cryptex/actions/workflows/ci.yml"><img src="https://github.com/polius/Cryptex/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/polius/Cryptex/releases"><img src="https://img.shields.io/github/v/release/polius/Cryptex" alt="Release"></a>
+  <a href="https://hub.docker.com/r/poliuscorp/cryptex"><img src="https://img.shields.io/docker/pulls/poliuscorp/cryptex" alt="Docker Pulls"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License: MIT"></a>
 </p>
 
 <br>
 
-<p align="center">
-<b>Cryptex</b> is a self-hosted platform for sharing text and files securely.
-</p>
+<a href="https://pol.alzina.dev/videos/cryptex.mp4"><img src="docs/video-poster.png" alt="Cryptex's Send a secret page with a database login filled in. Click to watch the video" width="820"></a>
 
-<br>
-
-![Cryptex](web/assets/cryptex.png?v=2.4.0)
+<p><em>About a minute: sealing a secret into a link, why your server can’t read it, and what else Cryptex does.<br>Plays as an MP4 in your browser.</em></p>
 
 </div>
 
 ## Features
 
-- **Self-hosted** — deploy with a single Docker command. Your data stays on your server.
-- **Simple secure sharing** — share text and files with optional password protection.
-- **Password protection** — protect access with a password, or generate one automatically.
-- **Self-destruct** — optionally destroy a cryptex automatically after it's been opened.
-- **Expiration** — set a time limit (minutes, hours, or days) after which the cryptex is permanently deleted.
-- **Public / Private mode** — run open to anyone, or require an invite link to create a cryptex.
-- **Invite links** — create shareable invite links that allow others to create Cryptexs, even in private mode.
-- **Admin panel** — monitor active Cryptexs, manage invite links, configure limits, and enable two-factor authentication.
-- **Multipart file uploads** — large files are uploaded in chunks for reliability.
-- **QR code sharing** — generate a QR code for easy mobile access.
-- **API support** — fully documented API with API key authentication for programmatic access.
+The server stores only ciphertext: it can't read the secret, its title, its file names or who sent it.
 
-## Quick Start
+- **Encrypted before it leaves your browser.** The key is part of the link, so only the people you give the link to can open it.
+- **Links that expire.** Choose how long a link lasts, or make it work only once.
+- **Optional passphrase.** Protect a link with a passphrase and share it separately.
+- **Text and files.** Share passwords, notes, keys or whole files. Logins and keys are laid out clearly for the recipient.
+- **Know when it's opened.** See when each link was opened, and destroy it at any time.
+- **Ask for a secret.** Send someone a link to put a secret in, no account needed. Only you can open what they send.
+- **Built for teams.** Invite your colleagues, set limits, add your logo and review an activity log that never contains secrets.
 
-### Docker CLI
+## Quick start
 
-```bash
-docker run -d \
-  --name cryptex \
-  -p 80:80 \
-  -v ./data:/cryptex/data \
-  --restart unless-stopped \
-  poliuscorp/cryptex
+### Option A: on your computer (HTTP)
+
+To try Cryptex. Browsers only allow its encryption on `https://` pages and on `localhost`, so this works on this computer only.
+
+With Docker:
+
+```sh
+docker run -d --pull always --name cryptex --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
 ```
 
-### Docker Compose
+Or with Docker Compose:
 
-```yaml
-services:
-  cryptex:
-    image: poliuscorp/cryptex
-    container_name: cryptex
-    restart: unless-stopped
-    ports:
-      - "80:80"
-    volumes:
-      - ./data:/cryptex/data
-```
-
-Then open [http://localhost](http://localhost).
-
-> The `./data` volume persists the database and uploaded files across container restarts. Replace it with any host path you prefer.
-
-## Configuration
-
-| Variable | Default | Description |
-| --- | --- | --- |
-| `MODE` | `public` | `public` allows anyone to create a cryptex. `private` restricts creation to authenticated users or valid invite links |
-| `ADMIN_PASSWORD` | — | Bcrypt hash used to override the default admin password (`admin`) |
-| `MAX_MESSAGE_LENGTH` | `1000` | Max characters per cryptex |
-| `MAX_FILE_COUNT` | `3` | Max file attachments per cryptex |
-| `MAX_FILE_SIZE` | `100mb` *(100 MB)* | Max size per file (`500kb`, `10mb`, `1gb`) |
-| `MAX_EXPIRATION` | `1d` *(1 day)* | Max expiration time (`30m`, `24h`, `30d`) |
-| `RATE_LIMIT` | `30` | Max requests per minute per IP for create/open endpoints |
-
-## Admin Panel
-
-Manage Cryptexs, invite links, settings, and 2FA at [http://localhost/login](http://localhost/login).
-
-**Default password:** `admin` — change it in production.
-
-Generate a custom password hash:
-
-```bash
-pip install bcrypt
-python3 -c "import bcrypt, getpass; p = getpass.getpass('Enter password: '); print(bcrypt.hashpw(p.encode(), bcrypt.gensalt()).decode())"
-```
-
-Then set `ADMIN_PASSWORD` in your environment:
-
-```yaml
-environment:
-  - ADMIN_PASSWORD=$2b$12$LJ3m4ys3uz0Cb6PEhV7hXOBFg7b6I1MeZaYvLYEPYj5KzKIO/3Cxm
-```
-
-**Note:** If you're using the Docker CLI (`-e` flag), wrap the hash in **single quotes**:
-
-```bash
--e ADMIN_PASSWORD='$2b$12$LJ3m4ys3uz0Cb6PEhV7hXOBFg7b6I1MeZaYvLYEPYj5KzKIO/3Cxm'
-```
-
-## Upgrading
-
-### Docker CLI
-
-```bash
-docker pull poliuscorp/cryptex
-docker stop cryptex && docker rm cryptex
-docker run -d \
-  --name cryptex \
-  -p 80:80 \
-  -v ./data:/cryptex/data \
-  --restart unless-stopped \
-  poliuscorp/cryptex
-```
-
-### Docker Compose
-
-```bash
-docker compose pull
+```sh
+curl -fsSLO https://raw.githubusercontent.com/polius/Cryptex/main/deploy/docker-compose.yml
 docker compose up -d
 ```
 
-The `./data` volume preserves your database and files across upgrades.
+Open `http://localhost:8080`.
+
+### Option B: on your own domain (HTTPS, recommended)
+
+You need a server with a public IP address and a domain name. [Caddy](https://caddyserver.com) runs alongside Cryptex and gets the certificate for you.
+
+1. Point your domain's DNS (an `A` record) at the server, and open the [required ports](#required-ports).
+2. Download the two files:
+
+   ```sh
+   curl -fsSL https://raw.githubusercontent.com/polius/Cryptex/main/deploy/docker-compose-ssl.yml -o docker-compose.yml
+   curl -fsSLO https://raw.githubusercontent.com/polius/Cryptex/main/deploy/Caddyfile
+   ```
+
+3. Open `Caddyfile` and replace `yourdomain.com` on the first line with your domain.
+4. Start it:
+
+   ```sh
+   docker compose up -d
+   ```
+
+Open `https://yourdomain.com`.
+
+### Updating
+
+With Docker:
+
+```sh
+docker rm -f cryptex
+docker run -d --pull always --name cryptex --restart unless-stopped \
+  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
+```
+
+Or with Docker Compose:
+
+```sh
+docker compose pull && docker compose up -d
+```
+
+### Required ports
+
+For Option B, open these on your server's firewall (and in your cloud provider's security group, if it has one):
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `443` | TCP + UDP | The web interface over HTTPS (UDP for HTTP/3) |
+| `80` | TCP | Getting the certificate, and redirecting to HTTPS |
+
+Option A opens no ports: Cryptex listens on `127.0.0.1:8080`, this computer only.
+
+## Configuration
+
+Cryptex needs no configuration. To change a default, pass the variable to `docker run` with `-e`, such as `-e MAX_FILES=10`, or add it under `environment:` on the `cryptex` service in the compose file. An invalid value stops the server at start and names the variable.
+
+Formats: sizes `500kb`, `10mb`, `1gb` · durations `30m`, `24h`, `7d` · rates `60/h`, `10/15m`.
+
+### Server
+
+| Variable | Default | Description |
+|---|---|---|
+| `TRUSTED_PROXIES` | private ranges | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Set it when the proxy runs on another machine. |
+| `MIN_FREE_DISK` | `1gb` | New links are refused when they'd leave less free disk space than this. |
+
+### Links and access
+
+These can also be changed in the **Server** tab. Setting the variable locks them there.
+
+| Variable | Default | Description |
+|---|---|---|
+| `ACCESS` | `anyone` | Who can create links and ask for secrets: `anyone` or `signed_in`. Opening a link, or answering a request, never needs an account. |
+| `MAX_EXPIRATION` | `7d` | Longest lifetime offered for a link, at least `5m`. |
+| `MAX_MESSAGE_LENGTH` | `10000` | Characters per link, across all notes and fields. |
+| `MAX_FILES` | `5` | Files per link (`0` turns files off). |
+| `MAX_FILE_SIZE` | `100mb` | Size per file. |
+| `BRAND_NAME` | none | Organization name shown to recipients. |
+| `AUDIT_RETENTION_DAYS` | `365` | Audit events older than this are deleted. |
+
+### Rate limits
+
+Counted per visitor address.
+
+| Variable | Default | Limits |
+|---|---|---|
+| `RATE_CREATE` | `60/h` | Links created (per account when signed in). |
+| `RATE_REVEAL` | `120/h` | Links opened. |
+| `RATE_STATUS` | `600/h` | Status checks from *Your links*. |
+| `RATE_AUTH` | `10/15m` | Wrong passwords, 2FA, reset and setup codes. Each account also allows 30 an hour in total. |
+| `RATE_FAILED_TOKENS` | `30/h` | Wrong link tokens, then a 1-hour block. |
+
+### Logs and metrics
+
+| Variable | Default | Description |
+|---|---|---|
+| `LOG_LEVEL` | `info` | Even `debug` never logs tokens or contents. |
+| `LOG_FORMAT` | `json` | `json` or `text`. |
+| `LOG_IPS` | `false` | Add the visitor's address to request logs. |
+| `METRICS_TOKEN` | none | Enables Prometheus metrics at `/api/v1/metrics` for `Authorization: Bearer <token>`. |
+
+### Public demo
+
+`DEMO=true` turns the server into a public demo: links last at most 1 hour and hold 500 characters and one 1 MB file, there's no sign-in, a proof of work and a daily quota per address, search engines are kept out, and everything is wiped every day at 00:00 UTC. Run it on its own domain, never on one used for real secrets.
+
+| Variable | Default | Description |
+|---|---|---|
+| `DEMO_SEALS_PER_DAY` | `10` | Links per address per day. |
+| `DEMO_UPLOAD_BYTES_PER_DAY` | `10mb` | Uploads per address per day. |
+| `DEMO_STORAGE_CAP` | `1gb` | Total storage. |
+
+## Security
+
+- Secrets are encrypted in the browser with AES-256-GCM. Passphrases go through Argon2id. The format is in [docs/crypto.md](docs/crypto.md), with test vectors.
+- Opening a link page changes nothing: revealing takes a click, so link previews and scanners can't use up a secret.
+- Passwords never reach the server. Owners can't read, open or destroy other people's links.
+- A strict Content Security Policy, no third-party requests, and no tokens or contents in logs (and no IP addresses unless `LOG_IPS` is on).
+
+What Cryptex does and doesn't protect against is in [docs/threat-model.md](docs/threat-model.md). A web page is only as trustworthy as the server that serves it: if you need protection from the people running the server, run your own.
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+MIT

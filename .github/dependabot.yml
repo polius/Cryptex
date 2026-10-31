@@ -1,40 +1,61 @@
 version: 2
+# Every update goes through CI (api, web, e2e, image). Nothing is merged automatically.
+
+# @playwright/test (e2e/package.json) and the Playwright image (e2e/compose.yml) must be the same version,
+# so they move together in one pull request.
+multi-ecosystem-groups:
+  e2e:
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+
 updates:
-  # Keep the GitHub Actions used by the release workflow up to date.
+  # Actions used by CI and releases (pinned by commit SHA; updates keep the SHA and its version comment)
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
-    labels:
-      - "dependencies"
+    labels: ["dependencies"]
     groups:
       github-actions:
-        patterns:
-          - "*"
+        patterns: ["*"]
 
-  # Keep the Python dependencies (api/requirements.txt) up to date.
+  # API (requirements*.txt, hash-pinned)
   - package-ecosystem: "pip"
     directory: "/api"
     schedule:
       interval: "weekly"
-    labels:
-      - "dependencies"
+    labels: ["dependencies"]
     groups:
-      pip:
-        patterns:
-          - "*"
+      pip-api:
+        patterns: ["*"]
 
-  # Keep the nginx base image in the Dockerfile up to date.
-  # NOTE: Dependabot can only bump a versioned tag. A floating tag such as
-  # "nginx:alpine" has no version to compare, so pin it (e.g. "nginx:1.27-alpine"
-  # or a digest) for Dependabot to open update PRs.
+  # Web app
+  - package-ecosystem: "npm"
+    directory: "/web"
+    schedule:
+      interval: "weekly"
+    labels: ["dependencies"]
+    groups:
+      npm-web:
+        patterns: ["*"]
+
+  # End-to-end tests: npm packages and the Playwright image, in one group
+  - package-ecosystem: "npm"
+    directory: "/e2e"
+    patterns: ["*"]
+    multi-ecosystem-group: "e2e"
+  - package-ecosystem: "docker-compose"
+    directory: "/e2e"
+    patterns: ["*"]
+    multi-ecosystem-group: "e2e"
+
+  # Base images in the Dockerfile (pinned by digest; updates keep the tag and the digest)
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
-    labels:
-      - "dependencies"
+    labels: ["dependencies"]
     groups:
       docker:
-        patterns:
-          - "*"
+        patterns: ["*"]

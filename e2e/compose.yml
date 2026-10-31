@@ -1,0 +1,54 @@
+# End-to-end environment: the real image, a demo instance and Playwright on one network.
+#   docker compose -f e2e/compose.yml up -d --build --wait cryptex cryptex-demo
+#   docker compose -f e2e/compose.yml run --rm playwright
+name: cryptex-e2e
+# Service names avoid real TLDs: Chrome forces HTTPS for HSTS-preloaded ones such as .app.
+x-app: &app
+  build: { context: .., dockerfile: Dockerfile }
+  image: cryptex:e2e
+  healthcheck:
+    test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/v1/healthz"]
+    interval: 2s
+    retries: 30
+services:
+  # The setup code global-setup.ts claims the server with, put where the server keeps the one it makes.
+  setup-code:
+    <<: *app
+    healthcheck: { disable: true }
+    volumes: [data:/data]
+    command: ["sh", "-c", "test -e /data/cryptex.db || echo E2E-SETUP-CODE > /data/setup-code"]
+  cryptex:
+    <<: *app
+    volumes: [data:/data]
+    depends_on: { setup-code: { condition: service_completed_successfully } }
+    environment:
+      RATE_CREATE: 5000/h
+      RATE_REVEAL: 20000/h
+      RATE_AUTH: 1000/15m
+      RATE_FAILED_TOKENS: 1000/h
+      LOG_LEVEL: warning
+  cryptex-demo:
+    <<: *app
+    environment:
+      DEMO: "true"
+      DEMO_SEALS_PER_DAY: "3"
+      RATE_REVEAL: 20000/h
+      RATE_FAILED_TOKENS: 1000/h
+      LOG_LEVEL: warning
+  playwright:
+    # Same version as @playwright/test in package.json; Dependabot bumps both in one pull request.
+    image: mcr.microsoft.com/playwright:v1.64.1-noble@sha256:47b510dd9230bf0b9bfc9b20102241e577ea7a99334ab4c3ca19f19770e9b8ea
+    platform: linux/amd64   # same Chromium build as CI, so screenshots match pixel for pixel
+    profiles: [test]
+    working_dir: /e2e
+    volumes: [".:/e2e"]
+    environment:
+      BASE_URL: http://localhost:8080
+      DEMO_URL: http://localhost:8081
+      CI: ${CI:-}
+    command: ["sh", "-c", "node forward.mjs & npm ci --no-audit --no-fund >/dev/null && npx playwright test ${PW_ARGS:-}"]
+    depends_on:
+      cryptex: { condition: service_healthy }
+      cryptex-demo: { condition: service_healthy }
+volumes:
+  data:

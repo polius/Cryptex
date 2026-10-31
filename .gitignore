@@ -1,3 +1,19 @@
-__pycache__
+__pycache__/
+*.pyc
 .DS_Store
-docker-compose.yml
+.venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+web/dist/
+web/coverage/
+e2e/test-results/
+e2e/playwright-report/
+data/
+*.db
+*.db-wal
+*.db-shm
+# deploy/ compose files run from a local copy (README.md → Quick start): never commit the key or a backup
+.env
+backups/

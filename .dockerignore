@@ -1,0 +1,21 @@
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/.mypy_cache
+**/.DS_Store
+web/dist
+e2e
+# the video's source, models and frames (scripts/explainer)
+scripts
+.git
+.github
+.claude
+*.md
+# Local runs (deploy/ compose files, or from the repository root): data, backups and key never go into an image.
+data
+deploy
+backups
+.env
+*.key

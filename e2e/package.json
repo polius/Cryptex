@@ -1,0 +1,16 @@
+{
+  "name": "cryptex-e2e",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "playwright test",
+    "update-snapshots": "playwright test --update-snapshots"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.64.1",
+    "@types/node": "24.10.1",
+    "hash-wasm": "^4.12.0",
+    "typescript": "^5.9.3"
+  }
+}

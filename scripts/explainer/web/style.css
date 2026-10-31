@@ -1,0 +1,257 @@
+/* Cryptex video — stage styling.
+   Fixed 1920x1080; every animation is driven from JS by absolute time, so the
+   page is fully deterministic frame-by-frame (no CSS animations / transitions).
+   Soft light is drawn with radial gradients, never live blur filters: the
+   capture rasterizer would re-run a blur for every frame.
+
+   The film follows the app's own design in its dark theme
+   (web/src/styles/app.css, :root[data-theme="dark"]): its canvas, ink and type
+   (Red Hat Display, Text and Mono), the "sealed" tint and its guilloche, and one
+   accent, the sealed indigo. Green means opened, red means destroyed, as in the app. */
+
+@font-face { font-family: "Red Hat Display"; font-weight: 500; font-display: block; src: url("/node_modules/@fontsource/red-hat-display/files/red-hat-display-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Red Hat Display"; font-weight: 600; font-display: block; src: url("/node_modules/@fontsource/red-hat-display/files/red-hat-display-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Red Hat Display"; font-weight: 700; font-display: block; src: url("/node_modules/@fontsource/red-hat-display/files/red-hat-display-latin-700-normal.woff2") format("woff2"); }
+@font-face { font-family: "Red Hat Text"; font-weight: 400; font-display: block; src: url("/node_modules/@fontsource/red-hat-text/files/red-hat-text-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Red Hat Text"; font-weight: 500; font-display: block; src: url("/node_modules/@fontsource/red-hat-text/files/red-hat-text-latin-500-normal.woff2") format("woff2"); }
+@font-face { font-family: "Red Hat Text"; font-weight: 600; font-display: block; src: url("/node_modules/@fontsource/red-hat-text/files/red-hat-text-latin-600-normal.woff2") format("woff2"); }
+@font-face { font-family: "Red Hat Mono"; font-weight: 400; font-display: block; src: url("/node_modules/@fontsource/red-hat-mono/files/red-hat-mono-latin-400-normal.woff2") format("woff2"); }
+@font-face { font-family: "Red Hat Mono"; font-weight: 500; font-display: block; src: url("/node_modules/@fontsource/red-hat-mono/files/red-hat-mono-latin-500-normal.woff2") format("woff2"); }
+
+:root {
+  /* the app's dark theme (web/src/styles/app.css) */
+  --canvas: #0B0E12;
+  --surface: #12161C;
+  --sunk: #171C23;
+  --ink: #E9EDF2;
+  --ink-2: #C2CAD3;
+  --muted: #93A0AD;
+  --faint: #5F6B77;
+  --line: #222932;
+  --line-2: #323B46;
+  --tint-bg: #151C27;
+  --tint-line: #22304A;
+  --tint-ink: #9DB4E6;
+  --accent: #8FA9F0;          /* the one accent: what is sealed, and the key */
+  --ok: #4FC285;
+  --ok-bg: rgba(79, 194, 133, 0.12);
+  --danger: #FF8B80;
+  --display: "Red Hat Display", system-ui, sans-serif;
+  --text: "Red Hat Text", system-ui, sans-serif;
+  --mono: "Red Hat Mono", ui-monospace, monospace;
+  --shadow-win: 0 60px 120px -40px rgba(0, 0, 0, 0.75), 0 18px 40px -20px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(255, 255, 255, 0.07);
+  --shadow-card: 0 40px 80px -36px rgba(0, 0, 0, 0.7);
+}
+
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  width: 1920px; height: 1080px; overflow: hidden;
+  background: var(--canvas);
+  font-family: var(--text);
+  color: var(--ink);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: geometricPrecision;
+}
+
+#stage { position: relative; width: 1920px; height: 1080px; background: var(--canvas); overflow: hidden; }
+#scenes { position: absolute; inset: 0; }
+
+/* ---- persistent background: security print ------------------------------- */
+#bg { position: absolute; inset: 0; overflow: hidden; }
+#bg .ro { position: absolute; left: 0; top: 0; }
+#bg .ro1 { left: 1500px; top: 260px; }
+#bg .ro2 { left: 190px; top: 1010px; }
+#bg .light {
+  position: absolute; left: 160px; top: -260px; width: 1600px; height: 1300px; border-radius: 50%;
+  background: radial-gradient(closest-side, rgba(52, 72, 122, 0.30), rgba(52, 72, 122, 0.12) 55%, rgba(52, 72, 122, 0));
+}
+#bg .vignette {
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 115% at 50% 40%, transparent 55%, rgba(0, 0, 0, 0.45) 100%);
+}
+#whiteout { position: absolute; inset: 0; background: var(--canvas); z-index: 999; }
+
+/* ---- scene layers ------------------------------------------------------- */
+.layer { position: absolute; inset: 0; transform-origin: 50% 50%; }
+.cam { position: absolute; inset: 0; transform-origin: 50% 50%; }
+.abs { position: absolute; }
+.ctr { position: absolute; transform: translate(-50%, -50%); }
+
+/* ---- type ---------------------------------------------------------------- */
+.headline {
+  font: 700 76px/1.06 var(--display); letter-spacing: -0.035em; white-space: nowrap; color: var(--ink);
+}
+.headline.soft { color: var(--muted); }
+.headline .acc { color: var(--accent); }
+.kt { display: inline-block; overflow: hidden; vertical-align: top; padding: 0.06em 0.03em 0.18em; margin: -0.06em -0.03em -0.18em; }
+.kt > span { display: inline-block; will-change: transform; }
+.mono { font-family: var(--mono); }
+
+/* ---- the lockup: the mark and the wordmark, as in the app's header ------- */
+/* the box is 0 wide: everything in it is placed around its centre point */
+.lockup { position: relative; width: 0; height: 0; font-size: 150px; }
+.lockup .lmark { position: absolute; left: 0; top: 0; }
+.lockup .lmark svg { width: 100%; height: 100%; display: block; overflow: visible; color: var(--ink); }
+.lockup .lword { position: absolute; left: 0; top: 0; display: flex; font: 700 1em/1 var(--display); letter-spacing: -0.021em; color: var(--ink); white-space: pre; }
+.lockup .lword span { display: inline-block; text-align: center; }
+.lockup .lring { position: absolute; left: 0; top: 0; border-radius: 30%; border: 2px solid var(--accent); }
+.lockup .lsweep {
+  position: absolute; left: 0; top: 0; width: 3px; height: 1.25em; border-radius: 2px;
+  background: linear-gradient(transparent, var(--accent) 25%, var(--accent) 75%, transparent);
+  box-shadow: 0 0 24px 6px rgba(143, 169, 240, 0.35);
+}
+
+/* ---- the hook: a team chat, and the copies of what was pasted in it ----- */
+.chat { border-radius: 22px; background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-win); overflow: hidden; }
+.chat .ch { display: flex; align-items: center; gap: 10px; padding: 22px 30px; border-bottom: 1px solid var(--line); font: 700 26px/1 var(--display); color: var(--ink); }
+.chat .ch .hash { color: var(--faint); font-weight: 500; }
+.chat .ch .mem { margin-left: auto; display: flex; align-items: center; gap: 8px; font: 500 20px/1 var(--text); color: var(--muted); }
+.chat .ch .mem svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; }
+.chat .cm { display: flex; gap: 18px; padding: 24px 30px 4px; }
+.chat .cm:last-child { padding-bottom: 30px; }
+.chat .cav { flex: none; width: 52px; height: 52px; border-radius: 14px; display: grid; place-items: center; font: 700 22px/1 var(--display);
+  color: var(--tint-ink); background: var(--tint-bg); border: 1px solid var(--tint-line); }
+.chat .cav.b { color: #F0C48A; background: rgba(240, 196, 138, 0.12); border-color: rgba(240, 196, 138, 0.3); }
+.chat b { font: 700 24px/1 var(--display); color: var(--ink); }
+.chat small { margin-left: 12px; font: 500 18px/1 var(--text); color: var(--faint); }
+.chat p { margin-top: 10px; font: 400 25px/1.4 var(--text); color: var(--ink-2); }
+.chat .code { margin-top: 14px; padding: 18px 22px; border-radius: 12px; background: var(--canvas); border: 1px solid var(--line);
+  font: 500 25px/1.6 var(--mono); color: var(--ink-2); white-space: pre; }
+.pw { color: var(--ink); border-radius: 6px; }
+.chat .code.hot .pw { background: rgba(255, 139, 128, 0.16); box-shadow: 0 0 0 4px rgba(255, 139, 128, 0.16); color: var(--danger); }
+.pw.glitch { color: var(--danger); text-shadow: 2px 0 rgba(255, 80, 80, 0.7), -2px 0 rgba(90, 200, 255, 0.6); }
+.leak { width: 430px; padding: 18px 22px; border-radius: 16px; background: var(--surface); border: 1px solid rgba(255, 139, 128, 0.35);
+  box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(255, 139, 128, 0.08); }
+.leak .lh { display: flex; align-items: center; gap: 10px; color: var(--muted); }
+.leak .lh svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.leak .lh b { font: 700 21px/1 var(--display); color: var(--ink); }
+.leak .lh small { margin-left: auto; font: 500 17px/1 var(--text); color: var(--faint); }
+.leak .lp { margin-top: 14px; font: 500 22px/1 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.leak .lp .pw { color: var(--danger); }
+
+
+/* ---- the browser window ----------------------------------------------------- */
+.win {
+  position: absolute; border-radius: 18px; overflow: hidden; background: var(--canvas);
+  border: 1px solid rgba(255, 255, 255, 0.08); box-shadow: var(--shadow-win);
+}
+.win .chrome {
+  position: absolute; left: 0; right: 0; top: 0; height: 52px; display: flex; align-items: center; gap: 9px; padding: 0 20px; z-index: 3;
+  background: #1a1f27; border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+.win .chrome i { width: 13px; height: 13px; border-radius: 50%; display: block; }
+.win .chrome i:nth-child(1) { background: #ff5f57; } .win .chrome i:nth-child(2) { background: #febc2e; } .win .chrome i:nth-child(3) { background: #28c840; }
+.win .url {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 8px; padding: 7px 26px; border-radius: 8px; min-width: 420px; justify-content: center;
+  background: rgba(255, 255, 255, 0.06); font: 500 17px/1 var(--text); color: #aeb8c3; white-space: nowrap;
+}
+.win .url svg { width: 14px; height: 14px; fill: none; stroke: currentColor; stroke-width: 2; }
+.win .url .p { color: #6c7783; }
+.appframe { position: absolute; border: 0; display: block; background: var(--canvas); }
+
+/* ---- the phone -------------------------------------------------------------- */
+.phone {
+  position: absolute; border-radius: 58px; background: #11151a; padding: 13px;
+  box-shadow: 0 70px 120px -40px rgba(0, 0, 0, 0.8), 0 0 0 1.5px #4a5562 inset, 0 0 0 1px rgba(255, 255, 255, 0.14), 0 0 60px -10px rgba(143, 169, 240, 0.18);
+  background: linear-gradient(160deg, #2a313a, #11151a 40%, #0d1014);
+}
+.phone .scr { position: relative; width: 100%; height: 100%; border-radius: 46px; overflow: hidden; background: var(--canvas); }
+.phone .bar { position: absolute; left: 0; right: 0; top: 0; height: 50px; z-index: 4; background: var(--surface);
+  display: flex; align-items: center; justify-content: space-between; padding: 6px 34px 0; font: 600 17px/1 var(--text); color: var(--ink); }
+.phone .island { position: absolute; left: 50%; top: 11px; width: 118px; height: 34px; margin-left: -59px; border-radius: 20px; background: #000; z-index: 5; }
+.phone .sleep { position: absolute; inset: 0; background: #000; z-index: 6; }
+
+.sweeplight { left: 0; right: 0; top: 0; height: 100%; z-index: 7; pointer-events: none;
+  background: linear-gradient(180deg, rgba(143, 169, 240, 0) 30%, rgba(170, 195, 255, 0.35) 50%, rgba(143, 169, 240, 0) 70%); }
+
+/* ---- the pointer and the finger ------------------------------------------------ */
+.cursor { position: absolute; left: 0; top: 0; z-index: 60; filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6)); }
+.ripple { position: absolute; width: 74px; height: 74px; margin: -37px 0 0 -37px; border-radius: 50%; border: 3px solid rgba(143, 169, 240, 0.6); z-index: 59; opacity: 0; }
+/* a fingertip: a dark core with a light ring, so it reads on light buttons and dark pages alike */
+.tap { position: absolute; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%; z-index: 60; opacity: 0;
+  background: radial-gradient(closest-side, rgba(15, 20, 25, 0.34), rgba(15, 20, 25, 0.18) 72%, rgba(15, 20, 25, 0));
+  box-shadow: 0 0 0 2px rgba(233, 237, 242, 0.55), 0 4px 14px rgba(0, 0, 0, 0.35); }
+
+/* ---- things the film adds over the app ----------------------------------------- */
+/* the clipboard: what is pasted, before the app reads it */
+.clip {
+  padding: 22px 28px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 30px 60px -24px rgba(0, 0, 0, 0.7);
+  font: 500 25px/1.5 var(--mono); color: var(--ink-2); white-space: pre;
+}
+.clip .k { color: var(--tint-ink); }
+.keycap {
+  display: inline-flex; align-items: center; gap: 6px; padding: 10px 16px; border-radius: 12px; background: var(--surface);
+  border: 1px solid var(--line-2); box-shadow: 0 3px 0 var(--line-2), 0 16px 30px -14px rgba(0, 0, 0, 0.7);
+  font: 600 26px/1 var(--text); color: var(--ink);
+}
+
+/* the terminal */
+.term {
+  position: absolute; border-radius: 20px; overflow: hidden; background: #0e1217; box-shadow: var(--shadow-win);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+}
+.term .tb { height: 50px; display: flex; align-items: center; gap: 9px; padding: 0 20px; background: #1a1f27; position: relative; }
+.term .tb i { width: 13px; height: 13px; border-radius: 50%; display: block; background: #39424d; }
+.term .ttl { position: absolute; left: 0; right: 0; text-align: center; font: 500 17px/1 var(--text); color: #8b96a1; }
+.term .body { padding: 30px 34px; font: 500 25px/1.6 var(--mono); color: #e9edf2; white-space: pre; }
+.term .p { color: #8fa9f0; }
+.term .d { color: #7d8995; }
+.term .ok { color: #4fc285; }
+.caret { display: inline-block; width: 0.55em; height: 1.1em; vertical-align: -0.2em; background: currentColor; opacity: 0.85; }
+
+/* the end card */
+.pill {
+  display: inline-flex; align-items: center; gap: 16px; padding: 18px 32px; border-radius: 999px; background: var(--ink); color: var(--canvas);
+  font: 600 30px/1 var(--text); white-space: nowrap; box-shadow: 0 24px 50px -20px rgba(0, 0, 0, 0.7);
+}
+.pill svg { width: 32px; height: 32px; }
+.meta { font: 500 28px/1 var(--text); color: var(--ink-2); white-space: nowrap; }
+.meta b { margin: 0 14px; color: var(--faint); font-weight: 500; }
+
+/* the README poster's play button */
+#poster-play {
+  position: absolute; left: 50%; top: 50%; width: 176px; height: 176px; margin: -88px 0 0 -88px; border-radius: 50%; z-index: 900;
+  background: rgba(233, 237, 242, 0.94); box-shadow: 0 0 0 14px rgba(233, 237, 242, 0.14), 0 30px 60px -20px rgba(0, 0, 0, 0.7);
+}
+#poster-play::after {
+  content: ""; position: absolute; left: 50%; top: 50%; margin: -34px 0 0 -22px;
+  border-style: solid; border-width: 34px 0 34px 58px; border-color: transparent transparent transparent #0B0E12;
+}
+
+/* ---- the film's grammar: big type, the product large ------------------------ */
+.headline.big { letter-spacing: -0.045em; line-height: 1.02; text-shadow: 0 8px 50px rgba(0, 0, 0, 0.55); z-index: 40; }
+.card-cut { transform-origin: 70% 50%; }
+.biglink { font: 500 44px/1 var(--mono); letter-spacing: -0.01em; color: var(--ink); white-space: pre; }
+.biglink .h { display: inline-block; color: var(--ink-2); }
+.biglink .frag { position: relative; display: inline-block; color: var(--accent); transform-origin: 50% 50%;
+  text-shadow: 0 0 calc(var(--hi, 0) * 28px) rgba(143, 169, 240, calc(var(--hi, 0) * 0.7)); }
+.biglink .frag::after { content: ""; position: absolute; left: -14px; right: -14px; top: -16px; bottom: -16px; border-radius: 16px;
+  background: rgba(143, 169, 240, 0.08); box-shadow: inset 0 0 0 2px rgba(143, 169, 240, 0.5), 0 20px 60px -10px rgba(143, 169, 240, 0.35); opacity: var(--hi, 0); }
+.tag { display: inline-flex; align-items: center; gap: 12px; white-space: nowrap; font: 600 27px/1 var(--text); color: var(--ink-2); }
+.tag svg { width: 30px; height: 30px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.tag.acc { color: var(--accent); }
+.tag.big { font-size: 38px; gap: 14px; }
+.tag.big svg { width: 40px; height: 40px; }
+.vcard { width: 780px; padding: 30px 36px 34px; border-radius: 26px; background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-card); }
+.vcard .vh { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; font: 600 26px/1 var(--text); color: var(--muted); }
+.vcard .vh svg { width: 28px; height: 28px; fill: none; stroke: currentColor; stroke-width: 1.9; stroke-linecap: round; stroke-linejoin: round; }
+.vcard .vl { font: 500 32px/1.6 var(--mono); color: var(--ink); white-space: pre; overflow: hidden; }
+.vcard.noise { background: var(--tint-bg); border-color: var(--tint-line); }
+.vcard.noise .vl { color: var(--tint-ink); }
+.ghcard { display: grid; justify-items: center; gap: 26px; padding: 70px 90px; border-radius: 32px; background: var(--surface); border: 1px solid var(--line-2); box-shadow: var(--shadow-card); }
+.ghcard svg { width: 150px; height: 150px; color: var(--ink); }
+.ghcard b { font: 600 44px/1 var(--text); color: var(--ink); white-space: nowrap; }
+.ghcard span { font: 500 30px/1 var(--text); color: var(--muted); }
+.biglink .frag .ktag { position: absolute; left: 50%; top: 100%; margin-top: 46px; }
+
+/* ---- the send scene's captions: one short line per step, low on the frame -- */
+.capscrim { left: 0; top: 800px; width: 1920px; height: 280px; z-index: 39; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(10, 13, 18, 0) 0%, rgba(10, 13, 18, 0.95) 45%, rgba(10, 13, 18, 0.97) 100%); }
+.headline.caption { left: 110px; top: 930px; font-size: 64px; letter-spacing: -0.04em; z-index: 40; text-shadow: 0 6px 40px rgba(0, 0, 0, 0.6); }
+
+/* whose screen it is, above a phone */
+.tag.devtag { font-size: 24px; gap: 10px; color: var(--muted); }
+.tag.devtag svg { width: 24px; height: 24px; }
