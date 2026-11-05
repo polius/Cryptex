@@ -17,7 +17,7 @@ test('send a note and a file, the recipient reveals it once', async ({ browser }
   expect(link).toMatch(/\/s\/[0-9A-Za-z]{10}#[A-Za-z0-9_-]{22}$/);
   // The address becomes the link's own page, with no key in it.
   expect(page.url()).toMatch(new RegExp(`/r/${link.match(/\/s\/([0-9A-Za-z]{10})/)![1]}$`));
-  await expect(page.getByText('Link copied')).toBeVisible();
+  await expect(page.getByText('Link created and copied')).toBeVisible();
   expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(link);
 
   const r = await stranger(browser);
@@ -148,7 +148,7 @@ test('"Send another" starts without the last link\'s passphrase', async ({ brows
   await page.locator('.pass-input input').fill('copper-lantern-river-42');
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.locator('.pass-ready')).toContainText('copper-lantern-river-42');
-  await page.getByRole('button', { name: 'Send another' }).click();
+  await page.getByRole('link', { name: 'Send another' }).click();
   await page.getByRole('button', { name: 'Change' }).click();
   await expect(page.getByRole('checkbox', { name: /Ask for a passphrase/ })).not.toBeChecked();
 });
@@ -186,6 +186,40 @@ test('destroy: the link stops working, leaves Your links, and the recipient lear
   await r.page.goto(link);
   await expect(r.page.getByRole('heading', { name: 'The sender destroyed this secret' })).toBeVisible();
   await expect(r.page.getByText('It was deleted before anyone opened it.')).toBeVisible();
+});
+
+test('select several links and destroy them together; the rest stay', async ({ browser }) => {
+  const { page } = await owner(browser);
+  const one = await sendText(page, 'bulk canary 1', 'Bulk one');
+  const two = await sendText(page, 'bulk canary 2', 'Bulk two');
+  const keep = await sendText(page, 'bulk canary 3', 'Bulk keep');
+  await page.goto('/links');
+  await expect(page.getByRole('checkbox')).toHaveCount(0); // no checkboxes until Select
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  const bar = page.getByRole('region', { name: 'Selected links' });
+  await expect(bar).toContainText('0 selected');
+  await page.getByRole('checkbox', { name: 'Select “Bulk one”' }).check();
+  await page.locator('.r', { hasText: 'Bulk two' }).click(); // anywhere on the row picks it
+  await expect(page.getByRole('checkbox', { name: 'Select “Bulk two”' })).toBeChecked();
+  await expect(bar).toContainText('2 selected');
+  await bar.getByRole('button', { name: 'Destroy', exact: true }).click();
+  const dialog = page.getByRole('alertdialog');
+  await expect(dialog.getByRole('heading', { name: 'Destroy 2 links?' })).toBeVisible();
+  await dialog.getByRole('button', { name: 'Destroy', exact: true }).click();
+  await expect(page.getByText('2 links destroyed')).toBeVisible(); // the toast
+  await expect(page.locator('.rows')).not.toContainText('Bulk one');
+  await expect(page.locator('.rows')).not.toContainText('Bulk two');
+  await expect(page.locator('.rows')).toContainText('Bulk keep');
+  await expect(bar).toBeHidden(); // done: back to the plain list
+  await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
+  const r = await stranger(browser);
+  for (const link of [one, two]) {
+    await r.page.goto(link);
+    await expect(r.page.getByRole('heading', { name: 'The sender destroyed this secret' })).toBeVisible();
+  }
+  await r.page.goto(keep);
+  await expect(r.page.getByRole('button', { name: 'Reveal secret' })).toBeVisible();
 });
 
 test('Clear expired removes expired links from Your links, and only those', async ({ browser }) => {

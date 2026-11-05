@@ -11,7 +11,8 @@ import { QR } from '../../ui/qr';
 /** The phone's own share sheet (Messages, WhatsApp, Mail…), where the browser has one. */
 const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
-export function LinkBox({ link }: { link: string }) {
+/** `open`: also a button that opens the link in a new tab (the sender's own copy; loading it reveals nothing). */
+export function LinkBox({ link, open = false }: { link: string; open?: boolean }) {
   const urlRef = useRef<HTMLSpanElement>(null);
   const [qr, setQr] = useState(false);
   const hashAt = link.indexOf('#');
@@ -28,6 +29,7 @@ export function LinkBox({ link }: { link: string }) {
         <Btn kind="primary" icon="copy" onClick={() => copyText(link, t('toast.link_copied'), urlRef.current)}>{t('reveal.copy')}</Btn>
         {canShare && <Btn kind="secondary" icon="share" onClick={() => void navigator.share({ url: link }).catch(() => undefined)}>{t('send.share')}</Btn>}
         <Btn kind="secondary" class="icon" label={t('send.qr')} onClick={() => setQr(true)}><Icon name="qr" size="sm" /></Btn>
+        {open && <a class="btn secondary icon" href={link} target="_blank" rel="noopener noreferrer" aria-label={t('send.open_link')} title={t('send.open_link')}><Icon name="external" size="sm" /></a>}
       </div>
       <Dialog open={qr} onClose={() => setQr(false)} labelledBy="qr-title">
         <div class="between">
@@ -38,6 +40,38 @@ export function LinkBox({ link }: { link: string }) {
         <p class="fine">{t('dialog.qr_note')}</p>
       </Dialog>
     </>
+  );
+}
+
+/** The link's passphrase with its own Copy button, to send another way. Shown only as the link is made. */
+export function PassphraseBox({ passphrase }: { passphrase: string }) {
+  return (
+    <div class="stack" style="gap:10px">
+      <div class="linkbox pass-ready">
+        <span class="pass-k"><Icon name="key" size="sm" />{t('policy.passphrase')}</span>
+        <span class="url mono">{passphrase}</span>
+        <Btn kind="secondary" icon="copy" onClick={() => copyText(passphrase)}>{t('reveal.copy')}</Btn>
+      </div>
+      <p class="muted small">{t('send.passphrase_tell')}</p>
+    </div>
+  );
+}
+
+/** At the top of a link's page (/r/:id) right after it's made: it's ready, and copied (or copy it below). The status
+ *  fills in a moment after the page arrives, so a screen reader reads it (a live region that arrives filled often
+ *  isn't). */
+export function CreatedNote({ copied, action }: { copied: boolean; action?: ComponentChildren }) {
+  const [said, setSaid] = useState(false);
+  useEffect(() => {
+    const id = setTimeout(() => setSaid(true), 150);
+    return () => clearTimeout(id);
+  }, []);
+  return (
+    <div class={`banner ${copied ? 'ok' : 'info'} created-note`}>
+      <Icon name={copied ? 'check' : 'arrow'} />
+      <span role="status">{said && t(copied ? 'send.created_copied' : 'send.created_copy')}</span>
+      {action && <><span class="sp" />{action}</>}
+    </div>
   );
 }
 
@@ -89,16 +123,7 @@ export function LinkReady(props: {
         <LinkBox link={props.link} />
         <p class="muted small">{props.hint ?? t('send.share_hint')}</p>
       </div>
-      {props.passphrase && (
-        <div class="stack" style="gap:10px">
-          <div class="linkbox pass-ready">
-            <span class="pass-k"><Icon name="key" size="sm" />{t('policy.passphrase')}</span>
-            <span class="url mono">{props.passphrase}</span>
-            <Btn kind="secondary" icon="copy" onClick={() => copyText(props.passphrase!)}>{t('reveal.copy')}</Btn>
-          </div>
-          <p class="muted small">{t('send.passphrase_tell')}</p>
-        </div>
-      )}
+      {props.passphrase && <PassphraseBox passphrase={props.passphrase} />}
       <div class="facts">
         {props.facts.map((f) => <div key={f.k}><small>{f.k}</small><b>{f.v}</b>{f.sub && <span>{f.sub}</span>}</div>)}
       </div>

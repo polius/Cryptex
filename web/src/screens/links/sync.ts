@@ -156,6 +156,23 @@ export async function clearExpired(rows: Row[]): Promise<void> {
   for (const r of rows.filter(isExpired)) await deleteRow(r);
 }
 
+/** Destroy the chosen links (Your links › select). One at a time, as clearExpired; a failure doesn't stop the rest.
+ *  Returns how many were destroyed, and the first error. */
+export async function deleteRows(rows: Row[]): Promise<{ done: number; error: unknown }> {
+  let done = 0;
+  let error: unknown = null;
+  for (const r of rows) {
+    try {
+      await deleteRow(r);
+      done++;
+    } catch (e) {
+      if ((e as Error)?.message === 'locked') return { done, error: e }; // the vault locked meanwhile: the rest would fail too
+      error ??= e;
+    }
+  }
+  return { done, error };
+}
+
 export const created = (r: Row) => r.local?.created_at ?? r.remote?.created_at ?? r.remote?.ended_at ?? '';
 
 /** Keep the local copy current; delete the stored link (with its key) once the status is final. */
