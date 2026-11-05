@@ -1,5 +1,4 @@
 /** Asking for a secret (docs/crypto.md §4): the request link, answering it, and opening the answer. */
-import { signal } from '@preact/signals';
 import { api, cap, signedInUid, type Config, type Receipt } from '../api/client';
 import { b64u, deriveAsk, fromUtf8, newRequestKey, openBlob, random, sealBlob, unb64u, unwrapAnswer, utf8, wrapAnswer, type Bytes } from '../crypto/format';
 import { receipts, type StoredReceipt } from '../store/db';
@@ -47,10 +46,6 @@ export function requestCode(id: string): string {
   for (let i = 0; i < 6; i++) s += '0123456789ABCDEFGHJKMNPQRSTVWXYZ'[(h >>> (i * 5)) & 31];
   return `${s.slice(0, 3)}-${s.slice(3)}`;
 }
-
-/** The request just made, until its "ready" page is left: /r/:id shows that page instead of the request's status
- *  (screens/links/Receipt.tsx), as a sent link's does. `copied`: the link went to the clipboard as it was made. */
-export const justAsked = signal<{ item: StoredReceipt; copied: boolean } | null>(null);
 
 export interface Asked {
   id: string;

@@ -2,10 +2,10 @@
  *  Whoever opens the link sends a secret that's encrypted for you alone (flows/request.ts); it shows in Your links. */
 import { useEffect, useState } from 'preact/hooks';
 import { ApiError } from '../../api/client';
-import { createRequest, justAsked, NOTE_MAX } from '../../flows/request';
+import { createRequest, NOTE_MAX } from '../../flows/request';
 import { t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
-import { cfg, countLinks, loadConfig } from '../../lib/state';
+import { cfg, countLinks, justCreated, loadConfig } from '../../lib/state';
 import { Btn, Choices, ErrMsg } from '../../ui/bits';
 import { Dialog } from '../../ui/dialog';
 import { Icon } from '../../ui/icons';
@@ -44,7 +44,7 @@ export function AskDialog({ open, onClose }: { open: boolean; onClose: () => voi
       }
       countLinks();
       if (c.demo) void loadConfig().catch(() => undefined); // today's demo quota
-      justAsked.value = { item, copied };
+      justCreated.value = { id: item.id, copied };
       onClose();
       navigate(`/r/${item.id}`);
     } catch (e) {

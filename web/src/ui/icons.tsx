@@ -46,6 +46,7 @@ const P = {
   "cut": "<circle cx=\"6\" cy=\"18\" r=\"3\"/><circle cx=\"6\" cy=\"6\" r=\"3\"/><path d=\"M8.5 7.5 20 18M8.5 16.5 20 6\"/>",
   "expand": "<path d=\"M14 4h6v6M10 20H4v-6M20 4l-6.5 6.5M4 20l6.5-6.5\"/>",
   "collapse": "<path d=\"M4 14h6v6M20 10h-6V4M14 10l6.5-6.5M10 14l-6.5 6.5\"/>",
+  "external": "<path d=\"M14 4h6v6M20 4l-9 9M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4\"/>",
   "logout": "<path d=\"M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l-5-5 5-5M5 12h11\"/>",
 } as const;
 

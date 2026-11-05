@@ -1,66 +1,38 @@
 /** /r/:id (B2): status timeline for one secret, read again while it's open. */
 import { useEffect, useState } from 'preact/hooks';
 import { ApiError, api, type Receipt as R } from '../../api/client';
-import { justAsked, lookupRequests, requestCode } from '../../flows/request';
+import { lookupRequests, requestCode } from '../../flows/request';
 import { dateTime, duration, relative, stamp } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
-import { toast } from '../../lib/state';
+import { justCreated } from '../../lib/state';
 import { receipts, type StoredReceipt } from '../../store/db';
 import { vault } from '../../store/vault';
 import { Banner, Btn, H1, Outcome, Status, useViewFocus } from '../../ui/bits';
 import { AppHeader, Page } from '../../ui/chrome';
 import { Icon, type IconName } from '../../ui/icons';
-import { LinkBox, LinkReady } from '../send/LinkReady';
+import { CreatedNote, LinkBox, PassphraseBox } from '../send/LinkReady';
 import { AskButton } from '../request/AskButton';
 import { opensLabel } from '../send/Policy';
 import { errorText } from '../errors';
 import { answerReady, deleteBlocked, DeleteDialog, displayName, openAnswer, RenameDialog, statusOf, vaultLocked } from './Links';
-import { deleteLocked, deleteRow, isFinal, isRequest, opensUntilExpiry, persist, usePoll, type Row } from './sync';
+import { deleteLocked, isFinal, isRequest, opensUntilExpiry, persist, usePoll, type Row } from './sync';
+
+/** Just made (justCreated): a note that it's ready and copied, and the passphrase this once, until the page is left. */
+type Fresh = NonNullable<typeof justCreated.value>;
 
 export function Receipt({ id }: { id: string }) {
-  const asked = justAsked.value;
-  if (asked?.item.id === id) return <RequestReady item={asked.item} copied={asked.copied} />;
-  return <ReceiptPage id={id} />;
-}
-
-/** A request just made: its link, ready to send, like a sent link's page (Home). Done, or leaving, shows its status. */
-function RequestReady({ item, copied }: { item: StoredReceipt; copied: boolean }) {
-  useEffect(() => () => {
-    if (justAsked.peek()?.item.id === item.id) justAsked.value = null;
-  }, [item.id]);
-  return (
-    <Page header={<AppHeader active="links" />}>
-      <main class="main send-page arrive" id="main">
-        <LinkReady copied={copied} copiedLabel={t('ask.copied')} title={t('ask.ready_title')} status={t('status.request_waiting')} link={item.link!}
-          hint={t('ask.share_hint')}
-          facts={[
-            { k: t('ask.code'), v: requestCode(item.id) },
-            { k: t('send.fact_expires'), v: dateTime(item.expires_at!), sub: relative(item.expires_at!) },
-          ]}
-          destroyLabel={t('links.delete')} destroyTitle={t('links.delete_title_request')} destroyBody={t('links.delete_body_request')}
-          onDestroy={async () => {
-            await deleteRow({ local: item, remote: null, id: item.id }); // a failure stays in LinkReady's dialog
-            toast(t('links.deleted'));
-            justAsked.value = null;
-            navigate('/links', { replace: true });
-          }}
-          actions={<>
-            <AskButton />
-            <Btn kind="primary" onClick={() => { justAsked.value = null; }}>{t('send.done')}</Btn>
-          </>} />
-      </main>
-    </Page>
-  );
-}
-
-function ReceiptPage({ id }: { id: string }) {
   const [row, setRow] = useState<Row | null>(null);
   const [missing, setMissing] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const fresh: Fresh | null = justCreated.value?.id === id ? justCreated.value : null;
+  // Leaving the page forgets it (the passphrase isn't kept anywhere else).
+  useEffect(() => () => {
+    if (justCreated.peek()?.id === id) justCreated.value = null;
+  }, [id]);
   // The heading once the page has loaded (the loading card has none), and again when what it shows changes.
   useViewFocus(missing ? 'missing' : row ? 'row' : failed ? 'failed' : null);
 
@@ -127,12 +99,11 @@ function ReceiptPage({ id }: { id: string }) {
   if (!row) return <Page header={<AppHeader active="links" />}><main class="main" id="main" aria-busy="true"><div class="card rc-hero rc-loading" /></main></Page>;
 
   if (isRequest(row)) {
-    return <RequestView row={row} deleting={deleting} setDeleting={setDeleting} onRenamed={() => void load()} />;
+    return <RequestView row={row} fresh={fresh} deleting={deleting} setDeleting={setDeleting} onRenamed={() => void load()} />;
   }
   const st = statusOf(row);
   const final = isFinal(row);
   const title = displayName(row);
-  const opened = (row.remote?.events ?? []).some((e) => e.type === 'secret.revealed');
   const statusText = row.remote?.status === 'opened' && final ? t('status.opened_destroyed') : st.text;
   const look = LOOK[st.kind === 'destroyed' && row.remote?.reason === 'too_many_tries' ? 'tries' : st.kind === 'opened' && final ? 'done' : st.kind];
   const live = !final && !!row.local;
@@ -155,6 +126,8 @@ function ReceiptPage({ id }: { id: string }) {
     <Page header={<AppHeader active="links" />}>
       <main class="main" id="main">
         <a class="btn sm ghost rc-back" href="/links"><Icon name="back" size="sm" />{t('links.title')}</a>
+        {fresh && <CreatedNote copied={fresh.copied} action={<Btn kind="secondary" class="sm" icon="plus" href="/">{t('send.send_another')}</Btn>} />}
+        {fresh?.saved === 'local' && <Banner kind="warn" icon="alert">{t('send.saved_locally')}</Banner>}
 
         <section class="card rc-hero" aria-label={title}>
           <div class="rc-head">
@@ -165,8 +138,11 @@ function ReceiptPage({ id }: { id: string }) {
                 {row.local && <button type="button" class="btn icon sm ghost" aria-label={t('links.rename')} title={t('links.rename')} onClick={() => setRenaming(true)}><Icon name="pencil" size="sm" /></button>}</div>
               <p class="rc-meta">{row.local ? <>{created && <time dateTime={created} title={dateTime(created)}>{t('receipt.sent_at', { when: stamp(created) })}</time>}</> : t(vaultLocked() ? 'links.locked_sub' : 'links.other_device_sub')}</p>
             </div>
+            {/* Destroy: the link stops working and leaves Your links (deleteRow). While the vault is locked it says why. */}
+            <button class="btn sm secondary danger" aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
+              onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t('links.delete')}</button>
           </div>
-          {!final && row.local?.link && <div class="rc-link"><LinkBox link={row.local.link} /></div>}
+          {!final && row.local?.link && <div class="rc-link stack" style="gap:16px"><LinkBox link={row.local.link} open />{fresh?.passphrase && <PassphraseBox passphrase={fresh.passphrase} />}</div>}
           <div class="facts rc-facts">
             {facts.map((f) => <div key={f.k}><small>{f.k}</small><b title={f.full}>{f.v}</b>{f.sub && <span>{f.sub}</span>}</div>)}
           </div>
@@ -187,16 +163,9 @@ function ReceiptPage({ id }: { id: string }) {
                 </li>
               ))}
             </ol>
-            {opened && <p class="rc-note"><Icon name="alert" size="sm" /><span><b>{t('receipt.unexpected_title')}</b> {t('receipt.unexpected_body')}</span></p>}
           </div></div>
         </section>
 
-        <div class="rc-actions">
-          <span class="sp" />
-          {/* Destroy: the link stops working and leaves Your links (deleteRow). While the vault is locked it says why. */}
-          <button class="btn secondary danger" aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
-            onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t('links.delete')}</button>
-        </div>
         <DeleteDialog row={deleting ? row : null} onClose={() => setDeleting(false)} onDeleted={() => navigate('/links')} />
         <RenameDialog row={renaming ? row : null} onClose={() => setRenaming(false)} onSaved={() => void load()} />
       </main>
@@ -255,7 +224,7 @@ function timeline(row: Row): Step[] {
 }
 
 /** A request's page: its link while it waits, Open answer once the answer is in, and what happened. */
-function RequestView({ row, deleting, setDeleting, onRenamed }: { row: Row; deleting: boolean; setDeleting: (v: boolean) => void; onRenamed: () => void }) {
+function RequestView({ row, fresh, deleting, setDeleting, onRenamed }: { row: Row; fresh: Fresh | null; deleting: boolean; setDeleting: (v: boolean) => void; onRenamed: () => void }) {
   const [renaming, setRenaming] = useState(false);
   const st = statusOf(row);
   const final = isFinal(row);
@@ -283,6 +252,7 @@ function RequestView({ row, deleting, setDeleting, onRenamed }: { row: Row; dele
     <Page header={<AppHeader active="links" />}>
       <main class="main" id="main">
         <a class="btn sm ghost rc-back" href="/links"><Icon name="back" size="sm" />{t('links.title')}</a>
+        {fresh && <CreatedNote copied={fresh.copied} action={<AskButton />} />}
         <section class="card rc-hero" aria-label={displayName(row)}>
           <div class="rc-head">
             <span class={`rc-icon ${look.tone}`} aria-hidden="true"><Icon name={look.icon} /></span>
@@ -292,8 +262,11 @@ function RequestView({ row, deleting, setDeleting, onRenamed }: { row: Row; dele
                 {row.local && <button type="button" class="btn icon sm ghost" aria-label={t('links.rename')} title={t('links.rename')} onClick={() => setRenaming(true)}><Icon name="pencil" size="sm" /></button>}</div>
               <p class="rc-meta">{row.local || !vaultLocked() ? created && <time dateTime={created} title={dateTime(created)}>{t('receipt.asked_at', { when: stamp(created) })}</time> : t('links.locked_sub')}</p>
             </div>
+            {/* Destroy: the link stops working and leaves Your links (deleteRow). While the vault is locked it says why. */}
+            <button class="btn sm secondary danger" aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
+              onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t('links.delete')}</button>
           </div>
-          {s === 'waiting' && row.local?.link && <div class="rc-link"><LinkBox link={row.local.link} /><p class="muted small">{t('ask.share_hint')}</p></div>}
+          {s === 'waiting' && row.local?.link && <div class="rc-link"><LinkBox link={row.local.link} open /><p class="muted small">{t('ask.share_hint')}</p></div>}
           {answerReady(row) && (
             <div class="rc-link"><Btn kind="primary" class="lg" icon="eye" onClick={() => void openAnswer(row)}>{t('links.open_answer')}</Btn>
               <p class="muted small">{t('receipt.answer_hint')}</p></div>
@@ -321,11 +294,6 @@ function RequestView({ row, deleting, setDeleting, onRenamed }: { row: Row; dele
           </div></div>
         </section>
 
-        <div class="rc-actions">
-          <span class="sp" />
-          <button class="btn secondary danger" aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
-            onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t('links.delete')}</button>
-        </div>
         <DeleteDialog row={deleting ? row : null} onClose={() => setDeleting(false)} onDeleted={() => navigate('/links')} />
         <RenameDialog row={renaming ? row : null} onClose={() => setRenaming(false)} onSaved={onRenamed} />
       </main>

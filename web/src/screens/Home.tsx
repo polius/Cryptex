@@ -5,7 +5,7 @@ import { cancelUpload, destroySecret, sendSecret, type Sent } from '../flows/sen
 import { dateTime, relative } from '../lib/format';
 import { t } from '../lib/i18n';
 import { navigate, route } from '../lib/router';
-import { cfg, countLinks, loadConfig, toast } from '../lib/state';
+import { cfg, countLinks, justCreated, loadConfig, toast } from '../lib/state';
 import { ExpandedComposer } from './send/Expanded';
 import { prefs, receipts } from '../store/db';
 import { Banner, Btn, H1 } from '../ui/bits';
@@ -127,12 +127,18 @@ export function Home() {
       await pause(SEAL.ready);
       sealing({ step: 4 }); // the page fades up and out, then the link page rises in
       await pause(SEAL.leave);
-      setPhase({ k: 'sent', sent, copied, passphrase });
-      // The address becomes the link's own page (its receipt), so a reload or a bookmark lands there; the page itself
-      // stays this one until the person moves on. Back returns to "/", which resets this page (below).
-      history.pushState(null, '', `/r/${sent.id}`);
       countLinks();
       if (c.demo) void loadConfig().catch(() => undefined); // refresh the quota in the demo bar
+      if (sent.saved !== 'none') {
+        // Straight to the link's own page (its receipt), which says it's ready and shows the passphrase this once.
+        justCreated.value = { id: sent.id, copied, passphrase, saved: sent.saved };
+        navigate(`/r/${sent.id}`);
+        return;
+      }
+      // Not saved anywhere: this page is the only place the link is shown, so it stays (with a warning). The address
+      // becomes the link's page all the same; Back returns to "/", which resets this page (below).
+      setPhase({ k: 'sent', sent, copied, passphrase });
+      history.pushState(null, '', `/r/${sent.id}`);
     } catch (e) {
       if ((e as Error).name === 'AbortError') return;
       if (e instanceof ApiError && e.code === 'rate_limited' && c.demo && e.reason === 'demo_day') { // today's links are used up
@@ -189,7 +195,7 @@ export function Home() {
       <Page header={<AppHeader active="new" />}>
         <main class="main send-page arrive" id="main">
           <LinkReady passphrase={passphrase} copied={phase.copied} copiedLabel={t('send.link_copied')} title={composer.title.trim() || t('send.ready_title')} status={t('send.waiting')} link={s.link}
-            banner={s.saved !== 'ok' && <Banner kind="warn" icon="alert">{s.saved === 'local' ? t('send.saved_locally') : t('send.not_saved')}</Banner>}
+            banner={<Banner kind="warn" icon="alert">{t('send.not_saved')}</Banner>}
             facts={[
               { k: t('send.fact_opens'), v: opensLabel(policy.views) },
               { k: t('send.fact_expires'), v: dateTime(s.expires_at), sub: relative(s.expires_at) },

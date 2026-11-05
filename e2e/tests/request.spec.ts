@@ -2,20 +2,20 @@
 import { expect, test, type Page } from '@playwright/test';
 import { owner, stranger } from './helpers';
 
-/** The dialog behind "Ask for a secret": pick how long, create, then read the link and its code off its ready page.
- *  Done leaves that page for the request's status, at the same address. */
+/** The dialog behind "Ask for a secret": pick how long, create, then read the link and its code off the request's
+ *  own page, where it lands. */
 async function ask(page: Page, note = ''): Promise<{ link: string; code: string }> {
   await page.locator('.send-head').getByRole('button', { name: 'Ask for a secret' }).click();
   const dialog = page.getByRole('dialog');
   if (note) await dialog.getByLabel(/Note for them/).fill(note);
   await dialog.getByRole('radio', { name: '1 hour' }).click();
   await dialog.getByRole('button', { name: 'Create request link' }).click();
-  await expect(page.getByRole('heading', { name: 'Your request link is ready' })).toBeVisible();
+  await expect(page.locator('.created-note')).toBeVisible();
   await expect(page).toHaveURL(/\/r\/[0-9A-Za-z]{10}$/);
-  const link = (await page.locator('.linkbox .url .sr').textContent())!.trim();
-  const code = (await page.locator('.facts > div').first().locator('b').textContent())!.trim();
-  await page.getByRole('button', { name: 'Done' }).click();
   await expect(page.getByText('Waiting for an answer').first()).toBeVisible();
+  const link = (await page.locator('.linkbox .url .sr').textContent())!.trim();
+  // Not renamed yet, so its title is its code: "Request KFX-49M".
+  const code = (await page.locator('h1').textContent())!.trim().replace(/^Request /, '');
   expect(link).toMatch(/\/a\/[0-9A-Za-z]{10}#[A-Za-z0-9_-]{22}$/);
   expect(code).toMatch(/^[0-9A-Z]{3}-[0-9A-Z]{3}$/);
   return { link, code };

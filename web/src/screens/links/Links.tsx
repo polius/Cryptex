@@ -13,7 +13,7 @@ import { Dialog } from '../../ui/dialog';
 import { Icon, Mark, type IconName } from '../../ui/icons';
 import { errorText } from '../errors';
 import { AskButton } from '../request/AskButton';
-import { clearExpired, deleteLocked, deleteRow, isExpired, isFinal, isRequest, loadRows, opensUntilExpiry, usePoll, type Row } from './sync';
+import { clearExpired, deleteLocked, deleteRow, deleteRows, isExpired, isFinal, isRequest, loadRows, opensUntilExpiry, usePoll, type Row } from './sync';
 
 type Tab = 'all' | 'waiting' | 'done';
 
@@ -126,6 +126,29 @@ function ClearDialog({ rows, onClose, onCleared }: { rows: Row[] | null; onClose
   );
 }
 
+/** Destroy the selected links: those that still work stop working, and all of them leave Your links. */
+function BulkDeleteDialog({ rows, onClose, onDone }: { rows: Row[] | null; onClose: () => void; onDone: () => void }) {
+  const [busy, setBusy] = useState(false);
+  const live = !!rows?.some((r) => !isFinal(r) && r.local);
+  const go = async () => {
+    setBusy(true);
+    const { done, error } = await deleteRows(rows!);
+    setBusy(false);
+    if (error) toast(errorText(error), 'error');
+    else toast(t('links.bulk_deleted', { n: done }));
+    onClose();
+    onDone(); // also after a failure part-way: the list shows what's left
+  };
+  return (
+    <Dialog open={!!rows} alert onClose={onClose} labelledBy="bd-title"
+      footer={<><button class="btn secondary" onClick={onClose} data-autofocus>{t('dialog.destroy_keep')}</button>
+        <Btn kind="danger solid" icon="trash" loading={busy} onClick={go}>{t('links.delete')}</Btn></>}>
+      <h2 class="h2" id="bd-title">{t('links.bulk_title', { n: rows?.length ?? 0 })}</h2>
+      <p class="muted">{t(live ? 'links.bulk_body_live' : 'links.bulk_body')}</p>
+    </Dialog>
+  );
+}
+
 /** Rename a link in Your links. Only this browser keeps the name; the recipient's view doesn't change. */
 export function RenameDialog({ row, onClose, onSaved }: { row: Row | null; onClose: () => void; onSaved: () => void }) {
   const [v, setV] = useState('');
@@ -191,6 +214,8 @@ export function Links() {
   const [renaming, setRenaming] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [clearing, setClearing] = useState<Row[] | null>(null);
+  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
+  const [bulk, setBulk] = useState<Row[] | null>(null);
   const [failed, setFailed] = useState(false);
   const [retrying, setRetrying] = useState(false);
   useTick(30_000);
@@ -249,6 +274,19 @@ export function Links() {
   const found = rows.filter((r) => matches(r, q));
   const counts = { all: found.length, waiting: found.filter((r) => !isFinal(r)).length, done: found.filter(isFinal).length };
   const shown = found.filter((r) => tab === 'all' || (tab === 'waiting' ? !isFinal(r) : isFinal(r)));
+  // Only what's on screen counts as selected: another tab or a search leaves the rest out (and keeps it for later).
+  const chosen = shown.filter((r) => picked.has(r.id));
+  const allChosen = shown.length > 0 && chosen.length === shown.length;
+  const toggle = (id: string) => setPicked((s) => {
+    const n = new Set(s);
+    if (!n.delete(id)) n.add(id);
+    return n;
+  });
+  const toggleAll = () => setPicked((s) => {
+    const n = new Set(s);
+    for (const r of shown) allChosen ? n.delete(r.id) : n.add(r.id);
+    return n;
+  });
 
   /** A menu item that opens a dialog: focus goes back to the menu's button first, so the dialog returns it there. */
   const pick = (open: () => void) => () => {
@@ -308,6 +346,20 @@ export function Links() {
             </label>
           </div>
         </div>
+        {shown.length > 0 && (
+          <div class={`links-select${chosen.length ? ' on' : ''}`}>
+            <label class="pick">
+              <input type="checkbox" checked={allChosen} indeterminate={chosen.length > 0 && !allChosen} onChange={toggleAll} aria-controls="link-rows" />
+              <span>{chosen.length ? t('links.selected', { n: chosen.length }) : t('links.select_all')}</span>
+            </label>
+            {chosen.length > 0 && <>
+              <span class="sp" />
+              <Btn kind="ghost" class="sm" onClick={() => setPicked(new Set())}>{t('links.select_none')}</Btn>
+              <Btn kind="secondary danger" class="sm" icon="trash" unavailable={deleteLocked()} title={deleteLocked() ? t('links.delete_locked') : undefined}
+                onClick={() => deleteBlocked() || setBulk(chosen)}>{t('links.delete')}</Btn>
+            </>}
+          </div>
+        )}
         <div class="rows" role="list" id="link-rows">
           {shown.length === 0 && (q.trim() ? (
             <div class="r-empty muted">{t('links.search_empty', { q: q.trim() })}{' '}
@@ -318,7 +370,8 @@ export function Links() {
             const final = isFinal(r);
             const key = r.id;
             return (
-              <div class={`r${final ? ' dim' : ''}`} role="listitem" key={key}>
+              <div class={`r${final ? ' dim' : ''}${picked.has(key) ? ' picked' : ''}`} role="listitem" key={key}>
+                <label class="pick"><input type="checkbox" checked={picked.has(key)} onChange={() => toggle(key)} aria-label={t('links.select_row', { title: displayName(r) })} /></label>
                 <span class="kind" aria-hidden="true"><Icon name={kindIcon(r)} /></span>
                 <a class="t" href={`/r/${r.id}`}>
                   <b>{displayName(r)}</b>
@@ -350,6 +403,7 @@ export function Links() {
         <StorageNote />
         <DeleteDialog row={deleting} onClose={() => setDeleting(null)} onDeleted={() => void load()} />
         <ClearDialog rows={clearing} onClose={() => setClearing(null)} onCleared={() => void load()} />
+        <BulkDeleteDialog rows={bulk} onClose={() => setBulk(null)} onDone={() => { setPicked(new Set()); void load(); }} />
         <RenameDialog row={renaming} onClose={() => setRenaming(null)} onSaved={() => void load()} />
       </main>
     </Page>
