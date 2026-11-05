@@ -1,0 +1,54 @@
+name: dependabot-automerge
+
+on: pull_request
+
+permissions: {}
+
+jobs:
+  automerge:
+    # Only low-risk bumps merge themselves, once the required checks pass:
+    #   - patch releases;
+    #   - minor releases of packages already at 1.0 or later (in 0.x a
+    #     minor release may break things);
+    #   - for base images, a digest refresh of the same tag only — a new
+    #     Python or Node version always waits for review.
+    # Everything else is left for a human. Requires repo auto-merge enabled
+    # and a ruleset marking the checks as required — without required
+    # checks, --auto merges immediately.
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
+        id: meta
+      - name: Decide whether the update is safe to merge unreviewed
+        id: decide
+        env:
+          ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
+          DEPS: ${{ steps.meta.outputs.updated-dependencies-json }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          safe=false
+          if [ "$ECOSYSTEM" = docker ]; then
+            # Same image:tag before and after, only the @sha256 digest moved.
+            from_lines=$(gh pr diff "$PR_URL" | grep -E '^[-+]FROM ' | sed -E 's/@sha256:[0-9a-f]+//') || true
+            before=$(grep '^-' <<<"$from_lines" | cut -c2- | sort) || true
+            after=$(grep '^+' <<<"$from_lines" | cut -c2- | sort) || true
+            if [ -n "$after" ] && [ "$before" = "$after" ]; then safe=true; fi
+          elif jq -e 'length > 0 and all(.[];
+                .updateType == "version-update:semver-patch"
+                or (.updateType == "version-update:semver-minor"
+                    and (((.prevVersion // "0") | ltrimstr("v") | split(".")[0] | (tonumber? // 0)) >= 1)))' \
+                <<<"$DEPS" >/dev/null; then
+            safe=true
+          fi
+          echo "ecosystem=$ECOSYSTEM safe=$safe"
+          echo "safe=$safe" >> "$GITHUB_OUTPUT"
+      - if: steps.decide.outputs.safe == 'true'
+        run: gh pr merge --auto --squash "$PR_URL"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

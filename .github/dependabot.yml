@@ -1,5 +1,7 @@
 version: 2
-# Every update goes through CI (api, web, e2e, image). Nothing is merged automatically.
+# Every update goes through CI (api, web, e2e, image). Low-risk ones merge themselves once it passes
+# (.github/workflows/dependabot-automerge.yml): patch releases, minor releases from 1.0 on, and base-image digest
+# refreshes of the same tag. Everything else waits for review.
 
 # @playwright/test (e2e/package.json) and the Playwright image (e2e/compose.yml) must be the same version,
 # so they move together in one pull request.
