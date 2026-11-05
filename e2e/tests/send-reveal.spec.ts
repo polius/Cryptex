@@ -194,10 +194,15 @@ test('select several links and destroy them together; the rest stay', async ({ b
   const two = await sendText(page, 'bulk canary 2', 'Bulk two');
   const keep = await sendText(page, 'bulk canary 3', 'Bulk keep');
   await page.goto('/links');
+  await expect(page.getByRole('checkbox')).toHaveCount(0); // no checkboxes until Select
+  await page.getByRole('button', { name: 'Select', exact: true }).click();
+  const bar = page.getByRole('region', { name: 'Selected links' });
+  await expect(bar).toContainText('0 selected');
   await page.getByRole('checkbox', { name: 'Select “Bulk one”' }).check();
-  await page.getByRole('checkbox', { name: 'Select “Bulk two”' }).check();
-  await expect(page.locator('.links-select')).toContainText('2 selected');
-  await page.locator('.links-select').getByRole('button', { name: 'Destroy', exact: true }).click();
+  await page.locator('.r', { hasText: 'Bulk two' }).click(); // anywhere on the row picks it
+  await expect(page.getByRole('checkbox', { name: 'Select “Bulk two”' })).toBeChecked();
+  await expect(bar).toContainText('2 selected');
+  await bar.getByRole('button', { name: 'Destroy', exact: true }).click();
   const dialog = page.getByRole('alertdialog');
   await expect(dialog.getByRole('heading', { name: 'Destroy 2 links?' })).toBeVisible();
   await dialog.getByRole('button', { name: 'Destroy', exact: true }).click();
@@ -205,7 +210,9 @@ test('select several links and destroy them together; the rest stay', async ({ b
   await expect(page.locator('.rows')).not.toContainText('Bulk one');
   await expect(page.locator('.rows')).not.toContainText('Bulk two');
   await expect(page.locator('.rows')).toContainText('Bulk keep');
-  await expect(page.locator('.links-select')).toContainText('Select all'); // nothing stays selected
+  await expect(bar).toBeHidden(); // done: back to the plain list
+  await expect(page.getByRole('button', { name: 'Select', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('checkbox')).toHaveCount(0);
   const r = await stranger(browser);
   for (const link of [one, two]) {
     await r.page.goto(link);

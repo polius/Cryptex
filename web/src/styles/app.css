@@ -258,7 +258,7 @@ kbd{font:500 11.5px var(--f-mono);padding:2px 5px;border-radius:5px;border:1px s
 .tab.on{color:var(--ink);border-bottom-color:var(--ink)}
 .tab .n{font:600 12px var(--f-mono);color:var(--muted)}
 .rows{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);overflow:hidden}
-.r{display:grid;grid-template-columns:18px 36px minmax(0,1.6fr) minmax(0,1.3fr) 130px 180px;gap:16px;align-items:center;padding:14px 16px}
+.r{display:grid;grid-template-columns:36px minmax(0,1.6fr) minmax(0,1.3fr) 130px 180px;gap:16px;align-items:center;padding:14px 16px}
 .r + .r{border-top:1px solid var(--line)}
 .r.attn{background:var(--warn-bg)}
 .r .kind{width:36px;height:36px;border-radius:10px;background:var(--sunk);border:1px solid var(--line);display:grid;place-items:center;color:var(--ink-2)}

@@ -274,14 +274,13 @@ p,.lede,.fine,.help{text-wrap:pretty}
   .opt .row.nowrap{flex-wrap:wrap}
   .opt .row.nowrap .input{flex-basis:100%}
   /* Your links: title and status on the left, Copy below them, "⋯" on the right, centred. */
-  .r{grid-template-columns:18px 36px minmax(0,1fr) auto;row-gap:6px;column-gap:12px}
-  .r .pick{grid-row:1/3}
+  .r{grid-template-columns:36px minmax(0,1fr) auto;row-gap:6px;column-gap:12px}
   .r .kind{grid-row:1/3}
-  .r .t{grid-column:3;grid-row:1}
-  .r .s{grid-column:3/5;grid-row:2}
+  .r .t{grid-column:2;grid-row:1}
+  .r .s{grid-column:2/4;grid-row:2}
   .r .acts{display:contents}
-  .r .acts > .btn{grid-column:3;grid-row:3;justify-self:start}
-  .r .acts > .has-pop{grid-column:4;grid-row:1/span 3;align-self:center;margin-right:-8px}
+  .r .acts > .btn{grid-column:2;grid-row:3;justify-self:start}
+  .r .acts > .has-pop{grid-column:3;grid-row:1/span 3;align-self:center;margin-right:-8px}
   .r:not(:has(.acts > .btn)) .acts > .has-pop{grid-row:1/3}
   /* The page's New button sits top-right, beside the heading; the lede runs full width below. */
   .page-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:6px 12px}
@@ -615,12 +614,33 @@ p,.lede{text-wrap:pretty}
 /* Your links: the tabs and the search share one line; on phones the search sits above the tabs. */
 .links-bar{display:flex;align-items:flex-end;justify-content:space-between;gap:12px 20px;border-bottom:1px solid var(--line)}
 .links-bar .tabs{border-bottom:0;min-width:0}
-/* Select links to destroy them together: a checkbox on each row, and this bar above them. */
-.pick{display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13.5px;color:var(--muted);min-height:32px}
-.pick input{width:18px;height:18px;margin:0;accent-color:var(--ink);cursor:pointer}
-.links-select{display:flex;align-items:center;gap:8px;min-height:40px;padding:0 16px}
-.links-select.on .pick{color:var(--ink);font-weight:600}
-.r.picked{background:var(--sunk)}
+/* Select mode (Your links › Select): each row's icon becomes a checkbox and the whole row picks it; a bar above the
+   list, pinned under the header as the list scrolls, says how many and destroys them. */
+.links-select-btn{height:38px;color:var(--ink-2)}
+.btn.links-select-btn.on,.btn.links-select-btn.on:hover{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.rows.selecting .r{cursor:pointer;user-select:none;transition:background-color .12s}
+.rows.selecting .r:hover{background:var(--sunk)}
+.rows.selecting .r.picked{background:var(--tint-bg)}
+.rows.selecting .r.picked .t b{color:var(--ink)}
+.rows.selecting .r .t:hover b{text-decoration:none}
+.rows.selecting .r:has(input:focus-visible){outline:2px solid var(--focus-c);outline-offset:-2px}
+.pickbox{position:relative;background:none !important;border:0 !important}
+/* The real checkbox, invisible, over the drawn box: a click or tap on the box is a click on it. */
+.pickbox input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;z-index:1}
+.pickbox .box{width:20px;height:20px;border-radius:6px;border:1.5px solid var(--line-2);background:var(--surface);display:grid;place-items:center;
+  transition:background-color .12s,border-color .12s}
+.r:hover .pickbox .box{border-color:var(--faint)}
+.r.picked .pickbox .box{background:var(--ink);border-color:var(--ink);color:var(--surface)}
+.pickbox .box .ic{width:14px;height:14px;stroke-width:2.6}
+.sel-bar{position:sticky;top:76px;z-index:4;display:flex;align-items:center;gap:6px;width:100%;padding:8px 10px;
+  border-radius:16px;background:var(--surface);border:1px solid var(--line-2);box-shadow:var(--shadow-pop);animation:sel-rise .18s ease-out}
+.sel-bar .sel-n{font-weight:600;font-size:14.5px;padding:0 4px;white-space:nowrap;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.sel-bar .btn{flex:none}
+.sel-bar .sel-all{border:0;background:none;padding:6px 8px;border-radius:8px;color:var(--muted);font:inherit;font-size:14px;cursor:pointer;white-space:nowrap}
+.sel-bar .sel-all:hover{color:var(--ink);background:var(--sunk)}
+.sel-bar .sp{flex:1}
+@keyframes sel-rise{from{opacity:0;transform:translateY(-8px)}}
+@media (prefers-reduced-motion:reduce){.sel-bar{animation:none}.rows.selecting .r,.pickbox .box{transition:none}}
 /* Settings rows already sit in a padded card: no extra space above the first or below the last. */
 .card-b > .set:first-child{padding-top:4px}
 .card-b > .set:last-child{padding-bottom:4px}
@@ -641,7 +661,8 @@ p,.lede{text-wrap:pretty}
   .links-tools{margin-bottom:0}
   .links-search{flex:1;width:auto;min-width:0;height:44px}
   /* Phones: a trash button beside a near-full search; its name stays for screen readers, and the dialog says what it clears. */
-  .links-clear{position:relative;order:1;width:44px;height:44px;padding:0;flex:none}
+  .links-clear,.links-select-btn{position:relative;order:1;width:44px;height:44px;padding:0;flex:none}
+  .sel-bar{top:72px}
   .links-clear-l{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
   .links-search kbd{display:none}
 }

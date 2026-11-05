@@ -214,6 +214,8 @@ export function Links() {
   const [renaming, setRenaming] = useState<Row | null>(null);
   const [deleting, setDeleting] = useState<Row | null>(null);
   const [clearing, setClearing] = useState<Row[] | null>(null);
+  // Select mode (the Select button): rows become checkboxes, a bar at the bottom destroys what's picked.
+  const [selecting, setSelecting] = useState(false);
   const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
   const [bulk, setBulk] = useState<Row[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -260,6 +262,23 @@ export function Links() {
     document.addEventListener('keydown', onKey);
     return () => document.removeEventListener('keydown', onKey);
   }, []);
+
+  const stopSelecting = () => {
+    setSelecting(false);
+    setPicked(new Set());
+  };
+  // Esc leaves select mode, unless a dialog is open (it closes that instead).
+  useEffect(() => {
+    if (!selecting) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented || document.querySelector('[aria-modal="true"]')) return;
+      if ((e.target as HTMLElement).closest('input[type=search]') && q) return; // clears the search first
+      stopSelecting();
+      document.getElementById('select-toggle')?.focus();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [selecting, q]);
 
   const loadFailed = failed && (
     <Banner kind="danger" icon="alert" action={<Btn kind="secondary" class="sm" icon="refresh" loading={retrying} onClick={() => void retry()}>{t('send.try_again')}</Btn>}>
@@ -334,6 +353,8 @@ export function Links() {
               <Btn kind="secondary" class="links-clear" icon="trash" unavailable={deleteLocked()} title={deleteLocked() ? t('links.delete_locked') : undefined}
                 onClick={() => deleteBlocked() || setClearing(rows.filter(isExpired))}><span class="links-clear-l">{t('links.clear_expired')}</span></Btn>
             )}
+            <button type="button" class={`btn secondary links-select-btn${selecting ? ' on' : ''}`} id="select-toggle" aria-pressed={selecting}
+              onClick={() => (selecting ? stopSelecting() : setSelecting(true))}><Icon name="check" size="sm" /><span class="links-clear-l">{t('links.select')}</span></button>
             <label class="input search links-search">
               <Icon name="search" size="sm" />
               <input ref={search} class="bare" type="search" value={q} placeholder={t('links.search')} aria-label={t('links.search')} autoComplete="off" spellcheck={false}
@@ -346,21 +367,18 @@ export function Links() {
             </label>
           </div>
         </div>
-        {shown.length > 0 && (
-          <div class={`links-select${chosen.length ? ' on' : ''}`}>
-            <label class="pick">
-              <input type="checkbox" checked={allChosen} indeterminate={chosen.length > 0 && !allChosen} onChange={toggleAll} aria-controls="link-rows" />
-              <span>{chosen.length ? t('links.selected', { n: chosen.length }) : t('links.select_all')}</span>
-            </label>
-            {chosen.length > 0 && <>
-              <span class="sp" />
-              <Btn kind="ghost" class="sm" onClick={() => setPicked(new Set())}>{t('links.select_none')}</Btn>
-              <Btn kind="secondary danger" class="sm" icon="trash" unavailable={deleteLocked()} title={deleteLocked() ? t('links.delete_locked') : undefined}
-                onClick={() => deleteBlocked() || setBulk(chosen)}>{t('links.delete')}</Btn>
-            </>}
+        {selecting && (
+          <div class="sel-bar" role="region" aria-label={t('links.select_region')}>
+            <button type="button" class="btn icon sm ghost" aria-label={t('send.cancel')} title={t('send.cancel')} onClick={() => { stopSelecting(); document.getElementById('select-toggle')?.focus(); }}><Icon name="x" size="sm" /></button>
+            <span class="sel-n" role="status">{t('links.selected', { n: chosen.length })}</span>
+            {shown.length > 0 && <button type="button" class="sel-all" onClick={toggleAll}>{t(allChosen ? 'links.select_none' : 'links.select_all')}</button>}
+            <span class="sp" />
+            <Btn kind="danger solid" class="sm" icon="trash" unavailable={!chosen.length || deleteLocked()}
+              title={deleteLocked() ? t('links.delete_locked') : undefined}
+              onClick={() => chosen.length && !deleteBlocked() && setBulk(chosen)}>{t('links.delete')}</Btn>
           </div>
         )}
-        <div class="rows" role="list" id="link-rows">
+        <div class={`rows${selecting ? ' selecting' : ''}`} role="list" id="link-rows">
           {shown.length === 0 && (q.trim() ? (
             <div class="r-empty muted">{t('links.search_empty', { q: q.trim() })}{' '}
               <button type="button" class="link" onClick={() => { setQ(''); search.current?.focus(); }}>{t('links.search_clear')}</button></div>
@@ -369,9 +387,25 @@ export function Links() {
             const st = statusOf(r);
             const final = isFinal(r);
             const key = r.id;
+            if (selecting) {
+              // A click anywhere on the row picks it (the checkbox itself handles its own clicks and the keyboard).
+              const on = picked.has(key);
+              return (
+                <div class={`r${final ? ' dim' : ''}${on ? ' picked' : ''}`} role="listitem" key={key}
+                  onClick={(e) => (e.target as HTMLElement).closest('input') || toggle(key)}>
+                  <span class="kind pickbox">
+                    <input type="checkbox" checked={on} onChange={() => toggle(key)} aria-label={t('links.select_row', { title: displayName(r) })} />
+                    <span class="box" aria-hidden="true">{on && <Icon name="check" size="sm" />}</span>
+                  </span>
+                  <span class="t"><b>{displayName(r)}</b><small>{subtitle(r)}</small></span>
+                  <span class="s"><Status kind={st.kind}>{st.text}</Status></span>
+                  <span class="when">{when(r)}</span>
+                  <span class="acts" />
+                </div>
+              );
+            }
             return (
-              <div class={`r${final ? ' dim' : ''}${picked.has(key) ? ' picked' : ''}`} role="listitem" key={key}>
-                <label class="pick"><input type="checkbox" checked={picked.has(key)} onChange={() => toggle(key)} aria-label={t('links.select_row', { title: displayName(r) })} /></label>
+              <div class={`r${final ? ' dim' : ''}`} role="listitem" key={key}>
                 <span class="kind" aria-hidden="true"><Icon name={kindIcon(r)} /></span>
                 <a class="t" href={`/r/${r.id}`}>
                   <b>{displayName(r)}</b>
@@ -403,7 +437,7 @@ export function Links() {
         <StorageNote />
         <DeleteDialog row={deleting} onClose={() => setDeleting(null)} onDeleted={() => void load()} />
         <ClearDialog rows={clearing} onClose={() => setClearing(null)} onCleared={() => void load()} />
-        <BulkDeleteDialog rows={bulk} onClose={() => setBulk(null)} onDone={() => { setPicked(new Set()); void load(); }} />
+        <BulkDeleteDialog rows={bulk} onClose={() => setBulk(null)} onDone={() => { stopSelecting(); void load(); }} />
         <RenameDialog row={renaming} onClose={() => setRenaming(null)} onSaved={() => void load()} />
       </main>
     </Page>
