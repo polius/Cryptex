@@ -12,7 +12,7 @@ const recent = [
 
 export const FIXTURES = {
   '/server/overview': {
-    version: '3.0.0', update_available: null,
+    version: '3.1.0', update_available: null,
     storage: { used: 1.2 * 1024 ** 3, disk_total: 50 * 1024 ** 3, disk_free: 38 * 1024 ** 3 },
     live: { secrets: 14, expiring_today: 3 }, week: { created: 126, senders: 18 },
     cleanup: { last_run: ago(2), removed: 9 },
