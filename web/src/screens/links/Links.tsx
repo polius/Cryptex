@@ -335,6 +335,8 @@ export function Links() {
                       onClick={() => setMenu(menu === key ? null : key)}><Icon name="more" size="sm" /></button>
                     {menu === key && (
                       <RowMenu onClose={() => setMenu(null)}>
+                        {/* The sender's own copy of the link, in a new tab. Loading it changes nothing: revealing is a click there. */}
+                        {!final && r.local?.link && <a class="mi" role="menuitem" tabIndex={-1} href={r.local.link} target="_blank" rel="noopener noreferrer" onClick={() => setMenu(null)}><Icon name="link" size="sm" />{t('links.open_link')}</a>}
                         {r.local && <button class="mi" role="menuitem" tabIndex={-1} onClick={pick(() => setRenaming(r))}><Icon name="pencil" size="sm" />{t('links.rename')}</button>}
                         {/* Destroy, as on the receipt page: the link stops working and leaves Your links. */}
                         <button class="mi danger" role="menuitem" tabIndex={-1} aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
