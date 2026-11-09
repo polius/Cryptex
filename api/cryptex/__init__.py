@@ -1,2 +1,2 @@
 """Cryptex: blind secret sharing with end-to-end-encrypted links."""
-VERSION = "3.1.0"
+VERSION = "3.1.1"
