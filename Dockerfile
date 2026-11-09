@@ -14,7 +14,9 @@ WORKDIR /app
 COPY api/requirements.txt ./
 # The server runs as cryptex (UID 10001). docker-entrypoint.sh starts as root only to hand it the data folder; the
 # cryptex command, run with docker exec (as root), drops to that user the same way.
-RUN pip install --no-cache-dir --require-hashes -r requirements.txt \
+# apk upgrade picks up Alpine security fixes that the base image doesn't have yet, and Dependabot can't see.
+RUN apk upgrade --no-cache \
+ && pip install --no-cache-dir --require-hashes -r requirements.txt \
  && apk add --no-cache su-exec \
  && addgroup -S -g 10001 cryptex && adduser -S -D -H -u 10001 -G cryptex -h /app -s /sbin/nologin cryptex \
  && install -d -m 700 -o cryptex -g cryptex /data \
