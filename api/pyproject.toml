@@ -1,6 +1,6 @@
 [project]
 name = "cryptex"
-version = "3.1.0"
+version = "3.1.1"
 description = "Blind secret sharing with end-to-end-encrypted links"
 requires-python = ">=3.12"
 license = "MIT"
