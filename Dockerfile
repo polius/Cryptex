@@ -9,7 +9,7 @@ COPY docs/vectors.json /src/docs/
 COPY web/ ./
 RUN npm run build && node scripts/budget.mjs && rm -rf dist/.vite
 
-FROM python:3.13-alpine@sha256:8bcfa47b04b853a17aaf909362b847b2112fd6ec4105ea553ef9a43bafbb5916
+FROM python:3.15-alpine@sha256:a0f2e268f2ce8f3709611a90054ec6a8ae31f6251f5896b8648b9bb99835e30a
 WORKDIR /app
 COPY api/requirements.txt ./
 # The server runs as cryptex (UID 10001). docker-entrypoint.sh starts as root only to hand it the data folder; the
