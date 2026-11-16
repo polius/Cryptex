@@ -83,10 +83,6 @@ manifest = {"v": 1, "items": [
 ]}
 ```
 
-Stream sizes are visible to the server, so the web client pads the manifest: it adds `{"t": "pad", "v": "  …"}` (spaces)
-until the manifest's UTF-8 length is a whole step: 1 KiB below 1 KiB, a multiple of 4 KiB below 64 KiB, else a multiple
-of 64 KiB. A PIN and an API key then look the same size. Decoders ignore the `pad` item, as any item with another `t`.
-
 For every stream:
 
 ```
