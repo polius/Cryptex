@@ -5,6 +5,7 @@ import asyncio
 import contextlib
 import json
 import logging
+import mimetypes
 import os
 import re
 import secrets
@@ -147,7 +148,7 @@ def _create(env: Env, run_jobs: bool) -> FastAPI:
             return ApiError("too_large", limit=MAX_BODY).response()
         if e.status_code in (404, 405):
             if env.static_dir and not request.url.path.startswith("/api/") and request.method in ("GET", "HEAD"):
-                return _spa(env.static_dir, request.url.path)
+                return _spa(env.static_dir, request.url.path, request.headers.get("accept-encoding", ""))
             return NotFound().response()
         return ApiError("invalid", str(e.detail), status=e.status_code).response()
 
@@ -189,8 +190,8 @@ def _create(env: Env, run_jobs: bool) -> FastAPI:
         static = env.static_dir
 
         @app.get("/{path:path}", include_in_schema=False)
-        async def spa(path: str) -> Response:
-            return _spa(static, "/" + path)
+        async def spa(path: str, request: Request) -> Response:
+            return _spa(static, "/" + path, request.headers.get("accept-encoding", ""))
 
     return app
 
@@ -216,7 +217,22 @@ class BodyLimit:
         await self.app(scope, counted, send)
 
 
-def _spa(static: Path, path: str) -> Response:
+COMPRESSED = (("br", ".br"), ("gzip", ".gz"))  # copies made at image build (web/scripts/compress.mjs), best first
+
+
+def _file(target: Path, cache: str, accept: str, media_type: str | None = None) -> FileResponse:
+    """A built file, compressed when the browser takes it and the build made a copy (D9): no work per request."""
+    takes = {e.split(";")[0].strip() for e in accept.lower().split(",")}
+    headers = {"Cache-Control": cache, "Vary": "Accept-Encoding"}
+    media_type = media_type or mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    for name, ext in COMPRESSED:
+        alt = target.with_name(target.name + ext)
+        if name in takes and alt.is_file():
+            return FileResponse(alt, headers={**headers, "Content-Encoding": name}, media_type=media_type)
+    return FileResponse(target, headers=headers, media_type=media_type)
+
+
+def _spa(static: Path, path: str, accept: str = "") -> Response:
     """Serve built front-end files, falling back to index.html for app routes. Dotfiles (Vite's .vite/) are never
     served, and a missing asset is a 404, not the app. A "." or ".." segment (an encoded /s/..%2Fx) is only ever answered
     with the app, which shows its own not-found page: the file check below keeps it inside the static folder."""
@@ -227,7 +243,7 @@ def _spa(static: Path, path: str) -> Response:
     if rel and target.is_file() and static.resolve() in target.parents:
         cache = ("public, max-age=31536000, immutable" if rel.startswith("assets/")  # content-hashed
                  else "public, max-age=86400" if rel in ICONS else "no-cache")  # index.html, theme.js, the manifest
-        return FileResponse(target, headers={"Cache-Control": cache})
+        return _file(target, cache, accept)
     if rel.startswith(("api/", "assets/")):
         return NotFound().response()
-    return FileResponse(static / "index.html", headers={"Cache-Control": "no-cache"}, media_type="text/html")
+    return _file(static / "index.html", "no-cache", accept, media_type="text/html")

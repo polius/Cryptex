@@ -101,7 +101,7 @@ EDITABLE: dict[str, Setting] = {s.key: s for s in [
     Setting("access", "ACCESS", lambda v: _choice(v, ("anyone", "signed_in")), "anyone", demo="anyone"),
     Setting("max_expiration", "MAX_EXPIRATION", parse_duration, 7 * 86400, 300, MAX_LIFETIME, demo=3600),
     Setting("max_message_length", "MAX_MESSAGE_LENGTH", parse_int, 10_000, 100, None, demo=500),
-    Setting("max_files", "MAX_FILES", parse_int, 5, 0, None, demo=1),
+    Setting("max_files", "MAX_FILES", parse_int, 5, 0, 1000, demo=1),  # stream numbers stop at 1000 (B8)
     Setting("max_file_size", "MAX_FILE_SIZE", parse_size, 100 * MB, 1 * KB, None, demo=1 * MB),
     Setting("audit_retention_days", "AUDIT_RETENTION_DAYS", parse_int, 365, 1, 3650),
     Setting("brand_name", "BRAND_NAME", lambda v: _text(v, 40), "", demo=""),

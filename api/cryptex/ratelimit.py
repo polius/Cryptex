@@ -5,12 +5,14 @@ uvicorn reports: it takes X-Forwarded-For only from TRUSTED_PROXIES (--forwarded
 """
 from __future__ import annotations
 
+import hashlib
+import hmac
 import ipaddress
 from dataclasses import dataclass
 
 from fastapi import Request
 
-from . import db
+from . import db, state
 from .config import Rate
 from .errors import ApiError
 from .util import iso, now
@@ -56,6 +58,12 @@ def limited(retry_after: int, reason: str | None = None) -> ApiError:
     )
 
 
+def _bucket(name: str, key: str) -> str:
+    """The row's name: the limit and a keyed hash of whom it counts (B8). The table, and every backup of it, never
+    holds an address or whatever was typed as a username (a password typed into the username box, say)."""
+    return f"{name}:{hmac.new(state.env().enc_key, key.encode(), hashlib.sha256).hexdigest()[:32]}"
+
+
 def hit(name: str, rate: Rate, key: str, cost: int = 1, reason: str | None = None) -> int:
     """Count `cost` against `name` for `key`; raise 429 when over the limit. Returns the new count."""
     t = now()
@@ -64,7 +72,7 @@ def hit(name: str, rate: Rate, key: str, cost: int = 1, reason: str | None = Non
         count = c.execute(
             "INSERT INTO rate_limits(bucket, window_start, count) VALUES (?,?,?) "
             "ON CONFLICT(bucket, window_start) DO UPDATE SET count = count + excluded.count RETURNING count",
-            (f"{name}:{key}", start, cost),
+            (_bucket(name, key), start, cost),
         ).fetchone()[0]
     if count > rate.count:
         raise limited(start + rate.window - t, reason)
@@ -87,11 +95,11 @@ def reserve(name: str, rate: Rate, key: str) -> Held:
         count = c.execute(
             "INSERT INTO rate_limits(bucket, window_start, count) VALUES (?,?,1) "
             "ON CONFLICT(bucket, window_start) DO UPDATE SET count = count + 1 RETURNING count",
-            (f"{name}:{key}", start),
+            (_bucket(name, key), start),
         ).fetchone()[0]
         if count > rate.count:
             raise limited(start + rate.window - t)  # rolls the increment back
-    return Held(f"{name}:{key}", start)
+    return Held(_bucket(name, key), start)
 
 
 def refund(h: Held) -> None:
@@ -103,7 +111,7 @@ def used(name: str, rate: Rate, key: str) -> tuple[int, int]:
     """(count in the current window, window end)."""
     t = now()
     start = t - t % rate.window
-    c = db.val("SELECT count FROM rate_limits WHERE bucket = ? AND window_start = ?", f"{name}:{key}", start)
+    c = db.val("SELECT count FROM rate_limits WHERE bucket = ? AND window_start = ?", _bucket(name, key), start)
     return int(c or 0), start + rate.window
 
 

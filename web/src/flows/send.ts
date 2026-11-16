@@ -55,6 +55,16 @@ export function manifestOf(d: Draft) {
   };
 }
 
+/** The manifest as sent: padded with spaces to a size step (docs/crypto.md §3.4, B8), so its length doesn't tell a
+ *  PIN from an API key. Readers ignore the pad item. */
+export function paddedManifest(d: Draft): Uint8Array {
+  const m = manifestOf(d);
+  const bare = utf8(JSON.stringify({ ...m, items: [...m.items, { t: 'pad', v: '' }] })).length;
+  const step = bare <= 1024 ? 1024 : bare <= 64 * 1024 ? 4096 : 64 * 1024;
+  const target = Math.ceil(bare / step) * step;
+  return utf8(JSON.stringify({ ...m, items: [...m.items, { t: 'pad', v: ' '.repeat(target - bare) }] }));
+}
+
 /** An upload in progress, kept by the page so Try again continues it instead of starting over (S9): what it was
  *  made with (the draft and the policy, compared by identity) and how far it got. Only in memory. */
 export interface Upload {
@@ -78,7 +88,7 @@ export async function uploadSecret(d: Draft, start: (streams: StreamDesc[]) => P
   passphrase?: { value: string; salt: Bytes } | null; sealExtra?: (id: string, K: Bytes) => Promise<Record<string, string>>;
   upload?: { current: Upload | null };
 }): Promise<{ id: string; K: Bytes; expires_at: string | null }> {
-  const manifest = utf8(JSON.stringify(manifestOf(d)));
+  const manifest = paddedManifest(d);
   const sources: Source[] = [bytesSource(manifest), ...d.files.map(fileSource)];
   let u = o.upload?.current?.draft === d ? o.upload.current : null;
   if (!u) {

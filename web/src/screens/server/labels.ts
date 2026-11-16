@@ -72,8 +72,10 @@ export function eventText(e: Pick<AuditRow, 'type' | 'detail'>): string {
       return t('events.reset_cancelled');
     case 'user.removed':
       return t('events.removed', { role: d.role });
-    case 'user.sign_in_failed':
-      return d.method === 'totp' ? t('events.sign_in_failed_totp') : d.method === 'reset_code' ? t('events.sign_in_failed_reset_code') : t('events.sign_in_failed_password');
+    case 'user.sign_in_failed': {
+      const what = d.method === 'totp' ? t('events.sign_in_failed_totp') : d.method === 'reset_code' ? t('events.sign_in_failed_reset_code') : t('events.sign_in_failed_password');
+      return typeof d.account === 'string' ? t('events.for_account', { what, account: d.account }) : what;
+    }
     case 'user.password_changed':
       return t('events.password_changed');
     case 'user.totp_on':

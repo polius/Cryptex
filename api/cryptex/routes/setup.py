@@ -69,12 +69,13 @@ def finish_setup(body: Setup, request: Request, response: Response) -> dict[str,
             raise ApiError("setup_done")
         conn.execute("INSERT INTO users(id, username, role, created_at) VALUES (?,?,?,?)", (uid, body.username, "owner", now()))
         set_credentials(conn, uid, Credentials(salt=body.salt, auth_key=body.auth_key))
-    locked = state.env().locked
-    if "brand_name" not in locked:
-        state.save("brand_name", body.brand_name.strip(), uid)
-    if "access" not in locked:
-        state.save("access", body.access, uid)
-    state.save("setup_completed", True, uid)
+        # In the same transaction (B8): a crash can't leave an owner without "setup completed", or the reverse.
+        locked = state.env().locked
+        if "brand_name" not in locked:
+            state.save("brand_name", body.brand_name.strip(), uid)
+        if "access" not in locked:
+            state.save("access", body.access, uid)
+        state.save("setup_completed", True, uid)
     state.forget_setup_code()
     # Only `cryptex owner reset`, which has no browser, needs the address: it prints its invite link with this one.
     state.save("detected_url", f"{request.url.scheme}://{request.url.netloc}")

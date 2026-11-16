@@ -875,6 +875,7 @@
     "removed": "Removed {role, select, owner {an owner} other {a member}}",
     "sign_in_failed_totp": "Sign-in failed · wrong 2FA code",
     "sign_in_failed_password": "Sign-in failed · wrong password",
+    "for_account": "{what} · {account}",
     "role_changed": "Role changed to {role, select, owner {owner} member {member} other {{role}}}",
     "setting_changed": "Setting changed · {name} {from} → {to}",
     "setup_completed": "Setup finished",

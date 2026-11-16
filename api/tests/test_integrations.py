@@ -376,7 +376,9 @@ def test_links_made_before_signing_in_join_the_account_only_with_their_manage_to
 
 
 # ------------------------------------------------------------------ server tab
-def test_overview(client):
+def test_overview(client, monkeypatch):
+    from cryptex import storage
+    monkeypatch.setattr(type(storage.get()), "disk", lambda self: (100 * 1024**3, 50 * 1024**3))  # B8: not this machine's disk
     send(client)
     o = client.get("/api/v1/server/overview").json()
     assert o["live"]["secrets"] == 1 and o["week"]["created"] == 1 and o["week"]["senders"] == 1

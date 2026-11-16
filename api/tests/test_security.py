@@ -1451,3 +1451,50 @@ def test_one_upload_takes_at_most_two_chunks_at_once(client):
     finally:
         del routes._uploading_now[s.id]
     assert chunk_files() == []  # nothing was written for it
+
+
+def test_built_files_are_served_compressed(server, tmp_path):
+    """D9: the stylesheet and every script went out uncompressed; the size budgets assume gzip. The build makes .br and
+    .gz copies, sent by Accept-Encoding with Vary."""
+    import gzip
+    web = tmp_path / "web"
+    (web / "assets").mkdir(parents=True)
+    (web / "index.html").write_text("<!doctype html>")
+    css = b"body{color:red}" * 100
+    (web / "assets" / "app-1.css").write_bytes(css)
+    (web / "assets" / "app-1.css.gz").write_bytes(gzip.compress(css))
+    (web / "assets" / "app-1.css.br").write_bytes(b"brotli")
+    c = server(setup=False, STATIC_DIR=str(web))
+    r = c.get("/assets/app-1.css", headers={"Accept-Encoding": "gzip, br, zstd"})
+    assert r.headers["content-encoding"] == "br" and r.headers["vary"] == "Accept-Encoding" and r.headers["content-type"].startswith("text/css")
+    r = c.get("/assets/app-1.css", headers={"Accept-Encoding": "gzip"})
+    assert r.headers["content-encoding"] == "gzip" and r.content == css  # the client undoes it
+    r = c.get("/assets/app-1.css", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in r.headers and r.content == css
+
+
+# ------------------------------------------------------------------ B8: smaller server items
+def test_rate_limit_rows_hold_no_address_or_typed_name(server):
+    """B8: the rate-limit table kept raw addresses and whatever was typed as a username for a day, in every backup."""
+    from conftest import from_address
+    c = server()
+    b = from_address(c, "203.0.113.77")
+    b.post("/api/v1/auth/login", json={"username": "hunter2-typed-here", "auth_key": "A" * 43})
+    send(b)
+    rows = " ".join(r[0] for r in db.all("SELECT bucket FROM rate_limits"))
+    assert rows and "203.0.113" not in rows and "hunter2" not in rows
+
+
+def test_a_failed_sign_in_names_the_account_when_there_is_one(client):
+    from conftest import login_body
+    b = anon(client)
+    b.post("/api/v1/auth/login", json=login_body(b, OWNER["username"], "wrong password"))
+    b.post("/api/v1/auth/login", json=login_body(b, "nobody-here", "wrong password"))
+    details = [json.loads(r[0]) for r in db.all("SELECT detail FROM events WHERE type = 'user.sign_in_failed' ORDER BY id")]
+    assert details[0].get("account") == OWNER["username"] and "account" not in details[1]
+
+
+def test_max_files_has_an_upper_bound(server):
+    from cryptex.config import load_env
+    with pytest.raises(ValueError, match="MAX_FILES"):
+        load_env({"DATA_DIR": str(state.env().data_dir), "MAX_FILES": "5000"})
