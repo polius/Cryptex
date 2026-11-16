@@ -5,7 +5,6 @@ its thread pool and the event loop never blocks on disk I/O.
 """
 from __future__ import annotations
 
-import hashlib
 import sqlite3
 import threading
 import time
@@ -112,48 +111,23 @@ def run(sql: str, *args: Any) -> sqlite3.Cursor:
     return conn().execute(sql, args)
 
 
-V2_TABLES = {"cryptex", "links", "api_keys"}  # Cryptex 2.x's database (api/database.py at v.2.4.0)
-
-
 def migrate() -> int:
-    """Apply the numbered migrations the database doesn't have yet (D3). A migration, once released, never changes:
-    each one's SHA-256 is stored as it's applied, and a different file stops the server, as does a database newer
-    than this code or one from Cryptex 2.x. Schema changes go in a new numbered file, never into an old one."""
     c = conn()
-    tables = {r[0] for r in c.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-    if "schema_version" not in tables and tables & V2_TABLES:
-        raise RuntimeError(f"{_path} is a Cryptex 2.x database, which version 3 can't read. Start version 3 with an empty "
-                           "data folder, and keep the old one for the 2.x image until its links have expired.")
     c.execute("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL, applied_at INTEGER NOT NULL)")
-    if "sha256" not in {r[1] for r in c.execute("PRAGMA table_info(schema_version)")}:
-        c.execute("ALTER TABLE schema_version ADD COLUMN sha256 TEXT")  # databases made before 3.2
-    files = dict(sorted(
+    current = c.execute("SELECT coalesce(max(version), 0) FROM schema_version").fetchone()[0]
+    files = sorted(
         (int(f.name.split("_", 1)[0]), f)
         for f in resources.files("cryptex.migrations").iterdir()
         if f.name.endswith(".sql")
-    ))
-    digest = {v: hashlib.sha256(f.read_bytes()).hexdigest() for v, f in files.items()}
-    applied = {r[0]: r[1] for r in c.execute("SELECT version, sha256 FROM schema_version")}
-    current = max(applied, default=0)
-    if current > max(files, default=0):
-        raise RuntimeError(f"the database is at schema version {current}, but this Cryptex knows only up to {max(files)}: "
-                           "it was used by a newer version. Run that version (or a later one) again.")
-    for version, h in applied.items():
-        if version not in files:
-            continue
-        if h is None:  # applied before hashes were kept: this is the file it was applied from (they never change)
-            c.execute("UPDATE schema_version SET sha256 = ? WHERE version = ?", (digest[version], version))
-        elif h != digest[version]:
-            raise RuntimeError(f"migration {files[version].name} isn't the one this database was made with. Released "
-                               "migrations must never change: put schema changes in a new numbered file.")
-    for version, f in files.items():
+    )
+    for version, f in files:
         if version <= current:
             continue
         c.execute("BEGIN IMMEDIATE")
         try:
             for statement in _split(f.read_text()):
                 c.execute(statement)
-            c.execute("INSERT INTO schema_version(version, applied_at, sha256) VALUES (?, ?, ?)", (version, int(time.time()), digest[version]))
+            c.execute("INSERT INTO schema_version VALUES (?, ?)", (version, int(time.time())))
             c.execute("COMMIT")
         except BaseException:
             c.execute("ROLLBACK")
