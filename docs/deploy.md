@@ -70,7 +70,7 @@ services:
     networks: { default: { ipv4_address: 10.213.48.2 } }
 
   cryptex:
-    image: poliuscorp/cryptex:3
+    image: poliuscorp/cryptex
     restart: unless-stopped
     environment: { TRUSTED_PROXIES: 10.213.48.2 }
     volumes: ["./data:/data"]
@@ -118,7 +118,7 @@ services:
     networks: { default: { ipv4_address: 10.213.49.2 } }
 
   cryptex:
-    image: poliuscorp/cryptex:3
+    image: poliuscorp/cryptex
     restart: unless-stopped
     environment: { TRUSTED_PROXIES: 10.213.49.2 }
     volumes: ["./data:/data"]

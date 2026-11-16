@@ -1,6 +1,6 @@
 services:
   cryptex:
-    image: poliuscorp/cryptex:3
+    image: poliuscorp/cryptex
     container_name: cryptex
     restart: unless-stopped
     ports: ["127.0.0.1:8080:8080"]

@@ -12,7 +12,7 @@ unless you'd rather it didn't.
 
 | Version | Supported |
 |---|---|
-| 3.x, latest release | Yes: fixes ship as a new 3.x release (the `:3` image tag follows them) |
+| 3.x, latest release | Yes: fixes ship as a new 3.x release |
 | 3.x, older releases | Update to the latest 3.x |
 | 2.x | No. Version 3 is a rewrite with a new format; start it with an empty data folder |
 

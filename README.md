@@ -46,7 +46,7 @@ With Docker:
 
 ```sh
 docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
-  -v "$PWD/data:/data" poliuscorp/cryptex:3
+  -v "$PWD/data:/data" poliuscorp/cryptex
 ```
 
 Or with Docker Compose:
@@ -83,15 +83,15 @@ Behind another proxy (nginx, Traefik, a Cloudflare Tunnel, Tailscale), see [docs
 
 ### Updating
 
-The image tag `:3` follows every 3.x release and never jumps to a new major version. [Back up](#backup-and-restore) first, and read the [release notes](https://github.com/polius/Cryptex/releases) before moving to a new major version.
+[Back up](#backup-and-restore) first, and read the [release notes](https://github.com/polius/Cryptex/releases) before moving to a new major version.
 
 With Docker:
 
 ```sh
-docker pull poliuscorp/cryptex:3
+docker pull poliuscorp/cryptex
 docker stop cryptex && docker rm cryptex
 docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
-  -v "$PWD/data:/data" poliuscorp/cryptex:3
+  -v "$PWD/data:/data" poliuscorp/cryptex
 ```
 
 `docker stop` lets the server finish its writes and fold its write-ahead log into the database; `docker rm -f` doesn't.

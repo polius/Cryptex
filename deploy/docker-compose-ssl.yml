@@ -14,7 +14,7 @@ services:
     depends_on: [cryptex]
 
   cryptex:
-    image: poliuscorp/cryptex:3
+    image: poliuscorp/cryptex
     container_name: cryptex
     restart: unless-stopped
     environment:
