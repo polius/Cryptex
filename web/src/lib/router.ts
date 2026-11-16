@@ -68,6 +68,16 @@ export function forgetTabToken(path: string): void {
 /** Secret, request and receipt IDs: 10 base62 characters. Anything else never reaches the API. */
 export const isId = (v: string): boolean => /^[0-9A-Za-z]{10}$/.test(v);
 
+/** Asked before an in-app link leaves the page (a passphrase shown only now and not yet copied): resolves whether to
+ *  go. Returns a function that removes it. */
+let leaveGuard: (() => Promise<boolean>) | null = null;
+export function guardLeave(ask: () => Promise<boolean>): () => void {
+  leaveGuard = ask;
+  return () => {
+    if (leaveGuard === ask) leaveGuard = null;
+  };
+}
+
 /** Same-origin <a href> clicks navigate without a page load. */
 document.addEventListener('click', (e) => {
   if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
@@ -76,7 +86,13 @@ document.addEventListener('click', (e) => {
   const href = a.getAttribute('href');
   if (!href || !href.startsWith('/') || href.startsWith('//') || href.startsWith('/api/')) return;
   e.preventDefault();
-  navigate(href);
+  const ask = leaveGuard;
+  if (!ask) return navigate(href);
+  void ask().then((go) => {
+    if (!go) return;
+    if (leaveGuard === ask) leaveGuard = null;
+    navigate(href);
+  });
 });
 
 export function match(pattern: string, path: string): Record<string, string> | null {

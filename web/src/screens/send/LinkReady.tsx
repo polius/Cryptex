@@ -2,7 +2,9 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { t } from '../../lib/i18n';
+import { guardLeave } from '../../lib/router';
 import { Btn, copyText, ErrMsg, H1, Status } from '../../ui/bits';
+import { confirmDialog } from '../../ui/confirm';
 import { errorText } from '../errors';
 import { Dialog } from '../../ui/dialog';
 import { Icon } from '../../ui/icons';
@@ -50,14 +52,26 @@ export function LinkBox({ link, open = false }: { link: string; open?: boolean }
   );
 }
 
-/** The link's passphrase with its own Copy button, to send another way. Shown only as the link is made. */
+/** The link's passphrase with its own Copy button, to send another way. Shown only as the link is made, and kept
+ *  nowhere: until it's copied, leaving the page (a link in the app, a reload, closing the tab) asks first (S7). */
 export function PassphraseBox({ passphrase }: { passphrase: string }) {
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    if (copied) return;
+    const onBefore = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onBefore);
+    const off = guardLeave(() => confirmDialog({ title: t('send.passphrase_leave_title'), body: t('send.passphrase_leave_body'), confirm: t('send.passphrase_leave') }));
+    return () => {
+      window.removeEventListener('beforeunload', onBefore);
+      off();
+    };
+  }, [copied]);
   return (
     <div class="stack" style="gap:10px">
-      <div class="linkbox pass-ready">
+      <div class={`linkbox pass-ready${copied ? ' copied' : ''}`}>
         <span class="pass-k"><Icon name="key" size="sm" />{t('policy.passphrase')}</span>
         <span class="url mono">{passphrase}</span>
-        <Btn kind="secondary" icon="copy" onClick={() => copyText(passphrase)}>{t('reveal.copy')}</Btn>
+        <Btn kind="secondary" icon={copied ? 'check' : 'copy'} onClick={() => void copyText(passphrase).then((ok) => ok && setCopied(true))}>{copied ? t('toast.copied') : t('reveal.copy')}</Btn>
       </div>
       <p class="muted small">{t('send.passphrase_tell')}</p>
     </div>

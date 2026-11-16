@@ -24,7 +24,7 @@ test('passphrase: 5 wrong tries destroy the secret, and the sender sees why', as
     await expect(r.page.getByRole('alert')).toContainText(`${left} ${left === 1 ? 'try' : 'tries'} left`);
   }
   await r.page.locator('#pass').fill('wrong-final');
-  await r.page.getByRole('button', { name: 'Try again' }).click();
+  await r.page.getByRole('button', { name: 'Reveal secret' }).click();
   await expect(r.page.getByRole('heading', { name: 'This secret was destroyed' })).toBeVisible();
   await page.goto(`/r/${id}`);
   await expect(page.locator('.status')).toContainText('too many wrong passphrases');

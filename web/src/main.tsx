@@ -11,6 +11,7 @@ import { ReauthDialog } from './screens/server/common';
 import { Toasts } from './ui/chrome';
 import { ConfirmHost } from './ui/confirm';
 import { t } from './lib/i18n';
+import { pageTitle } from './lib/title';
 
 applyTheme();
 // Phones and tablets, iPads included (they report a Mac, and a fine pointer with a trackpad): no "drop files" hints.
@@ -95,8 +96,9 @@ function Screen() {
     navigate(`/signin?next=${encodeURIComponent(path)}`, { replace: true });
     return null;
   }
-  if (path === '/account' && !c.signed_in && !c.demo) {
-    navigate('/signin?next=%2Faccount', { replace: true });
+  // An owner whose session ended signs in and comes back (M5); a signed-in member who isn't an owner gets Not found.
+  if ((path === '/account' || path === '/server' || path.startsWith('/server/')) && !c.signed_in && !c.demo) {
+    navigate(`/signin?next=${encodeURIComponent(path)}`, { replace: true });
     return null;
   }
   if (path === '/account') return <Account />;
@@ -127,6 +129,9 @@ function App() {
   useEffect(() => {
     requestAnimationFrame(() => focusFirst(true));
   }, [path, !!c]);
+  useEffect(() => {
+    if (c) document.title = pageTitle(path, c.brand.name || 'Cryptex');
+  }, [path, c?.brand.name]);
   if (bootError.value) {
     return (
       <main class="main narrow boot-error" id="main">

@@ -1,7 +1,6 @@
 /** App-wide state as signals: server config, the signed-in user, toasts, theme. */
 import { signal } from '@preact/signals';
 import { api, onSessionEnded, setCsrf, setSignedInAs, signedInUid, type Config, type User } from '../api/client';
-import { t } from './i18n';
 
 export const config = signal<Config | null>(null);
 export const bootError = signal<string | null>(null);
@@ -30,7 +29,6 @@ export async function loadConfig(): Promise<Config> {
     vaultModule ??= await import('../store/vault');
     await vaultModule.syncVault(uid).catch(() => undefined);
   }
-  document.title = c.brand.name ? `${c.brand.name} · ${t('app.brand_suffix')}` : 'Cryptex';
   if (c.demo && !document.querySelector('meta[name="robots"]')) {
     const m = document.createElement('meta');
     m.name = 'robots';

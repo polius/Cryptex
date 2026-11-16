@@ -29,12 +29,16 @@ const ATTN: Record<string, (a: Overview['attention'][number]) => { title: string
   cleanup: (a) => ({ title: t('server.attn_cleanup_title'), body: t('server.attn_cleanup', { minutes: a.minutes }) }),
 };
 
+const RELEASES = 'https://github.com/polius/cryptex/releases';
+
 export function OverviewSection() {
   const { data, error, reload } = useServer<Overview>('/server/overview');
   const host = location.host;
   return (
     <ServerShell active="overview">
-      <Heading title={t('server.overview')} lede={data ? (data.update_available ? t('server.overview_lede_update', { host, version: data.version, update: data.update_available }) : t('server.overview_lede', { host, version: data.version })) : ' '} />
+      <Heading title={t('server.overview')} lede={data ? (data.update_available ? t('server.overview_lede_update', { host, version: data.version, update: data.update_available })
+        // The server never checks for updates (it makes no outbound requests): point to the releases, claim nothing (M3).
+        : rich('server.overview_lede', { host, version: data.version, releases: <a class="link" href={RELEASES} rel="external noopener" target="_blank">{t('server.see_releases')}</a> })) : ' '} />
       {error && <LoadError error={error} retry={reload} />}
       {data && (
         <>
@@ -91,14 +95,30 @@ export function AccessSection() {
   // goes back there when it closes.
   const inviteFrom = useRef<HTMLElement | null>(null);
   const [resetting, setResetting] = useState<Person | null>(null);
-  const setMode = (mode: 'anyone' | 'signed_in') => sensitive(async () => {
-    await api('PUT', '/server/access', { body: { mode } });
-    toast(t('toast.saved'));
-    await loadConfig();
-    reload();
-  });
+  // Staged like every other setting (M8): arrowing through the radios, or a stray click, changes nothing until Save.
+  const [mode, setMode] = useState<Access['mode'] | null>(null);
+  const [savingMode, setSavingMode] = useState(false);
+  const saveMode = async () => {
+    if (mode === 'anyone' && !(await confirmDialog({ title: t('access.open_title'), body: t('access.open_body'), confirm: t('access.open_confirm') }))) return;
+    setSavingMode(true);
+    try {
+      await sensitive(async () => {
+        await api('PUT', '/server/access', { body: { mode } });
+        toast(t('toast.saved'));
+        setMode(null);
+        await loadConfig();
+        reload();
+      });
+    } finally {
+      setSavingMode(false);
+    }
+  };
   const name = (p: Person) => p.username;
-  const setRole = (p: Person, role: 'owner' | 'member') => sensitive(async () => {
+  const setRole = async (p: Person, role: 'owner' | 'member') => {
+    if (role === 'owner' && !(await confirmDialog({ title: t('access.owner_title', { name: name(p) }), body: t('access.owner_body'), confirm: t('people.make_owner') }))) return;
+    return setRoleNow(p, role);
+  };
+  const setRoleNow = (p: Person, role: 'owner' | 'member') => sensitive(async () => {
     await api('PATCH', `/server/users/${p.id}`, { body: { role } });
     toast(t('access.role_now', { name: name(p), role }));
     reload();
@@ -135,8 +155,8 @@ export function AccessSection() {
             <div class="set"><div class="k"><b>{t('setup.access')}</b><small>{t('access.mode_help')}</small></div>
               <div class="stack">
                 <div class="radios" role="radiogroup" aria-label={t('setup.access')}>
-                  <Radio name="mode" on={data.mode === 'anyone'} onSelect={() => setMode('anyone')} title={t('access.anyone')} help={t('access.anyone_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
-                  <Radio name="mode" on={data.mode === 'signed_in'} onSelect={() => setMode('signed_in')} title={t('access.signed_in')} help={t('access.signed_in_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
+                  <Radio name="mode" on={(mode ?? data.mode) === 'anyone'} onSelect={() => setMode(data.mode === 'anyone' ? null : 'anyone')} title={t('access.anyone')} help={t('access.anyone_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
+                  <Radio name="mode" on={(mode ?? data.mode) === 'signed_in'} onSelect={() => setMode(data.mode === 'signed_in' ? null : 'signed_in')} title={t('access.signed_in')} help={t('access.signed_in_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
                 </div>
                 {data.locked_by && <Lock vars={data.locked_by} />}
               </div></div>
@@ -157,6 +177,10 @@ export function AccessSection() {
                 <button type="button" class="link" onClick={() => setQ('')}>{t('links.search_clear')}</button></p>}
           </section>
         </>
+      )}
+      {mode && (
+        <SaveBar summary={t('server.unsaved', { n: 1 })} busy={savingMode} onDiscard={() => setMode(null)} onSave={() => void saveMode()}
+          back={() => document.querySelector<HTMLElement>('.radios input:checked')} />
       )}
       {adding && <AddPersonDialog onClose={() => setAdding(false)} onAdded={(link) => { setAdding(false); setInvite(link); reload(); }} />}
       {invite && <InviteDialog invite={invite} returnTo={inviteFrom.current} onClose={() => setInvite(null)} />}

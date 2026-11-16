@@ -140,7 +140,7 @@ export function Receipt({ id }: { id: string }) {
             </div>
             {/* Destroy: the link stops working and leaves Your links (deleteRow). While the vault is locked it says why. */}
             <button class="btn sm secondary danger" aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
-              onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t('links.delete')}</button>
+              onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t(final ? 'links.remove' : 'links.delete')}</button>
           </div>
           {!final && row.local?.link && <div class="rc-link stack" style="gap:16px"><LinkBox link={row.local.link} open />{fresh?.passphrase && <PassphraseBox passphrase={fresh.passphrase} />}</div>}
           <div class="facts rc-facts">
@@ -264,7 +264,7 @@ function RequestView({ row, fresh, deleting, setDeleting, onRenamed }: { row: Ro
             </div>
             {/* Destroy: the link stops working and leaves Your links (deleteRow). While the vault is locked it says why. */}
             <button class="btn sm secondary danger" aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
-              onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t('links.delete')}</button>
+              onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t(final ? 'links.remove' : 'links.delete')}</button>
           </div>
           {s === 'waiting' && row.local?.link && <div class="rc-link"><LinkBox link={row.local.link} open /><p class="muted small">{t('ask.share_hint')}</p></div>}
           {answerReady(row) && (

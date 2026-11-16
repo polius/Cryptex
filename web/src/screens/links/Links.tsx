@@ -94,8 +94,8 @@ export function DeleteDialog({ row, onClose, onDeleted }: { row: Row | null; onC
   return (
     <Dialog open={!!row} alert onClose={onClose} labelledBy="dl-title"
       footer={<><button class="btn secondary" onClick={onClose} data-autofocus>{t('dialog.destroy_keep')}</button>
-        <Btn kind="danger solid" icon="trash" loading={busy} onClick={go}>{t('links.delete')}</Btn></>}>
-      <h2 class="h2" id="dl-title">{t(row && isRequest(row) ? 'links.delete_title_request' : 'links.delete_title', { title: row ? displayName(row) : '' })}</h2>
+        <Btn kind="danger solid" icon="trash" loading={busy} onClick={go}>{t(row && isFinal(row) ? 'links.remove' : 'links.delete')}</Btn></>}>
+      <h2 class="h2" id="dl-title">{t(row && isFinal(row) ? 'links.remove_title' : row && isRequest(row) ? 'links.delete_title_request' : 'links.delete_title', { title: row ? displayName(row) : '' })}</h2>
       <p class="muted">{t(row && isRequest(row) ? (isFinal(row) ? 'links.delete_body' : 'links.delete_body_request')
         : row && !isFinal(row) && row.local ? 'links.delete_body_live' : 'links.delete_body')}</p>
     </Dialog>
@@ -429,7 +429,7 @@ export function Links() {
                         {r.local && <button class="mi" role="menuitem" tabIndex={-1} onClick={pick(() => setRenaming(r))}><Icon name="pencil" size="sm" />{t('links.rename')}</button>}
                         {/* Destroy, as on the receipt page: the link stops working and leaves Your links. */}
                         <button class="mi danger" role="menuitem" tabIndex={-1} aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
-                          onClick={pick(() => deleteBlocked() || setDeleting(r))}><Icon name="trash" size="sm" />{t('links.delete')}</button>
+                          onClick={pick(() => deleteBlocked() || setDeleting(r))}><Icon name="trash" size="sm" />{t(final ? 'links.remove' : 'links.delete')}</button>
                       </RowMenu>
                     )}
                   </div>

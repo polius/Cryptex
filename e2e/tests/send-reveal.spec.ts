@@ -73,7 +73,7 @@ test('the sender sees "Opened" on the next status read', async ({ browser }) => 
   await expect(r.page.locator('.out')).toBeVisible();
   await page.clock.runFor(30_000);
   await expect(page.locator('.status')).toContainText('Opened');
-  await expect(page.locator('.events')).toContainText('Revealed');
+  await expect(page.locator('.events')).toContainText('Opened');
 });
 
 test('"Skip to content" on a revealed link moves focus and keeps the secret', async ({ browser }) => {
