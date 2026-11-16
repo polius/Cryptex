@@ -8,9 +8,6 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
-    networks:
-      default:
-        ipv4_address: 10.213.47.2  # the one address Cryptex takes the visitor's address from (TRUSTED_PROXIES)
     depends_on: [cryptex]
 
   cryptex:
@@ -18,13 +15,9 @@ services:
     container_name: cryptex
     restart: unless-stopped
     environment:
-      TRUSTED_PROXIES: 10.213.47.2
+      # Cryptex's port isn't published here: only Caddy, on this private network, can reach it.
+      TRUSTED_PROXIES: 10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
     volumes: ["./data:/data"]
-
-networks:
-  default:
-    ipam:
-      config: [{ subnet: 10.213.47.0/24 }]
 
 volumes:
   caddy_data:

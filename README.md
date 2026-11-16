@@ -147,7 +147,7 @@ Formats: sizes `500kb`, `10mb`, `1gb` · durations `30m`, `24h`, `7d` · rates `
 
 | Variable | Default | Description |
 |---|---|---|
-| `TRUSTED_PROXIES` | `127.0.0.1,::1` | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Name exactly your proxy: anyone listed can claim any address. The HTTPS compose file sets it to its Caddy. |
+| `TRUSTED_PROXIES` | `127.0.0.1,::1` | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Name only your proxy: anyone listed can claim any address. The HTTPS compose file trusts its private network, which only Caddy can reach. |
 | `MIN_FREE_DISK` | `1gb` | New links are refused when they'd leave less free disk space than this. |
 
 ### Links and access
