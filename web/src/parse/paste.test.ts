@@ -186,11 +186,16 @@ describe('secret field names in other languages', () => {
   });
 
   it('offers Generate for password and secret fields in every language (X-P10)', () => {
-    for (const n of ['Password', 'db_pwd', 'API secret', 'Contraseña', 'Mot de passe', 'mdp', 'Passwort', 'Wachtwoord', 'Hasło', 'Şifre',
-      'Пароль', 'Гасло', 'पासवर्ड', 'Kata sandi', 'パスワード', '密码', '비밀번호', 'Senha', 'Secreto']) {
+    for (const n of ['Password', 'db_pwd', 'Contraseña', 'Mot de passe', 'mdp', 'Passwort', 'Wachtwoord', 'Hasło', 'Şifre',
+      'Пароль', 'Гасло', 'पासवर्ड', 'Kata sandi', 'パスワード', '密码', '비밀번호', 'Senha']) {
       expect(isPasswordKey(n), n).toBe(true);
     }
     for (const n of ['Host', 'Username', 'API key', 'Token', 'PIN', 'Clé', 'Schlüssel', 'Ключ']) expect(isPasswordKey(n), n).toBe(false);
+    // S1: a secret that isn't a password gets no Generate (a generated string is never a valid one), but stays secret.
+    for (const n of ['API secret', 'AWS_SECRET_ACCESS_KEY', 'client_secret', 'Secreto', 'シークレット']) {
+      expect(isPasswordKey(n), n).toBe(false);
+      expect(isSecretKey(n), n).toBe(true);
+    }
   });
 
   it('matches short words only as whole words', () => {
@@ -198,5 +203,26 @@ describe('secret field names in other languages', () => {
       'Spin', 'Pinned', 'Opinion', 'Hotpot', 'Cvvx']) {
       expect(isSecretKey(n), n).toBe(false);
     }
+  });
+
+  it('S5 · a lone line with "=" is a variable only when it looks like one', () => {
+    for (const raw of ['c2VjcmV0LWtleQ==', 'hunter2=xyz!', 'Summer2024=', 'SUMMER2024=', 'abc=']) {
+      expect(parsePaste(raw), raw).toEqual({ kind: 'note', text: raw });
+    }
+    expect(parsePaste('API_KEY=abc')).toMatchObject({ rule: 'env', fields: [{ k: 'API_KEY', v: 'abc', secret: true }] });
+    expect(parsePaste('export DB_HOST=db')).toMatchObject({ rule: 'env', fields: [{ k: 'DB_HOST', v: 'db' }] });
+    expect(parsePaste('password=hunter2')).toMatchObject({ rule: 'env', fields: [{ k: 'password', v: 'hunter2', secret: true }] });
+    expect(parsePaste('a=1\nb=2')).toMatchObject({ rule: 'env', fields: [{ k: 'a' }, { k: 'b' }] }); // a two-line .env still is one
+  });
+
+  it('S5 · a URL then a password is not a username and a password', () => {
+    expect(parsePaste('https://vpn.acme.example\nk7#Qp2-vR9mL')).toMatchObject({ kind: 'note' });
+    expect(parsePaste('sam@acme.example\nk7#Qp2-vR9mL')).toMatchObject({ rule: 'pair' });
+  });
+
+  it('S2 · a private key keeps its final line break', () => {
+    expect(parsePaste(KEY + '\n')).toMatchObject({ rule: 'pem', fields: [{ v: KEY + '\n' }] });
+    expect(parsePaste(KEY + '\r\n')).toMatchObject({ fields: [{ v: KEY + '\n' }] });
+    expect(parsePaste(KEY)).toMatchObject({ fields: [{ v: KEY }] });
   });
 });

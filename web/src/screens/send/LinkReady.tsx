@@ -22,9 +22,16 @@ export function LinkBox({ link, open = false }: { link: string; open?: boolean }
   return (
     <>
       <div class="linkbox">
-        <span class="url" ref={urlRef} title={link}>
+        {/* A selection by hand copies the full link alone: the shortened copy can't be selected (live.css), and a copy
+            from inside the box is the link whatever was selected. */}
+        <span class="url" ref={urlRef} title={link} onCopy={(e) => {
+          const sel = getSelection();
+          if (!sel || !e.clipboardData || !urlRef.current?.contains(sel.anchorNode) || !urlRef.current.contains(sel.focusNode)) return;
+          e.preventDefault();
+          e.clipboardData.setData('text/plain', link);
+        }}>
           <span class="sr">{link}</span>
-          <span aria-hidden="true">{base}<span class="frag">#<span class="frag-head">{frag.slice(0, 6)}</span>…{frag.slice(-4)}</span></span>
+          <span class="short" aria-hidden="true">{base}<span class="frag">#<span class="frag-head">{frag.slice(0, 6)}</span>…{frag.slice(-4)}</span></span>
         </span>
         <Btn kind="primary" icon="copy" onClick={() => copyText(link, t('toast.link_copied'), urlRef.current)}>{t('reveal.copy')}</Btn>
         {canShare && <Btn kind="secondary" icon="share" onClick={() => void navigator.share({ url: link }).catch(() => undefined)}>{t('send.share')}</Btn>}

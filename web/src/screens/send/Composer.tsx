@@ -122,6 +122,28 @@ export function DropZone({ on }: { on: boolean }) {
   return on ? <div class="dropzone" aria-hidden="true"><span><Icon name="upload" size="lg" />{t('send.drop_overlay')}</span></div> : null;
 }
 
+/** Lines and size of a multi-line value, for its summary while masked: "4 lines · 141 bytes". */
+export const multiLineSummary = (v: string) => t('send.multiline_summary', { lines: v.replace(/\n$/, '').split('\n').length, size: bytes(new TextEncoder().encode(v).length) });
+
+/** A field's value. A one-line <input> can't hold line breaks (a private key, a certificate): a multi-line value is
+ *  a summary while masked and a text area when shown, so editing it never flattens it. */
+function FieldValue({ f, n, disabled, onInput }: { f: FieldRow; n: number; disabled?: boolean; onInput: (v: string) => void }) {
+  const label = t('send.field_value_label', { name: f.k || t('send.field_n', { n }) });
+  const hide = f.secret && !f.shown;
+  if (f.v.includes('\n')) {
+    if (hide) return <span class="v multi-sum" aria-label={label}>{multiLineSummary(f.v)}</span>;
+    return (
+      <textarea class="v multi" value={f.v} aria-label={label} disabled={disabled} autoComplete="off" spellcheck={false}
+        rows={Math.min(8, f.v.replace(/\n$/, '').split('\n').length)} onInput={(e) => onInput((e.target as HTMLTextAreaElement).value)} />
+    );
+  }
+  return (
+    <input class={`v${hide ? ' secret' : ''}`} {...masked(hide)} value={f.v}
+      placeholder={t('send.field_value')} aria-label={label} disabled={disabled} autoComplete="off" spellcheck={false}
+      onInput={(e) => onInput((e.target as HTMLInputElement).value)} />
+  );
+}
+
 export function Composer(props: {
   state: ComposerState; onChange: (s: ComposerState) => void; maxChars: number; maxFiles: number; maxFileBytes: number;
   disabled?: boolean; onFilesRejected: (msg: string) => void; registerPaste: (fn: (raw: string) => void) => void;
@@ -256,17 +278,16 @@ export function Composer(props: {
                     const k = (e.target as HTMLInputElement).value;
                     updateRow(f.id, { k, secret: f.secret || isSecretKey(k) });
                   }} />
-                {f.generated && <span class="tag">{t('send.generated')}</span>}
               </span>
-              <input class={`v${f.secret && !f.shown ? ' secret' : ''}`} {...masked(!!f.secret && !f.shown)} value={f.v}
-                placeholder={t('send.field_value')} aria-label={t('send.field_value_label', { name: f.k || t('send.field_n', { n: i + 1 }) })} disabled={props.disabled} autoComplete="off" spellcheck={false}
-                onInput={(e) => updateRow(f.id, { v: (e.target as HTMLInputElement).value, generated: false })} />
+              <FieldValue f={f} n={i + 1} disabled={props.disabled} onInput={(v) => updateRow(f.id, { v, generated: false })} />
               <span class="acts">
+                {f.generated && <span class="tag">{t('send.generated')}</span>}
                 {f.secret && (
                   <button type="button" class="btn icon sm ghost" aria-label={f.shown ? t('reveal.hide') : t('reveal.show')} title={f.shown ? t('reveal.hide') : t('reveal.show')}
                     onClick={() => updateRow(f.id, { shown: !f.shown })}><Icon name={f.shown ? 'eyeoff' : 'eye'} size="sm" /></button>
                 )}
-                {(isPasswordKey(f.k) || f.k === t('send.field_password')) && (
+                {/* Only into an empty value: generating over a pasted secret would replace it without a trace. */}
+                {!f.v && (isPasswordKey(f.k) || f.k === t('send.field_password')) && (
                   <button type="button" class="btn sm ghost" onClick={() => updateRow(f.id, { v: generatePassword(), generated: true, secret: true })}>{t('send.generate')}</button>
                 )}
                 <button type="button" class="btn icon sm ghost" aria-label={t('send.remove_field')} title={t('send.remove_field')} onClick={() => removeRow(f.id)}><Icon name="x" size="sm" /></button>

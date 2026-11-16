@@ -195,6 +195,9 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
                 </button>
               )}
               <button class="btn icon sm ghost" aria-label={t('reveal.copy_field', { name: it.k })} title={t('reveal.copy')} onClick={() => copyText(it.v)}><Icon name="copy" size="sm" /></button>
+              {/* A key or certificate is used as a file: save it as one, line breaks and all. */}
+              {it.v.includes('\n') && <Btn kind="secondary" class="sm" icon="down" label={t('reveal.save_field', { name: it.k })}
+                onClick={() => save(new Blob([it.v], { type: 'text/plain' }), it.k || t('reveal.secret'), urls.current)}>{t('reveal.save')}</Btn>}
             </span>
           </div>
         ))}

@@ -58,7 +58,9 @@ export function Home() {
   // ⌘/Ctrl+Enter creates (⌘/Ctrl+V anywhere pastes into the composer, and files drop anywhere: usePageInput).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && phase.k === 'compose') {
+      // Not under another dialog (Ask for a secret): its own shortcut is for it, not for the half-written secret here.
+      const otherDialog = document.querySelector('.scrim:not(.editor-scrim) [aria-modal="true"]');
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && phase.k === 'compose' && !otherDialog) {
         e.preventDefault();
         setExpanded(false);
         void create();
@@ -273,48 +275,41 @@ export function Home() {
   );
 }
 
-/** What's in the composer, as plain lines for the scramble (values included: it's this person's own screen). */
-function cipherLines(c: ComposerState): string[] {
+/** The composer's shape, as lines for the scramble (Cipher), which shows a glyph for each character and never the
+ *  characters themselves, so no frame shows a value (masked or not) to someone watching the screen. */
+export function cipherLines(c: ComposerState): string[] {
   return [
     ...(c.title.trim() ? [c.title.trim()] : []),
     ...(c.note ? c.note.split('\n') : []),
-    ...c.fields.filter((f) => f.k || f.v).map((f) => `${f.k}  ${f.v}`),
+    ...c.fields.filter((f) => f.k || f.v).map((f) => `${f.k}  ${f.v.split('\n')[0]}`),
     ...c.files.map((f) => f.name),
   ];
 }
 
 const GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789#%&*+=?@$/';
+const scramble = (s: string) => s.replace(/\S/g, () => GLYPHS[(Math.random() * GLYPHS.length) | 0]);
 
-/** The person's own text turning into gibberish from left to right, then shuffling until the seal is done. */
-function Cipher({ lines, ms }: { lines: string[]; ms: number }) {
+/** Random glyphs in the composer's shape, shuffling until the seal is done. */
+export function Cipher({ lines }: { lines: string[] }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [src] = useState(() => lines.join('\n').slice(0, 600));
+  const [first] = useState(() => scramble(src));
   useEffect(() => {
     const el = ref.current;
-    const src = lines.join('\n').slice(0, 600);
-    if (!el || calm()) {
-      if (el) el.textContent = src.replace(/\S/g, () => GLYPHS[(Math.random() * GLYPHS.length) | 0]);
-      return;
-    }
-    const start = performance.now();
+    if (!el || calm()) return;
     let last = 0;
     let raf = 0;
     const tick = (now: number) => {
       if (now - last > 45) {
         last = now;
-        const cut = ((now - start) / ms) * src.length * 1.1;
-        let out = '';
-        for (let i = 0; i < src.length; i++) {
-          const ch = src[i];
-          out += /\s/.test(ch) || i > cut ? ch : GLYPHS[(Math.random() * GLYPHS.length) | 0];
-        }
-        el.textContent = out;
+        el.textContent = scramble(src);
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
-  return <div class="seal-cipher" ref={ref} aria-hidden="true">{lines.join('\n')}</div>;
+  return <div class="seal-cipher" ref={ref} aria-hidden="true">{first}</div>;
 }
 
 /** The seal closing over the composer while the link is made: the same pattern the recipient sees lift when they reveal. */
@@ -323,7 +318,7 @@ function SealOverlay({ step: at, lines }: { step: 1 | 2 | 3 | 4; lines: string[]
   const text = step === 1 ? t('send.seal_locking') : step === 2 ? t('send.seal_saving') : t('send.seal_ready');
   return (
     <div class={`seal-over s${step}`} style={`--lock:${SEAL.lock}ms;--save:${SEAL.save}ms;--ready:${SEAL.ready}ms`}>
-      <Cipher lines={lines} ms={SEAL.lock * 0.75} />
+      <Cipher lines={lines} />
       <div class="seal-cover tint" aria-hidden="true" />
       <span class="seal-mark" aria-hidden="true">{step === 3 ? <Icon name="check" /> : <Mark open={step === 1} />}</span>
       <div class="seal-status">
