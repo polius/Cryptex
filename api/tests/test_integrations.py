@@ -521,3 +521,39 @@ def test_cleanup_deletes_temporary_passwords_nobody_read_after_a_day(client, mon
     db.run("UPDATE users SET temp_expires_at = ?", now() - 1)
     jobs.cleanup()
     assert not path.exists() and db.val("SELECT temp_key_hash FROM users WHERE username = ?", OWNER["username"]) is None
+
+
+# ------------------------------------------------------------------ M7: offboarding
+def test_removing_a_person_can_destroy_their_live_links(client):
+    """M7: removing an account left every link it sent working, and nobody could revoke them afterwards."""
+    lisa, uid, _ = lisa_joined(client)
+    kept, gone = send(lisa), send(lisa)
+    people = {p["username"]: p for p in client.get("/api/v1/server/access").json()["people"]}
+    assert people["lisa"]["live_links"] == 2
+    reauth(client)
+    assert client.delete(f"/api/v1/server/users/{uid}", params={"destroy_links": "true"}).status_code == 204
+    for s in (kept, gone):
+        r = anon(client).get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers())
+        assert r.status_code == 410 and r.json()["error"]["reason"] == "destroyed"
+
+
+def test_removing_a_person_without_destroying_keeps_their_links(client):
+    lisa, uid, _ = lisa_joined(client)
+    s = send(lisa)
+    reauth(client)
+    assert client.delete(f"/api/v1/server/users/{uid}").status_code == 204
+    assert anon(client).get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers()).status_code == 200
+
+
+# ------------------------------------------------------------------ M6: shared offices
+def test_signed_in_status_and_reveal_limits_are_per_person(server):
+    """M6: three colleagues behind one address shared RATE_STATUS and RATE_REVEAL, so the third open Your links
+    broke everyone's. Signed in, each person has their own; one poll is one request (POST /status)."""
+    c = server(RATE_STATUS="3/h")
+    s = send(c)
+    stranger = anon(c)
+    for _ in range(3):
+        assert stranger.post("/api/v1/status", json={"items": [], "requests": []}).status_code == 200
+    assert stranger.post("/api/v1/status", json={}).status_code == 429  # same address, not signed in
+    r = c.post("/api/v1/status", json={"items": [{"id": s.id, "manage_token": s.manage_token}], "requests": []})
+    assert r.status_code == 200 and [i["id"] for i in r.json()["items"]] == [s.id]  # the owner, same address: own budget

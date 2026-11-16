@@ -84,8 +84,9 @@ class Lookup(Body):
 
 
 def status_request(c: Caller) -> None:
-    """Receipt lookups (Your links, the receipt page): RATE_STATUS."""
-    ratelimit.hit("status", state.env().rate_status, c.subject)
+    """Receipt lookups (Your links, the receipt page): RATE_STATUS, per person when signed in (M6: colleagues behind
+    one office address don't share it), per address otherwise."""
+    ratelimit.hit("status", state.env().rate_status, f"user:{c.user_id}" if c.user_id else c.subject)
 
 
 def proven(pairs: list[Pair], *, with_events: bool = True) -> list[dict[str, Any]]:

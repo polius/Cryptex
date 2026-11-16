@@ -965,3 +965,5 @@ select.chip.select{border-color:var(--line-input)} /* a form control too: its ed
 /* Your links on phones: the time column is gone, so the time sits on the status line. */
 .when-m{display:none}
 @media (max-width:720px){.r .s .when-m{display:inline;margin-left:8px;font-size:0.8125rem;color:var(--muted)}}
+.check-line{display:flex;gap:8px;align-items:center;margin-top:12px;font-weight:500}
+.check-line input{width:18px;height:18px;accent-color:var(--ink)}

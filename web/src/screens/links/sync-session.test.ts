@@ -33,9 +33,9 @@ vi.mock('../../api/client', async () => {
     ...real,
     signedInUid: () => 'u1',
     api: async (_m: string, p: string) => {
-      if (p === '/receipts/lookup') {
+      if (p === '/status') {
         s.open = false; // the session ended meanwhile: lockVault(), then a reload
-        return { items: [{ id: item.id, status: 'opened', max_views: null, views_left: null, views: 1 }] };
+        return { items: [{ id: item.id, status: 'opened', max_views: null, views_left: null, views: 1 }], requests: [] };
       }
       return { items: [] };
     },

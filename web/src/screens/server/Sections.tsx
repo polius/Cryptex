@@ -5,7 +5,7 @@ import { bytes, dateTime, fold, fullStamp, num, relative, stamp, USERNAME } from
 import { rich, t } from '../../lib/i18n';
 import { loadConfig, toast } from '../../lib/state';
 import { Btn, copyText, ErrMsg, Radio, Status } from '../../ui/bits';
-import { confirmDialog } from '../../ui/confirm';
+import { confirmChoice, confirmDialog } from '../../ui/confirm';
 import { BrandLockup } from '../../ui/chrome';
 import { Dialog } from '../../ui/dialog';
 import { Icon, Mark } from '../../ui/icons';
@@ -83,7 +83,7 @@ export function OverviewSection() {
 // ------------------------------------------------------------------ E2 access and people
 interface Person {
   id: string; username: string; role: 'owner' | 'member'; status: 'active' | 'invited' | 'expired' | 'reset' | 'locked';
-  invite_expires_at: string | null; reset_expires_at: string | null; last_seen_at: string | null;
+  invite_expires_at: string | null; reset_expires_at: string | null; last_seen_at: string | null; live_links?: number;
 }
 interface Access { mode: 'anyone' | 'signed_in'; locked_by: string | null; people: Person[]; me: string }
 interface InviteLink { name: string; invite_url: string; expires_at: string }
@@ -135,12 +135,14 @@ export function AccessSection() {
     });
   };
   const remove = async (p: Person) => {
-    if (!(await confirmDialog({
-      title: t('access.remove_title', { name: name(p) }), confirm: t('people.remove'), danger: true,
-      body: t('access.remove_body'),
-    }))) return;
+    // Their live links can go with them (M7): on by default, the offboarding case.
+    const ask = { title: t('access.remove_title', { name: name(p) }), confirm: t('people.remove'), danger: true };
+    const { ok, choice: destroy } = p.live_links
+      ? await confirmChoice({ ...ask, body: t('access.remove_body_links'), choice: { label: t('access.remove_destroy_links', { n: p.live_links }), on: true } })
+      : { ok: await confirmDialog({ ...ask, body: t('access.remove_body') }), choice: false };
+    if (!ok) return;
     await sensitive(async () => {
-      await api('DELETE', `/server/users/${p.id}`);
+      await api('DELETE', `/server/users/${p.id}${destroy ? '?destroy_links=true' : ''}`);
       toast(t('access.removed', { name: name(p) }));
       reload();
     });

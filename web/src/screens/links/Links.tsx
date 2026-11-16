@@ -227,6 +227,7 @@ export function Links() {
   useEffect(() => void (config.value?.demo && loadConfig().catch(() => undefined)), []); // today's demo quota, as the server counts it
   useViewFocus(rows === null ? null : 'list'); // the heading of the loaded page (the placeholder's is gone)
   const loads = useRef(0);
+  const lastSeen = useRef('');
 
   const load = async () => {
     const n = ++loads.current;
@@ -241,6 +242,11 @@ export function Links() {
     if (n !== loads.current) return; // a later load is on its way, with newer statuses
     setFailed(false);
     setRows(r);
+    // Whether anything changed since the last read: the poll slows down while nothing does (usePoll).
+    const seen = JSON.stringify(r.map((x) => [x.id, x.remote?.status, x.remote?.views, x.local?.last_status]));
+    const changed = seen !== lastSeen.current;
+    lastSeen.current = seen;
+    return changed;
   };
   const retry = async () => {
     setRetrying(true);

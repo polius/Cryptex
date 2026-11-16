@@ -1002,7 +1002,7 @@ def test_receipt_lookups_are_rate_limited(server):
     for _ in range(2):
         assert bob.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 200
     assert bob.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 429
-    assert c.get("/api/v1/me/receipts").status_code == 429  # Your links counts too (same address)
+    assert c.get("/api/v1/me/receipts").status_code == 200  # signed in: the person's own budget, not the address's (M6)
 
 
 # ------------------------------------------------------------------ phishing with a sender name (audit: the page showed what the sender's browser claimed)
@@ -1378,8 +1378,9 @@ def test_the_right_passphrase_gives_its_try_back(client):
 @pytest.mark.parametrize(("name", "value"), [("LOG_LEVEL", "verbose"), ("LOG_FORMAT", "yaml"), ("DEMO", "yess"), ("LOG_IPS", "ture")])
 def test_a_mistyped_setting_stops_the_server_and_names_it(tmp_path, name, value):
     """D7: LOG_LEVEL=verbose crashed with a traceback in a restart loop; DEMO=yess started a claimable normal server."""
-    from cryptex.app import create_app
     import os
+
+    from cryptex.app import create_app
     old = dict(os.environ)
     os.environ.update({"DATA_DIR": str(tmp_path), name: value})
     try:

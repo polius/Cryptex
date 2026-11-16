@@ -48,7 +48,8 @@ export function eventText(e: Pick<AuditRow, 'type' | 'detail'>): string {
     case 'secret.passphrase_failed':
       return t('events.passphrase_failed', { n: Number(d.tries_left) });
     case 'secret.destroyed':
-      return d.reason === 'too_many_tries' ? t('events.destroyed_tries') : d.reason === 'reported' ? t('events.destroyed_reported') : t('events.destroyed_sender');
+      return d.reason === 'too_many_tries' ? t('events.destroyed_tries') : d.reason === 'reported' ? t('events.destroyed_reported')
+        : d.reason === 'owner' ? t('events.destroyed_owner') : t('events.destroyed_sender');
     case 'secret.requested':
       return t('events.requested', { duration: duration(Number(d.expires_in)) });
     case 'secret.request_answered':

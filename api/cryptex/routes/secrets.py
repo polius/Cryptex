@@ -181,7 +181,7 @@ def cancel_upload(sid: str, request: Request) -> Response:
 def _revealable(request: Request, sid: str) -> tuple[Caller, sqlite3.Row]:
     """Reveal token check shared by meta, reveal and report. Changes nothing."""
     c = caller(request)
-    ratelimit.hit("reveal", state.env().rate_reveal, c.subject)
+    ratelimit.hit("reveal", state.env().rate_reveal, f"user:{c.user_id}" if c.user_id else c.subject)  # per person when signed in (M6)
     h = cap_hash(request, "Reveal")
     if not is_id(sid) or h is None:
         raise deny()

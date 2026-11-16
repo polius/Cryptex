@@ -31,10 +31,10 @@ vi.mock('../../api/client', async () => {
     ...real,
     signedInUid: () => 'u1',
     api: async (_m: string, p: string) => {
-      if (p === '/receipts/lookup') {
+      if (p === '/status') {
         started();
         await new Promise<void>((done) => (answer = done)); // answers once the test says so
-        return { items: [{ id: item.id, status: 'expired', max_views: null, views_left: null, views: 0 }] };
+        return { items: [{ id: item.id, status: 'expired', max_views: null, views_left: null, views: 0 }], requests: [] };
       }
       return { items: [] };
     },
