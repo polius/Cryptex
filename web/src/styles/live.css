@@ -962,3 +962,6 @@ select.chip.select{border-color:var(--line-input)} /* a form control too: its ed
   .progress i,.meter i,.seal-bar i.done b,.seal-bar i.now b{background:Highlight;forced-color-adjust:none}
   .progress,.meter{border:1px solid CanvasText}
 }
+/* Your links on phones: the time column is gone, so the time sits on the status line. */
+.when-m{display:none}
+@media (max-width:720px){.r .s .when-m{display:inline;margin-left:8px;font-size:0.8125rem;color:var(--muted)}}

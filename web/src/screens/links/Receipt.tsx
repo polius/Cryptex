@@ -1,6 +1,6 @@
 /** /r/:id (B2): status timeline for one secret, read again while it's open. */
 import { useEffect, useState } from 'preact/hooks';
-import { ApiError, api, type Receipt as R } from '../../api/client';
+import { ApiError, api, signedInUid, type Receipt as R } from '../../api/client';
 import { lookupRequests, requestCode } from '../../flows/request';
 import { dateTime, duration, relative, stamp } from '../../lib/format';
 import { t } from '../../lib/i18n';
@@ -16,7 +16,16 @@ import { AskButton } from '../request/AskButton';
 import { opensLabel } from '../send/Policy';
 import { errorText } from '../errors';
 import { answerReady, deleteBlocked, DeleteDialog, displayName, openAnswer, RenameDialog, statusOf, vaultLocked } from './Links';
-import { deleteLocked, isFinal, isRequest, opensUntilExpiry, persist, usePoll, type Row } from './sync';
+import { deleteLocked, forgetRow, isFinal, isRequest, opensUntilExpiry, persist, usePoll, type Row } from './sync';
+import { toast } from '../../lib/state';
+
+/** "Live", or, when the last read failed (offline, rate limited), when it last worked and Retry (M10). */
+function LiveNote({ checked, retry }: { checked: { at: string; ok: boolean } | null; retry: () => void }) {
+  if (!checked || checked.ok) return <span class="rc-live"><i aria-hidden="true" />{t('receipt.live')}</span>;
+  return (
+    <span class="rc-stale muted small" role="status">{t('receipt.stale', { time: stamp(checked.at) })} · <button type="button" class="link" onClick={retry}>{t('send.try_again')}</button></span>
+  );
+}
 
 /** Just made (justCreated): a note that it's ready and copied, and the passphrase this once, until the page is left. */
 type Fresh = NonNullable<typeof justCreated.value>;
@@ -28,6 +37,7 @@ export function Receipt({ id }: { id: string }) {
   const [attempt, setAttempt] = useState(0);
   const [renaming, setRenaming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [checked, setChecked] = useState<{ at: string; ok: boolean } | null>(null);
   const fresh: Fresh | null = justCreated.value?.id === id ? justCreated.value : null;
   // Leaving the page forgets it (the passphrase isn't kept anywhere else).
   useEffect(() => () => {
@@ -58,7 +68,9 @@ export function Receipt({ id }: { id: string }) {
     await persist(r);
     setMissing(false);
     setRow({ ...r });
+    setChecked({ at: new Date().toISOString(), ok: true });
   };
+  const poll = () => load().catch(() => setChecked((c) => (c ? { ...c, ok: false } : c)));
 
   // Again once the vault opens.
   const unlocked = vault.value.state === 'ready';
@@ -72,7 +84,7 @@ export function Receipt({ id }: { id: string }) {
       if ((e as Error)?.message !== 'locked') setFailed(errorText(e));
     });
   }, [id, unlocked, attempt]);
-  usePoll(() => load().catch(() => undefined), !!row && !isFinal(row));
+  usePoll(poll, !!row && !isFinal(row));
 
   if (missing) {
     return (
@@ -99,7 +111,7 @@ export function Receipt({ id }: { id: string }) {
   if (!row) return <Page header={<AppHeader active="links" />}><main class="main" id="main" aria-busy="true"><div class="card rc-hero rc-loading" /></main></Page>;
 
   if (isRequest(row)) {
-    return <RequestView row={row} fresh={fresh} deleting={deleting} setDeleting={setDeleting} onRenamed={() => void load()} />;
+    return <RequestView row={row} fresh={fresh} deleting={deleting} setDeleting={setDeleting} onRenamed={() => void load()} live={<LiveNote checked={checked} retry={() => void poll()} />} />;
   }
   const st = statusOf(row);
   const final = isFinal(row);
@@ -142,7 +154,12 @@ export function Receipt({ id }: { id: string }) {
             <button class="btn sm secondary danger" aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
               onClick={() => deleteBlocked() || setDeleting(true)}><Icon name="trash" size="sm" />{t(final ? 'links.remove' : 'links.delete')}</button>
           </div>
-          {!final && row.local?.link && <div class="rc-link stack" style="gap:16px"><LinkBox link={row.local.link} open />{fresh?.passphrase && <PassphraseBox passphrase={fresh.passphrase} />}</div>}
+          {!final && row.local?.link && <div class="rc-link stack" style="gap:16px"><LinkBox link={row.local.link} open />{fresh?.passphrase && <PassphraseBox passphrase={fresh.passphrase} />}
+            {/* Sent without an account: the link with its key is kept in this browser. On a shared computer, drop it (M9). */}
+            {!signedInUid() && <button type="button" class="link small" style="justify-self:start" onClick={() => void forgetRow(row).then(() => {
+              toast(t('links.forgotten'));
+              navigate('/links');
+            })}>{t('links.forget_here')}</button>}</div>}
           <div class="facts rc-facts">
             {facts.map((f) => <div key={f.k}><small>{f.k}</small><b title={f.full}>{f.v}</b>{f.sub && <span>{f.sub}</span>}</div>)}
           </div>
@@ -151,7 +168,7 @@ export function Receipt({ id }: { id: string }) {
         <section class="rc-activity" aria-labelledby="rc-activity">
           <div class="rc-sec-h">
             <h2 class="h3" id="rc-activity">{t('receipt.activity')}</h2>
-            {live && <span class="rc-live"><i aria-hidden="true" />{t('receipt.live')}</span>}
+            {live && <LiveNote checked={checked} retry={() => void poll()} />}
           </div>
           <div class="card"><div class="card-b">
             <ol class="events">
@@ -224,7 +241,7 @@ function timeline(row: Row): Step[] {
 }
 
 /** A request's page: its link while it waits, Open answer once the answer is in, and what happened. */
-function RequestView({ row, fresh, deleting, setDeleting, onRenamed }: { row: Row; fresh: Fresh | null; deleting: boolean; setDeleting: (v: boolean) => void; onRenamed: () => void }) {
+function RequestView({ row, fresh, deleting, setDeleting, onRenamed, live }: { row: Row; fresh: Fresh | null; deleting: boolean; setDeleting: (v: boolean) => void; onRenamed: () => void; live: preact.ComponentChildren }) {
   const [renaming, setRenaming] = useState(false);
   const st = statusOf(row);
   const final = isFinal(row);
@@ -279,7 +296,7 @@ function RequestView({ row, fresh, deleting, setDeleting, onRenamed }: { row: Ro
         <section class="rc-activity" aria-labelledby="rc-activity">
           <div class="rc-sec-h">
             <h2 class="h3" id="rc-activity">{t('receipt.activity')}</h2>
-            {!final && <span class="rc-live"><i aria-hidden="true" />{t('receipt.live')}</span>}
+            {!final && live}
           </div>
           <div class="card"><div class="card-b">
             <ol class="events">

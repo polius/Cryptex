@@ -256,6 +256,7 @@ export function Home() {
   }
 
   const sealing = phase.k === 'sealing';
+  const twoFa = twoFaNudge(c);
 
   return (
     <Page header={<AppHeader active="new" />}>
@@ -264,6 +265,7 @@ export function Home() {
         {phase.k === 'error' && (
           <><H1 class="sr">{t('send.title')}</H1><Banner kind="danger" icon="alert">{phase.message} {t('send.retry_note')}</Banner></>
         )}
+        {twoFa && phase.k === 'compose' && <TwoFaNotice uid={twoFa} />}
         {phase.k !== 'error' && (
           <div class="send-head">
             <div class="head-row">
@@ -305,6 +307,37 @@ export function Home() {
         </>
       </main>
     </Page>
+  );
+}
+
+/** An owner without 2FA, who hasn't dismissed the reminder on this browser (M10): their uid, else null. */
+function twoFaNudge(c: ReturnType<typeof cfg>): string | null {
+  const u = c.signed_in && !c.demo ? c.user : null;
+  if (!u || u.role !== 'owner' || u.totp) return null;
+  try {
+    return localStorage.getItem(`cx-2fa-nudge:${u.id}`) ? null : u.id;
+  } catch {
+    return null;
+  }
+}
+
+/** Setup ends with 2FA off: one reminder, dismissed for good. */
+function TwoFaNotice({ uid }: { uid: string }) {
+  const [gone, setGone] = useState(false);
+  if (gone) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem(`cx-2fa-nudge:${uid}`, '1');
+    } catch {
+      /* shown again next time */
+    }
+    setGone(true);
+  };
+  return (
+    <Banner kind="info" icon="shield" action={<span class="row"><a class="btn sm secondary" href="/account">{t('account.turn_on_2fa_short')}</a>
+      <button type="button" class="btn icon sm ghost" aria-label={t('dialog.close')} title={t('dialog.close')} onClick={dismiss}><Icon name="x" size="sm" /></button></span>}>
+      {t('account.nudge_2fa')}
+    </Banner>
   );
 }
 

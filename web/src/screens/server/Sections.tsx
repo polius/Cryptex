@@ -43,7 +43,9 @@ export function OverviewSection() {
       {data && (
         <>
           <div class="health">
+            {/* What Cryptex stores, as text; the bar is the host's disk, which other things fill too (M10). */}
             <div class="metric"><small>{t('server.storage')}</small><b>{rich('server.storage_used', { size: bytes(data.storage.used), stored: <span>{t('server.stored')}</span> })}</b>
+              <span class="sub">{t('server.disk')}</span>
               <div class="meter" role="meter" aria-valuenow={data.storage.disk_total - data.storage.disk_free} aria-valuemin={0} aria-valuemax={data.storage.disk_total} aria-label={t('server.disk_used')}>
                 <i style={{ width: `${Math.min(100, Math.max(2, (100 * (data.storage.disk_total - data.storage.disk_free)) / Math.max(1, data.storage.disk_total)))}%` }} /></div>
               <span class="sub">{t('server.disk_free', { free: bytes(data.storage.disk_free), total: bytes(data.storage.disk_total) })}</span></div>

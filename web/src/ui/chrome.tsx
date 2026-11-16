@@ -193,7 +193,7 @@ export function Footer() {
     <footer class="ft">
       <span class="ft-i"><span>{t('app.powered_by')}</span>
         <a class="ft-brand" href="https://github.com/polius/cryptex" rel="external noopener" target="_blank"><Mark /><b>cryptex</b></a></span>
-      <span class="ft-i dot"><span>{t('app.e2e')}</span>{config.value?.demo && <span class="dot"><a href="/privacy">{t('privacy.title')}</a></span>}</span>
+      <span class="ft-i dot"><span>{t('app.e2e')}</span><span class="dot"><a href="/privacy">{t('privacy.title')}</a></span></span>
     </footer>
   );
 }
