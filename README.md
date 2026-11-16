@@ -102,6 +102,17 @@ Or with Docker Compose:
 docker compose pull && docker compose up -d
 ```
 
+### Required ports
+
+For Option B, open these on your server's firewall (and in your cloud provider's security group, if it has one):
+
+| Port | Protocol | Purpose |
+|---|---|---|
+| `443` | TCP + UDP | The web interface over HTTPS (UDP for HTTP/3) |
+| `80` | TCP | Getting the certificate, and redirecting to HTTPS |
+
+Option A opens no ports: Cryptex listens on `127.0.0.1:8080`, this computer only.
+
 ## Configuration
 
 Cryptex needs no configuration. To change a default, pass the variable to `docker run` with `-e`, such as `-e MAX_FILES=10`, or add it under `environment:` on the `cryptex` service in the compose file. An invalid value stops the server at start and names the variable.
