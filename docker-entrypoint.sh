@@ -11,10 +11,6 @@ if [ "$(id -u)" = 0 ]; then
     echo "Cryptex can't take ownership of $DATA_DIR. Make it writable by UID 10001: chown -R 10001:10001 on the host." >&2
     exit 1
   fi
-  # The backups folder the compose files mount (README.md, Backup and restore): docker makes it owned by root.
-  if [ -d /backups ] && [ "$(stat -c %u /backups)" != 10001 ]; then
-    chown cryptex:cryptex /backups && chmod 700 /backups || echo "Cryptex can't write to /backups: chown 10001:10001 it on the host." >&2
-  fi
   exec su-exec cryptex "$@"
 fi
 exec "$@"

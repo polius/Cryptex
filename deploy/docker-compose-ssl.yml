@@ -19,7 +19,7 @@ services:
     restart: unless-stopped
     environment:
       TRUSTED_PROXIES: 10.213.47.2
-    volumes: ["./data:/data", "./backups:/backups"]  # backups: docker exec cryptex cryptex backup /backups/$(date +%F)
+    volumes: ["./data:/data"]
 
 networks:
   default:

@@ -73,7 +73,7 @@ services:
     image: poliuscorp/cryptex:3
     restart: unless-stopped
     environment: { TRUSTED_PROXIES: 10.213.48.2 }
-    volumes: ["./data:/data", "./backups:/backups"]
+    volumes: ["./data:/data"]
     labels:
       - traefik.enable=true
       - traefik.http.routers.cryptex.rule=Host(`secrets.example.com`)
@@ -121,7 +121,7 @@ services:
     image: poliuscorp/cryptex:3
     restart: unless-stopped
     environment: { TRUSTED_PROXIES: 10.213.49.2 }
-    volumes: ["./data:/data", "./backups:/backups"]
+    volumes: ["./data:/data"]
 
 networks:
   default:

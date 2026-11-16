@@ -46,7 +46,7 @@ With Docker:
 
 ```sh
 docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
-  -v "$PWD/data:/data" -v "$PWD/backups:/backups" poliuscorp/cryptex:3
+  -v "$PWD/data:/data" poliuscorp/cryptex:3
 ```
 
 Or with Docker Compose:
@@ -91,7 +91,7 @@ With Docker:
 docker pull poliuscorp/cryptex:3
 docker stop cryptex && docker rm cryptex
 docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
-  -v "$PWD/data:/data" -v "$PWD/backups:/backups" poliuscorp/cryptex:3
+  -v "$PWD/data:/data" poliuscorp/cryptex:3
 ```
 
 `docker stop` lets the server finish its writes and fold its write-ahead log into the database; `docker rm -f` doesn't.
@@ -104,21 +104,23 @@ docker compose pull && docker compose up -d
 
 ## Backup and restore
 
-Everything lives in the data folder (`./data`): the database, the encrypted chunks, the logo, and `enc.key`, the key that protects sign-in data. **Without `enc.key` nobody can sign in again**, so it's in every backup. Never copy a running server's data folder by hand: the database keeps recent writes in a separate log, and the copy can come out broken.
+Everything lives in the data folder (`./data`): the database, the encrypted chunks, the logo, and `enc.key`, the key that protects sign-in data. **Without `enc.key` nobody can sign in again**, so keep it in every backup.
 
-Back up while the server runs, to the `./backups` folder the compose files and the commands above mount:
-
-```sh
-docker exec cryptex cryptex backup /backups/$(date +%F)
-```
-
-The folder it writes holds `cryptex.db` (a consistent copy), `chunks/`, `brand/` and `enc.key`. Keep it as private as the server: with an old link and a backup, a secret can be opened again.
-
-To restore, stop the server, replace the data folder's contents with the backup's, and start it:
+To back up, stop the server, copy the folder, and start it again. Stopping lets the database finish its writes, so the copy is complete; don't copy the folder while the server runs.
 
 ```sh
 docker stop cryptex
-sudo rm -rf data/* && sudo cp -a backups/2026-11-16/. data/   # the files belong to the container's user, UID 10001
+sudo cp -a data backup-$(date +%F)   # the files belong to the container's user, UID 10001
+docker start cryptex
+```
+
+Keep the copy as private as the server: with an old link and a backup, a secret can be opened again.
+
+To restore, stop the server, put the backup's contents back in the data folder, and start it:
+
+```sh
+docker stop cryptex
+sudo rm -rf data/* && sudo cp -a backup-2026-11-16/. data/
 docker start cryptex
 ```
 
