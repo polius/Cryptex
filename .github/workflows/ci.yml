@@ -50,7 +50,7 @@ jobs:
         run: npm run size
 
   e2e:
-    name: End to end (Playwright on Chromium, demo, visual)
+    name: End to end (Playwright, two browsers, demo, visual)
     runs-on: ubuntu-latest
     permissions: { contents: read }
     needs: [api, web]
