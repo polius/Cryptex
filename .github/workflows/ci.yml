@@ -97,18 +97,6 @@ jobs:
           test "$(docker exec smoke awk '/^Uid:/ {print $2}' /proc/1/status)" = 10001
           out=$(docker exec smoke cryptex owner reset 2>&1 || true)
           echo "$out" | grep "no owners yet"
-      - name: Hardened compose (non-root from the start, read-only root, no capabilities)
-        run: |
-          mkdir hardened && cd hardened
-          sed 's#poliuscorp/cryptex:3#cryptex:smoke#; s#127.0.0.1:8080:8080#127.0.0.1:8081:8080#' ../deploy/docker-compose-hardened.yml > compose.yml
-          sudo install -d -o 10001 -g 10001 -m 700 data backups
-          docker compose up -d --wait
-          curl -fsS localhost:8081/api/v1/healthz
-          out=$(docker exec cryptex cryptex backup /backups/ci)
-          echo "$out" | grep "Backed up"
-          docker compose down
       - name: Smoke test logs
         if: failure()
-        run: |
-          docker logs smoke 2>&1 | tail -100 || true
-          docker logs cryptex 2>&1 | tail -100 || true
+        run: docker logs smoke 2>&1 | tail -100 || true

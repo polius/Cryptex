@@ -143,12 +143,6 @@ The server is then at `https://<machine>.<tailnet>.ts.net`, with a certificate T
 runs on the host and reaches Cryptex through the published port, so set `TRUSTED_PROXIES` to the Docker bridge
 gateway as for nginx above.
 
-## A smaller attack surface
-
-`deploy/docker-compose-hardened.yml` runs the same image as its own user from the start, with a read-only root
-filesystem, no Linux capabilities and no privilege escalation. CI starts it on every change. Give the folders to UID
-10001 first: `sudo install -d -o 10001 -g 10001 -m 700 data backups`.
-
 ## Kubernetes
 
 One replica (the database is SQLite on the volume), a `PersistentVolumeClaim` mounted at `/data`, and an Ingress
