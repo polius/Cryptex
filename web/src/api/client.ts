@@ -55,32 +55,6 @@ export interface Options {
   signal?: AbortSignal;
   /** Leave out X-Cryptex-User: for the calls that ask who is signed in (GET /config, GET /auth/session). */
   anonymous?: boolean;
-  /** Bytes of the body sent so far (a chunk's upload): sent with XMLHttpRequest, the one API that reports it. */
-  onUploadProgress?: (sent: number) => void;
-}
-
-/** fetch() for a body whose upload progress is wanted (S9): the same request, through XMLHttpRequest. */
-function xhrFetch(url: string, init: RequestInit & { headers: Record<string, string> }, onProgress: (sent: number) => void): Promise<Response> {
-  return new Promise((resolve, reject) => {
-    const x = new XMLHttpRequest();
-    x.open(init.method ?? 'GET', url);
-    x.responseType = 'arraybuffer';
-    x.withCredentials = true;
-    for (const [k, v] of Object.entries(init.headers)) x.setRequestHeader(k, v);
-    x.upload.onprogress = (e) => onProgress(e.loaded);
-    x.onload = () => {
-      const headers = new Headers();
-      for (const line of x.getAllResponseHeaders().trim().split(/[\r\n]+/)) {
-        const at = line.indexOf(':');
-        if (at > 0) headers.append(line.slice(0, at).trim(), line.slice(at + 1).trim());
-      }
-      resolve(new Response(x.status === 204 ? null : x.response, { status: x.status, statusText: x.statusText, headers }));
-    };
-    x.onerror = () => reject(new TypeError('network'));
-    x.onabort = () => reject(new DOMException('aborted', 'AbortError'));
-    init.signal?.addEventListener('abort', () => x.abort());
-    x.send((init.body as XMLHttpRequestBodyInit | undefined) ?? null);
-  });
 }
 
 export async function request(method: string, path: string, o: Options = {}, retried = false): Promise<Response> {
@@ -99,8 +73,7 @@ export async function request(method: string, path: string, o: Options = {}, ret
   if (method !== 'GET' && sentCsrf) headers['X-CSRF'] = sentCsrf;
   let res: Response;
   try {
-    const init = { method, headers, body, signal: o.signal, credentials: 'same-origin' as const, cache: 'no-store' as const };
-    res = o.onUploadProgress ? await xhrFetch(`/api/v1${path}`, init, o.onUploadProgress) : await fetch(`/api/v1${path}`, init);
+    res = await fetch(`/api/v1${path}`, { method, headers, body, signal: o.signal, credentials: 'same-origin', cache: 'no-store' });
   } catch (e) {
     if ((e as Error).name === 'AbortError') throw e;
     throw new ApiError('offline', 0, 'offline');

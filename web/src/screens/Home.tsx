@@ -1,7 +1,7 @@
 /** "/" (A1–A8, G1): send a secret. After create, the URL stays "/". */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, ApiError, signedInUid } from '../api/client';
-import { cancelUpload, destroySecret, sendSecret, type Draft, type PolicyChoice, type Sent, type Upload } from '../flows/send';
+import { cancelUpload, destroySecret, sendSecret, type Sent } from '../flows/send';
 import { dateTime, relative } from '../lib/format';
 import { t } from '../lib/i18n';
 import { navigate, route } from '../lib/router';
@@ -56,9 +56,6 @@ export function Home() {
   const [cancelling, setCancelling] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const upload = useRef<{ id: string; token: string } | null>(null);
-  // Try again continues a failed upload (S9) while the draft and the options are the ones it was made from.
-  const resumable = useRef<{ current: Upload | null }>({ current: null }).current;
-  const lastSend = useRef<{ composer: ComposerState; policy: SendPolicy; draft: Draft; choice: PolicyChoice } | null>(null);
   const pasteHandler = useRef<(raw: string) => void>(() => undefined);
   const dropHandler = useRef<(files: File[]) => void>(() => undefined);
   const dragging = usePageInput(phase.k === 'compose', pasteHandler, dropHandler);
@@ -80,7 +77,6 @@ export function Home() {
     abort.current.abort();
     if (upload.current) void cancelUpload(upload.current.id, upload.current.token);
     upload.current = null;
-    resumable.current = null;
   }, []);
 
   // Restore the last-used policy, within today's limits.
@@ -137,11 +133,6 @@ export function Home() {
       ...composer.fields.filter((f) => f.k.trim() || f.v).map((f) => ({ t: 'field' as const, k: f.k.trim() || t('send.field_value'), v: f.v, secret: f.secret })),
     ];
     sealedWith.current = policy;
-    const prev = lastSend.current;
-    const same = !!prev && prev.composer === composer && prev.policy === policy;
-    const toSend: Draft = same ? prev!.draft : { title: composer.title, items, files: composer.files };
-    const choice: PolicyChoice = same ? prev!.choice : { views: policy.views, expires_in: policy.expires_in, passphrase: policy.passphraseOn ? policy.passphrase : null };
-    lastSend.current = { composer, policy, draft: toSend, choice };
     const ctrl = new AbortController();
     abort.current = ctrl;
     setOptionsOpen(false);
@@ -154,10 +145,12 @@ export function Home() {
     window.addEventListener('offline', onOffline);
     window.addEventListener('online', onOnline);
     try {
-      const sent = await sendSecret(c, toSend, choice, (progress) => sealing({ progress, offline: !navigator.onLine }), ctrl.signal, (id, token) => {
+      const sent = await sendSecret(c, { title: composer.title, items, files: composer.files }, {
+        views: policy.views, expires_in: policy.expires_in,
+        passphrase: policy.passphraseOn ? policy.passphrase : null,
+      }, (progress) => sealing({ progress, offline: !navigator.onLine }), ctrl.signal, (id, token) => {
         upload.current = { id, token };
-      }, resumable);
-      lastSend.current = null;
+      });
       upload.current = null;
       abort.current = null;
       draft = emptyComposer(); // made: the next visit starts afresh (this page still shows it until it's left)
@@ -206,7 +199,6 @@ export function Home() {
     abort.current?.abort();
     if (upload.current) await cancelUpload(upload.current.id, upload.current.token);
     upload.current = null;
-    resumable.current = null;
     setCancelling(false);
     setPhase({ k: 'compose' });
   }

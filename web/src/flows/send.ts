@@ -55,67 +55,32 @@ export function manifestOf(d: Draft) {
   };
 }
 
-/** The manifest as sent: padded with spaces to a size step (docs/crypto.md §3.4, B8), so its length doesn't tell a
- *  PIN from an API key. Readers ignore the pad item. */
-export function paddedManifest(d: Draft): Uint8Array {
-  const m = manifestOf(d);
-  const bare = utf8(JSON.stringify({ ...m, items: [...m.items, { t: 'pad', v: '' }] })).length;
-  const step = bare <= 1024 ? 1024 : bare <= 64 * 1024 ? 4096 : 64 * 1024;
-  const target = Math.ceil(bare / step) * step;
-  return utf8(JSON.stringify({ ...m, items: [...m.items, { t: 'pad', v: ' '.repeat(target - bare) }] }));
-}
-
-/** An upload in progress, kept by the page so Try again continues it instead of starting over (S9): what it was
- *  made with (the draft and the policy, compared by identity) and how far it got. Only in memory. */
-export interface Upload {
-  draft: Draft;
-  policy?: PolicyChoice;
-  id: string;
-  upload_token: string;
-  manage_token?: string;
-  K: Bytes;
-  salt: Bytes | null;
-  prefixes: Bytes[];
-  next: { stream: number; chunk: number };
-  done: number;
-}
-
 /** Encrypt and upload a secret (docs/crypto.md §3). `start` makes it with its stream list (POST /secrets, or an answer
- *  to a request) and returns its ID and upload token; `sealExtra` adds seal fields that need its link key. `upload`
- *  holds the upload's state as it goes: given one already started (`upload.current`), it continues from there. */
+ *  to a request) and returns its ID and upload token; `sealExtra` adds seal fields that need its link key. */
 export async function uploadSecret(d: Draft, start: (streams: StreamDesc[]) => Promise<{ id: string; upload_token: string }>, o: {
   onProgress: (p: Progress) => void; signal?: AbortSignal; onCreated?: (id: string, uploadToken: string) => void;
   passphrase?: { value: string; salt: Bytes } | null; sealExtra?: (id: string, K: Bytes) => Promise<Record<string, string>>;
-  upload?: { current: Upload | null };
 }): Promise<{ id: string; K: Bytes; expires_at: string | null }> {
-  const manifest = paddedManifest(d);
+  const manifest = utf8(JSON.stringify(manifestOf(d)));
   const sources: Source[] = [bytesSource(manifest), ...d.files.map(fileSource)];
-  let u = o.upload?.current?.draft === d ? o.upload.current : null;
-  if (!u) {
-    const prefixes = sources.map(() => random(7));
-    const streams: StreamDesc[] = sources.map((s, i) => ({ stream: i, prefix: b64u(prefixes[i]), chunks: chunkCount(s.size), size: streamSize(s.size) }));
-    const created = await start(streams);
-    u = { draft: d, id: created.id, upload_token: created.upload_token, K: random(16), salt: o.passphrase?.salt ?? null, prefixes, next: { stream: 0, chunk: 0 }, done: 0 };
-    if (o.upload) o.upload.current = u;
-  }
-  const { id, K } = u;
-  o.onCreated?.(id, u.upload_token);
+  const prefixes = sources.map(() => random(7));
+  const streams: StreamDesc[] = sources.map((s, i) => ({ stream: i, prefix: b64u(prefixes[i]), chunks: chunkCount(s.size), size: streamSize(s.size) }));
+  const created = await start(streams);
+  const { id } = created;
+  o.onCreated?.(id, created.upload_token);
+  const K = random(16);
   const keys = await deriveLink(id, K);
   const pass = o.passphrase ? await derivePassphrase(id, K, o.passphrase.value, o.passphrase.salt, worker.argon2) : null;
   const contentKey = pass ? pass.contentKey : keys.contentKey;
 
   const total = sources.reduce((n, s) => n + s.size, 0);
-  o.onProgress({ stream: u.next.stream, done: u.done, total });
-  for (let i = u.next.stream; i < sources.length; i++) {
-    const at = u;
+  let done = 0;
+  for (let i = 0; i < sources.length; i++) {
     await uploadStream({
-      base: `/secrets/${id}`, uploadToken: u.upload_token, key: contentKey, id, stream: i, prefix: u.prefixes[i], src: sources[i], signal: o.signal,
-      from: u.next.stream === i ? u.next.chunk : 0,
-      onSending: (sent) => o.onProgress({ stream: i, done: at.done + sent, total }),
-      onChunk: (chunk, n) => {
-        at.done += n;
-        at.next = chunk + 1 < chunkCount(sources[i].size) ? { stream: i, chunk: chunk + 1 } : { stream: i + 1, chunk: 0 };
-        o.onProgress({ stream: i, done: at.done, total });
+      base: `/secrets/${id}`, uploadToken: created.upload_token, key: contentKey, id, stream: i, prefix: prefixes[i], src: sources[i], signal: o.signal,
+      onBytes: (n) => {
+        done += n;
+        o.onProgress({ stream: i, done, total });
       },
     });
   }
@@ -123,40 +88,27 @@ export async function uploadSecret(d: Draft, start: (streams: StreamDesc[]) => P
   const meta_ct = await sealBlob(keys.metaKey, 'meta', id, utf8(JSON.stringify({ title: d.title.trim() || null, from: null, fields: d.items.filter((x) => x.t === 'field').length, notes: d.items.filter((x) => x.t === 'note').length })));
   const sealed = await sealWithRetry(`/secrets/${id}/seal`, {
     meta_ct, reveal_hash: keys.revealHash, ...(pass ? { passcheck_hash: pass.passcheckHash } : {}), ...(o.sealExtra ? await o.sealExtra(id, K) : {}),
-  }, u.upload_token, o.signal);
+  }, created.upload_token, o.signal);
   return { id, K, expires_at: sealed?.expires_at ?? null };
 }
 
 export async function sendSecret(cfg: Config, d: Draft, p: PolicyChoice, onProgress: (p: Progress) => void, signal?: AbortSignal,
-  onCreated?: (id: string, uploadToken: string) => void, upload?: { current: Upload | null }): Promise<Sent> {
-  // Continue an upload only if it was made from this very draft and policy; otherwise it starts over.
-  const resume = upload?.current && upload.current.draft === d && upload.current.policy === p ? upload.current : null;
-  if (upload?.current && !resume) {
-    void cancelUpload(upload.current.id, upload.current.upload_token); // made from something else: drop it
-    upload.current = null;
-  }
+  onCreated?: (id: string, uploadToken: string) => void): Promise<Sent> {
   // Whether this browser may keep it, as things are now: the upload can take minutes, and a session that ends
   // meanwhile (on a shared computer) must not turn this into a link kept here.
   const signedIn = !!signedInUid();
   const mayKeepHere = !signedIn || mayKeepOnDevice();
-  const salt = resume ? resume.salt : p.passphrase ? random(16) : null;
+  const salt = p.passphrase ? random(16) : null;
   const policy: Policy = { views: p.views, expires_in: p.expires_in, passphrase: !!salt };
   if (salt) policy.passphrase_salt = b64u(salt);
-  let manage_token = resume?.manage_token ?? '';
+  let manage_token = '';
   const up = await uploadSecret(d, async (streams) => {
     const created = await api<{ id: string; upload_token: string; manage_token: string }>('POST', '/secrets', {
       body: { policy, streams }, headers: await proofOfWork(cfg), signal,
     });
     manage_token = created.manage_token;
     return created;
-  }, {
-    onProgress, signal, passphrase: salt ? { value: p.passphrase!, salt } : null, upload,
-    onCreated: (id, token) => {
-      if (upload?.current) Object.assign(upload.current, { manage_token, policy: p });
-      onCreated?.(id, token);
-    },
-  });
-  if (upload) upload.current = null; // sealed: nothing left to continue
+  }, { onProgress, signal, onCreated, passphrase: salt ? { value: p.passphrase!, salt } : null });
   const { id } = up;
   // The expiry counts from the seal: the server's word, else (an earlier attempt sealed it) about now plus the choice.
   const expires_at = up.expires_at ?? new Date(Date.now() + p.expires_in * 1000).toISOString();

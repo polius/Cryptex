@@ -53,27 +53,23 @@ export const bytesSource = (b: Uint8Array): Source => ({
 
 export const fileSource = (f: File): Source => ({ size: f.size, read: (s, e) => f.slice(s, e).arrayBuffer() });
 
-/** Encrypt and upload one stream chunk by chunk, from chunk `from` (a retry continues where it stopped); memory stays
- *  around two chunks. `onSending` reports the bytes of the current chunk sent so far, so progress moves within a
- *  chunk on a slow uplink; `onChunk` each chunk the server has stored. */
+/** Encrypt and upload one stream chunk by chunk; memory stays around two chunks. */
 export async function uploadStream(o: {
   base: string; uploadToken: string; key: Uint8Array; id: string; stream: number; prefix: Uint8Array; src: Source;
-  from?: number; onChunk: (i: number, plainBytes: number) => void; onSending?: (sent: number) => void; signal?: AbortSignal;
+  onBytes: (n: number) => void; signal?: AbortSignal;
 }): Promise<void> {
   const n = Math.max(1, Math.ceil(o.src.size / CHUNK));
   let next: Promise<Bytes> | null = null;
   const enc = (i: number) => o.src.read(i * CHUNK, Math.min(o.src.size, (i + 1) * CHUNK))
     .then((plain) => worker.encrypt(o.key, o.id, o.stream, o.prefix, i, i === n - 1, plain));
-  const first = o.from ?? 0;
-  next = first < n ? enc(first) : null;
-  for (let i = first; i < n; i++) {
+  next = enc(0);
+  for (let i = 0; i < n; i++) {
     const ct = await next!;
     next = i + 1 < n ? enc(i + 1) : null; // encrypt the next chunk while this one uploads
     await withRetry(() => request('PUT', `${o.base}/chunks/${o.stream}/${i}`, {
       bytes: ct, headers: { Authorization: `Upload ${o.uploadToken}` }, signal: o.signal,
-      onUploadProgress: o.onSending && ((sent) => o.onSending!(Math.max(0, Math.min(sent, ct.length) - TAG))),
     }), o.signal);
-    o.onChunk(i, ct.length - TAG);
+    o.onBytes(ct.length - TAG);
   }
 }
 
