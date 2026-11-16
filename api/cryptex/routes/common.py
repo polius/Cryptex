@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import re
+from pathlib import Path
 
 from fastapi import Request
 from pydantic import BaseModel, ConfigDict
 
-from .. import ratelimit, state
+from .. import ratelimit, state, storage
 from ..deps import Caller
 from ..errors import ApiError
 
@@ -16,6 +17,27 @@ B64U = re.compile(r"^[A-Za-z0-9_-]*$")
 
 class Body(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
+
+async def receive_file(request: Request, limit: int) -> Path:
+    """Stream a request body into a temporary file in chunk storage, checking the size as it arrives (B2): memory
+    holds one network chunk at a time, however many uploads run at once. The caller moves or deletes the file."""
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > limit:
+        raise ApiError("too_large", limit=limit)
+    f, path = storage.get().incoming()
+    try:
+        with f:
+            size = 0
+            async for part in request.stream():
+                size += len(part)
+                if size > limit:
+                    raise ApiError("too_large", limit=limit)
+                f.write(part)
+    except BaseException:
+        path.unlink(missing_ok=True)
+        raise
+    return path
 
 
 async def read_body(request: Request, limit: int) -> bytes:

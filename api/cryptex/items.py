@@ -7,7 +7,8 @@ stores each chunk under a random name.
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from pathlib import Path
+from typing import Any, BinaryIO
 
 from . import db, state, storage
 from .errors import ApiError, NotFound, gone, invalid
@@ -87,18 +88,18 @@ def stream_list(secret_id: str) -> list[dict[str, Any]]:
     return [{"stream": r["stream"], "prefix": b64u(r["prefix"]), "chunks": r["chunks"], "size": r["size_bytes"]} for r in rows]
 
 
-def store_chunk(secret_id: str, stream: int, n: int, data: bytes) -> bool:
+def store_chunk(secret_id: str, stream: int, n: int, tmp: Path, size: int) -> bool:
     """Idempotent: re-sending a chunk replaces it. Returns whether it was a new chunk (only that keeps the upload
     alive: re-sending one chunk forever doesn't, B1). The blob is written first and its row claimed in one transaction
     with the checks, so a lost race, a cancelled upload or a seal in between never leaves a blob without a row."""
     st = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = ?", secret_id, stream)
     if st is None or not (0 <= n < st["chunks"]):
         raise invalid("n", "No such chunk in this upload.")
-    if len(data) != expected_chunk_size(st, n):
-        raise ApiError("too_large" if len(data) > CHUNK + TAG else "invalid",
+    if size != expected_chunk_size(st, n):
+        raise ApiError("too_large" if size > CHUNK + TAG else "invalid",
                        "Chunk size doesn’t match the declared stream.", field="body", limit=expected_chunk_size(st, n))
     blobs = storage.get()
-    key = blobs.put(data)
+    key = blobs.put_file(tmp)
     old = None
     try:
         with db.tx() as c:
@@ -111,10 +112,10 @@ def store_chunk(secret_id: str, stream: int, n: int, data: bytes) -> bool:
             if row is not None:
                 old = row[0]
                 c.execute("UPDATE chunks SET blob_key = ?, size_bytes = ? WHERE secret_id = ? AND stream = ? AND n = ?",
-                          (key, len(data), secret_id, stream, n))
+                          (key, size, secret_id, stream, n))
             else:
                 c.execute("INSERT INTO chunks(secret_id, stream, n, size_bytes, blob_key) VALUES (?,?,?,?,?)",
-                          (secret_id, stream, n, len(data), key))
+                          (secret_id, stream, n, size, key))
                 c.execute("UPDATE streams SET received = received + 1 WHERE secret_id = ? AND stream = ?", (secret_id, stream))
     except BaseException:
         blobs.delete(key)
@@ -158,14 +159,34 @@ def check_disk(upload_bytes: int, creator: str, one_secret_max: int) -> None:
         raise ApiError("storage_full", limit=max(0, room))
 
 
-def read_chunk(secret_id: str, stream: int, n: int) -> bytes | None:
+def open_chunk(secret_id: str, stream: int, n: int) -> BinaryIO | None:
+    """The chunk's file, open for reading (B2: served from disk, never read whole into memory)."""
     row = db.one("SELECT blob_key FROM chunks WHERE secret_id = ? AND stream = ? AND n = ?", secret_id, stream, n)
     if row is None:
         return None
     try:
-        return storage.get().get(row["blob_key"])
+        return storage.get().open(row["blob_key"])
     except FileNotFoundError:
         return None
+
+
+def sweep_orphans(older_than: int = 3600) -> int:
+    """Chunk files no row points to (B5): a crash between writing a chunk and recording it, or between deleting a
+    row and its file, left them behind for good, uncounted. Only files older than `older_than`, so a chunk being
+    stored right now is never taken."""
+    blobs = storage.get()
+    n = blobs.sweep_incoming(older_than)
+    known = {r[0] for r in db.all("SELECT blob_key FROM chunks")}
+    for key in blobs.keys():
+        if key in known:
+            continue
+        try:
+            if blobs.age(key) > older_than:
+                blobs.delete(key)
+                n += 1
+        except FileNotFoundError:
+            pass
+    return n
 
 
 def drop_chunks(c: sqlite3.Connection, secret_id: str) -> list[str]:

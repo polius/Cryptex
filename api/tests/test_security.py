@@ -862,6 +862,15 @@ def test_resending_a_chunk_leaves_one_blob(client):
     assert len(chunk_files()) == len(before)
 
 
+def _incoming(data: bytes):
+    """A chunk as put_chunk has it: streamed into a temporary file (B2)."""
+    from cryptex import storage
+    f, path = storage.get().incoming()
+    with f:
+        f.write(data)
+    return path, len(data)
+
+
 def test_a_chunk_that_loses_a_race_leaves_no_blob(client, monkeypatch):
     from cryptex import storage
     from cryptex.errors import NotFound
@@ -869,21 +878,21 @@ def test_a_chunk_that_loses_a_race_leaves_no_blob(client, monkeypatch):
     st = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = 0", s.id)
     data = b"z" * items.expected_chunk_size(st, 0)
     blobs = storage.get()
-    real_put = blobs.put
+    real_put = blobs.put_file
 
-    def cancelled_meanwhile(d):
-        key = real_put(d)
+    def cancelled_meanwhile(tmp):
+        key = real_put(tmp)
         items.purge_secret(s.id, None)  # DELETE /upload, between the checks and the row
         return key
-    monkeypatch.setattr(blobs, "put", cancelled_meanwhile)
+    monkeypatch.setattr(blobs, "put_file", cancelled_meanwhile)
     with pytest.raises(NotFound):
-        items.store_chunk(s.id, 0, 0, data)
-    monkeypatch.setattr(blobs, "put", real_put)
+        items.store_chunk(s.id, 0, 0, *_incoming(data))
+    monkeypatch.setattr(blobs, "put_file", real_put)
     assert chunk_files() == [] and db.val("SELECT count(*) FROM chunks") == 0
     s = send(client, upload=True)
     with pytest.raises(Exception, match="already_sealed"):
-        items.store_chunk(s.id, 0, 0, data)
-    assert db.val("SELECT count(*) FROM chunks") == len(chunk_files())
+        items.store_chunk(s.id, 0, 0, *_incoming(data))
+    assert db.val("SELECT count(*) FROM chunks") == len([p for p in chunk_files() if p.parent.name != "incoming"])
 
 
 def test_parallel_uploads_of_one_chunk_leave_no_orphans(client):
@@ -892,7 +901,7 @@ def test_parallel_uploads_of_one_chunk_leave_no_orphans(client):
     st = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = 0", s.id)
     data = b"z" * items.expected_chunk_size(st, 0)
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
-        list(pool.map(lambda _: items.store_chunk(s.id, 0, 0, data), range(16)))
+        list(pool.map(lambda _: items.store_chunk(s.id, 0, 0, *_incoming(data)), range(16)))
     assert len(chunk_files()) == db.val("SELECT count(*) FROM chunks") == 1
 
 
@@ -1400,3 +1409,45 @@ def test_a_fresh_start_logs_the_key_message_after_the_setup_code(tmp_path, capsy
     assert "enc.key" in out and "every backup" in out
     make_client(tmp_path)
     assert "enc.key" not in capsys.readouterr().out  # once, when it's made
+
+
+# ------------------------------------------------------------------ B2, B5: chunks on disk, and deletion that reaches the disk
+def test_chunk_files_without_a_row_are_swept(client):
+    """B5: a crash between writing a chunk and recording it (or deleting a row and its file) left files nothing ever
+    removed. The orphans job runs at start and daily."""
+    import os
+    import time
+
+    from cryptex import storage
+    s = send(client)
+    blobs = storage.get()
+    stray = blobs.put(b"left behind by a crash")
+    f, tmp = blobs.incoming()
+    f.close()
+    old = time.time() - 7200
+    for p in (blobs._path(stray), tmp):
+        os.utime(p, (old, old))
+    assert items.sweep_orphans() == 2
+    assert not blobs._path(stray).exists() and not tmp.exists()
+    assert len([p for p in chunk_files() if p.parent.name != "incoming"]) == db.val("SELECT count(*) FROM chunks")
+    reveal(anon(client), s)  # what's recorded is untouched
+
+
+def test_deletes_reach_the_database_file_and_burns_are_durable(client):
+    """B5: destroyed metadata stayed in free pages (secure_delete off), and with synchronous = NORMAL a burn could be
+    undone by a power cut."""
+    assert db.val("PRAGMA secure_delete") == 1
+    assert db.val("PRAGMA synchronous") == 2  # FULL
+
+
+def test_one_upload_takes_at_most_two_chunks_at_once(client):
+    """B2: one upload token could open hundreds of slow chunk requests, each pinning memory."""
+    from cryptex.routes import secrets as routes
+    s = send(client, seal=False, upload=False)
+    routes._uploading_now[s.id] = routes.UPLOADS_PER_SECRET
+    try:
+        r = client.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=b"z" * 40, headers={"Authorization": f"Upload {s.upload_token}"})
+        assert r.status_code == 429
+    finally:
+        del routes._uploading_now[s.id]
+    assert chunk_files() == []  # nothing was written for it

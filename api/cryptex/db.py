@@ -34,7 +34,10 @@ def _connect() -> sqlite3.Connection:
     c = sqlite3.connect(_path, isolation_level=None, check_same_thread=False, timeout=30)
     c.row_factory = sqlite3.Row
     c.execute("PRAGMA journal_mode = WAL")
-    c.execute("PRAGMA synchronous = NORMAL")
+    # B5: FULL, so a burn (a one-time link's view) survives a power cut; writes here are small and rare. secure_delete,
+    # so a destroyed secret's encrypted metadata doesn't linger in free pages of the database file.
+    c.execute("PRAGMA synchronous = FULL")
+    c.execute("PRAGMA secure_delete = ON")
     c.execute("PRAGMA foreign_keys = ON")
     c.execute("PRAGMA busy_timeout = 30000")
     with _open_lock:

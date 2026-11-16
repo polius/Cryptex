@@ -76,7 +76,8 @@ def record(name: str, fn: Callable[[], int]) -> int:
 async def loop() -> None:
     """Runs every job on its schedule until cancelled. Nothing a job or the schedule raises stops the loop."""
     last: dict[str, float] = {}
-    schedule = [("cleanup", 60, cleanup), ("tombstones", 3600, tombstones), ("audit", 86400, audit)]
+    # orphans: at start and daily, chunk files no row points to (B5)
+    schedule = [("cleanup", 60, cleanup), ("tombstones", 3600, tombstones), ("audit", 86400, audit), ("orphans", 86400, items.sweep_orphans)]
     while True:
         try:
             await _tick(last, schedule)

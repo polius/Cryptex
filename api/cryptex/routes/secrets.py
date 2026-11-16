@@ -1,11 +1,14 @@
 """Send flow (create → chunks → seal) and recipient flow (meta → reveal → chunks)."""
 from __future__ import annotations
 
+import os
 import sqlite3
-from typing import Annotated, Any, Literal, NoReturn
+from collections.abc import AsyncIterator
+from typing import Annotated, Any, BinaryIO, Literal, NoReturn
 
 from fastapi import APIRouter, Path, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import ConfigDict, Field
 from starlette.background import BackgroundTask
 
@@ -14,7 +17,7 @@ from ..deps import Caller, caller, cap_hash, deny, matches, signed_in_here
 from ..errors import ApiError, NotFound, gone, invalid
 from ..events import emit
 from ..util import b64u, is_id, iso, new_id, new_token, now, token_hash, unb64u
-from .common import B64U, HEX64, Body, check_create_allowed, read_body
+from .common import B64U, HEX64, Body, check_create_allowed, receive_file
 
 router = APIRouter()
 MAX_TRIES = 5
@@ -121,12 +124,29 @@ def _uploading(request: Request, sid: str) -> sqlite3.Row:
     return row
 
 
+# Chunk uploads in progress, per upload: the real client sends one at a time; a few more are allowed for retries
+# that overlap a slow one, never hundreds that each pin a request (B2).
+_uploading_now: dict[str, int] = {}
+UPLOADS_PER_SECRET = 2
+
+
 @router.put("/secrets/{sid}/chunks/{stream}/{n}", status_code=204)
 async def put_chunk(sid: str, stream: StreamNo, n: ChunkNo, request: Request) -> Response:
     await run_in_threadpool(_uploading, request, sid)
-    data = await read_body(request, items.CHUNK + items.TAG)
-    if await run_in_threadpool(items.store_chunk, sid, stream, n, data):
-        await run_in_threadpool(db.run, "UPDATE secrets SET upload_active_at = ? WHERE id = ?", now(), sid)
+    if _uploading_now.get(sid, 0) >= UPLOADS_PER_SECRET:
+        raise ratelimit.limited(5)
+    _uploading_now[sid] = _uploading_now.get(sid, 0) + 1
+    try:
+        tmp = await receive_file(request, items.CHUNK + items.TAG)
+        try:
+            if await run_in_threadpool(items.store_chunk, sid, stream, n, tmp, tmp.stat().st_size):
+                await run_in_threadpool(db.run, "UPDATE secrets SET upload_active_at = ? WHERE id = ?", now(), sid)
+        finally:
+            tmp.unlink(missing_ok=True)  # moved into place, or refused
+    finally:
+        _uploading_now[sid] -= 1
+        if not _uploading_now[sid]:
+            del _uploading_now[sid]
     return Response(status_code=204)
 
 
@@ -294,9 +314,9 @@ def _read_session(request: Request, sid: str) -> sqlite3.Row:
     return s
 
 
-def _get_chunk(sid: str, stream: int, n: int, request: Request) -> tuple[bytes, str]:
+def _get_chunk(sid: str, stream: int, n: int, request: Request) -> tuple[BinaryIO, str]:
     s = _read_session(request, sid)
-    data = items.read_chunk(sid, stream, n)
+    data = items.open_chunk(sid, stream, n)
     if data is None:
         raise NotFound()
     db.run("UPDATE chunks SET served = 1 WHERE secret_id = ? AND stream = ? AND n = ?", sid, stream, n)
@@ -334,11 +354,24 @@ def read_done(sid: str, request: Request) -> Response:
 
 @router.get("/secrets/{sid}/chunks/{stream}/{n}")
 async def get_chunk(sid: str, stream: StreamNo, n: ChunkNo, request: Request) -> Response:
-    data, session = await run_in_threadpool(_get_chunk, sid, stream, n, request)
+    f, session = await run_in_threadpool(_get_chunk, sid, stream, n, request)
+    size = os.fstat(f.fileno()).st_size
+
+    async def body() -> AsyncIterator[bytes]:
+        try:
+            while part := await run_in_threadpool(f.read, 256 * 1024):
+                yield part
+        finally:
+            f.close()
+
+    async def done() -> None:
+        f.close()  # a response that never started streaming
+        await run_in_threadpool(_keep_open, session, sent=True)
+
     # When the response is done (sent, or the connection dropped part-way), the session's clock starts again.
-    return Response(data, media_type="application/octet-stream",
-                    headers={"Content-Disposition": "attachment", "Cache-Control": "no-store"},
-                    background=BackgroundTask(run_in_threadpool, _keep_open, session, sent=True))
+    return StreamingResponse(body(), media_type="application/octet-stream",
+                             headers={"Content-Disposition": "attachment", "Cache-Control": "no-store", "Content-Length": str(size)},
+                             background=BackgroundTask(done))
 
 
 # ------------------------------------------------------------------ sender

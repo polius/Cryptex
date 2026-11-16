@@ -35,4 +35,4 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 # Shell form for $TRUSTED_PROXIES; exec makes uvicorn PID 1, so `docker stop` reaches it (open requests get 5 s).
 CMD exec uvicorn cryptex.app:create_app --factory --host 0.0.0.0 --port 8080 --loop uvloop --http httptools \
     --proxy-headers --forwarded-allow-ips "$TRUSTED_PROXIES" --no-server-header --log-level warning \
-    --timeout-graceful-shutdown 5
+    --timeout-graceful-shutdown 5 --limit-concurrency 500
