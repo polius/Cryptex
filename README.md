@@ -179,7 +179,7 @@ These can only lower the defaults: a larger value is ignored, with a warning in 
 - Passwords never reach the server. Owners can't read, open or destroy other people's links.
 - A strict Content Security Policy, no third-party requests, and no tokens or contents in logs (and no IP addresses unless `LOG_IPS` is on).
 
-What Cryptex does and doesn't protect against is in [docs/threat-model.md](docs/threat-model.md). To report a vulnerability, or to check that a server runs the files a release built, see [SECURITY.md](SECURITY.md). A web page is only as trustworthy as the server that serves it: if you need protection from the people running the server, run your own.
+What Cryptex does and doesn't protect against is in [docs/threat-model.md](docs/threat-model.md). A web page is only as trustworthy as the server that serves it: if you need protection from the people running the server, run your own.
 
 ## License
 
