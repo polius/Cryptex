@@ -79,8 +79,6 @@ You need a server with a public IP address and a domain name. [Caddy](https://ca
 
 Open `https://yourdomain.com` and enter the setup code from `docker exec cryptex cryptex setup-code`.
 
-Behind another proxy, such as nginx, see [docs/deploy.md](docs/deploy.md).
-
 ### Updating
 
 Read the [release notes](https://github.com/polius/Cryptex/releases) before moving to a new major version.
