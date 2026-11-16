@@ -255,7 +255,7 @@ test('Clear expired removes expired links from Your links, and only those', asyn
   await expect(page.getByRole('button', { name: 'Clear expired', exact: true })).toHaveCount(0);
 });
 
-test('the revealed page clears itself after 5 idle minutes', async ({ browser }) => {
+test('a revealed one-time secret is hidden after 5 idle minutes, and kept until the tab closes (R1)', async ({ browser }) => {
   const { page } = await owner(browser);
   const link = await sendText(page, 'clear canary');
   const r = await stranger(browser);
@@ -265,10 +265,12 @@ test('the revealed page clears itself after 5 idle minutes', async ({ browser })
   await expect(r.page.locator('.out')).toContainText('clear canary');
   // fastForward, not runFor: an idle page jumps ahead in time (runFor would run every animation frame of 4 minutes).
   await r.page.clock.fastForward(4 * 60_000 + 5000);
-  await expect(r.page.getByRole('alert')).toContainText('clears itself in under a minute'); // warned first
+  await expect(r.page.getByRole('alert')).toContainText('hides it in under a minute'); // warned first
   await r.page.clock.fastForward(60_000);
-  await expect(r.page.getByRole('heading', { name: 'Cleared from this page' })).toBeVisible();
+  await expect(r.page.getByText('Hidden after 5 minutes without activity')).toBeVisible();
   await expect(r.page.locator('body')).not.toContainText('clear canary');
+  await r.page.getByRole('button', { name: 'Show again' }).click();
+  await expect(r.page.locator('.out')).toContainText('clear canary');
 });
 
 test('pasting a .env file becomes fields, and Undo restores the paste', async ({ browser }) => {
@@ -339,13 +341,13 @@ test('fields are revealed masked, and copy as .env works', async ({ browser }) =
   const link = await createLink(page);
   const r = await stranger(browser, { permissions: ['clipboard-read', 'clipboard-write'] });
   await r.page.goto(link);
-  await expect(r.page.getByText('4 fields')).toBeVisible();
+  await expect(r.page.getByText('5 fields')).toBeVisible(); // the connection string itself, then its parts
   await r.page.getByRole('button', { name: 'Reveal secret' }).click();
   await expect(r.page.locator('.out')).not.toContainText('s3cr3t-pw');
-  await r.page.getByRole('button', { name: 'Show' }).click();
+  await r.page.getByRole('button', { name: 'Show' }).first().click();
   await expect(r.page.locator('.out')).toContainText('s3cr3t-pw');
   await r.page.getByRole('button', { name: 'Copy all as .env' }).click();
-  expect(await r.page.evaluate(() => navigator.clipboard.readText())).toBe('HOST=db:5432/x\nUSERNAME=app\nPASSWORD=s3cr3t-pw\nTYPE=postgres\n');
+  expect(await r.page.evaluate(() => navigator.clipboard.readText())).toBe('CONNECTION_STRING=postgres://app:s3cr3t-pw@db:5432/x\nHOST=db:5432/x\nUSERNAME=app\nPASSWORD=s3cr3t-pw\nTYPE=postgres\n');
 });
 
 test('keyboard: Cmd/Ctrl+Enter creates; Escape closes a dialog and returns focus', async ({ browser }) => {

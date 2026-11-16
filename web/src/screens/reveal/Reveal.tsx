@@ -45,6 +45,7 @@ export function Reveal({ id }: { id: string }) {
   const K = useRef<Uint8Array | null>(null);
   const inFlight = useRef(false); // Enter twice, or Enter and a click, must not ask the server twice
   const reading = useRef<Reading | null>(null); // after POST /reveal, until everything is shown
+  const downloading = useRef<AbortController | null>(null); // Cancel stops the download; Try again continues it (S9)
   // The page changes in place: its heading takes focus once it has loaded, and again when a state replaces another
   // (the stopped download, an error, cleared), since the button that was pressed is gone. Revealing is still the
   // sealed page, its button busy; the revealed secret takes focus itself (doReveal).
@@ -115,12 +116,16 @@ export function Reveal({ id }: { id: string }) {
    *  view, nothing lost); a one-time link can't be, so its gone read session ends the download. */
   async function download(o: Opened, progress: (done: number, total: number) => void): Promise<Revealed> {
     const r = reading.current!;
+    const ctrl = new AbortController();
+    downloading.current = ctrl;
     try {
-      return await finishReveal(r, progress);
+      return await finishReveal(r, progress, ctrl.signal);
     } catch (e) {
       if (!readingGone(e) || r.views_left === 0) throw e;
       reading.current = carryOver(r, await startReveal(id, K.current!, o, { passphrase: pass }));
-      return finishReveal(reading.current, progress);
+      return finishReveal(reading.current, progress, ctrl.signal);
+    } finally {
+      downloading.current = null;
     }
   }
 
@@ -288,6 +293,7 @@ export function Reveal({ id }: { id: string }) {
           <Btn kind="primary" class="lg full" icon="eye" loading={busy || revealing} disabled={m.passphrase && !pass} onClick={() => doReveal(o)}>
             {revealing ? (s.pct ? t('reveal.decrypting_pct', { pct: s.pct }) : t('reveal.decrypting')) : t('reveal.reveal')}
           </Btn>
+          {revealing && m.files > 0 && <button type="button" class="btn secondary" onClick={() => downloading.current?.abort()}>{t('send.cancel')}</button>}
         </div>
         <p class="fine">{ans ? t('reveal.answer_only_you') : t(config.value?.brand.name ? 'reveal.nothing_opened' : 'reveal.nothing_opened_no_brand')} {t('reveal.idle_note')}</p>
         {demo && <p class="fine"><button type="button" class="link small" disabled={reporting || revealing} onClick={() => void doReport(o)}>{t('reveal.report')}</button></p>}

@@ -5,7 +5,7 @@ import type { Config } from '../../api/client';
 import { generatePassword } from '../../flows/send';
 import { duration, EXPIRY_CHOICES, MAX_PASSPHRASE, MIN_EXPIRES_IN, unitWord } from '../../lib/format';
 import { t } from '../../lib/i18n';
-import { Choices, copyText, masked } from '../../ui/bits';
+import { Choices, copyText, ErrMsg, masked } from '../../ui/bits';
 import { Icon } from '../../ui/icons';
 
 export interface SendPolicy {
@@ -126,7 +126,8 @@ export function Check({ on, onChange, title, help, disabled }: { on: boolean; on
   );
 }
 
-export function PassphraseBox({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+/** `error`: said under the box, which is marked invalid (an empty passphrase on Create link). */
+export function PassphraseBox({ value, onChange, error }: { value: string; onChange: (v: string) => void; error?: string | null }) {
   const [generated, setGenerated] = useState(false);
   const [shown, setShown] = useState(false); // hidden like a password until asked, also after Generate
   const ref = useRef<HTMLInputElement>(null);
@@ -137,8 +138,9 @@ export function PassphraseBox({ value, onChange }: { value: string; onChange: (v
   };
   return (
     <div class="pass-box">
-      <div class="input mono pass-input">
+      <div class={`input mono pass-input${error ? ' err' : ''}`}>
         <input ref={ref} class="bare" {...masked(!shown)} data-1p-ignore data-lpignore="true" value={value} maxLength={MAX_PASSPHRASE} placeholder={t('policy.passphrase_placeholder')} aria-label={t('policy.passphrase')}
+          aria-invalid={!!error || undefined} aria-describedby={error ? 'pass-box-err' : undefined}
           autoComplete="off" spellcheck={false} onInput={(e) => { setGenerated(false); onChange((e.target as HTMLInputElement).value); }} />
         <button type="button" class="btn icon sm ghost pass-eye" aria-label={shown ? t('reveal.hide') : t('reveal.show')} title={shown ? t('reveal.hide') : t('reveal.show')}
           aria-pressed={shown} onClick={() => setShown(!shown)}><Icon name={shown ? 'eyeoff' : 'eye'} size="sm" /></button>
@@ -146,11 +148,12 @@ export function PassphraseBox({ value, onChange }: { value: string; onChange: (v
         <button type="button" class="btn icon sm ghost" title={t('policy.passphrase_copy')} aria-label={t('policy.passphrase_copy')} disabled={!value} onClick={() => void copyText(value)}><Icon name="copy" size="sm" /></button>
       </div>
       {generated && value && <p class="help">{t('policy.passphrase_generated')}</p>}
+      {error && <ErrMsg id="pass-box-err">{error}</ErrMsg>}
     </div>
   );
 }
 
-export function OptionsPanel(props: { policy: SendPolicy; onChange: (p: SendPolicy) => void; onDone: () => void; cfg: Config }) {
+export function OptionsPanel(props: { policy: SendPolicy; onChange: (p: SendPolicy) => void; onDone: () => void; cfg: Config; passError?: string | null }) {
   const { policy: p, cfg: c } = props;
   const ref = useRef<HTMLElement>(null);
   // Opening moves focus into the panel (unless something in it, like the passphrase box, already took it).
@@ -190,7 +193,7 @@ export function OptionsPanel(props: { policy: SendPolicy; onChange: (p: SendPoli
         <span class="lbl">{t('policy.passphrase')}</span>
         <div class="stack" style="gap:12px">
           <Check on={p.passphraseOn} onChange={(v) => set({ passphraseOn: v })} title={t('policy.passphrase_ask')} help={t('policy.passphrase_help')} />
-          {p.passphraseOn && <PassphraseBox value={p.passphrase} onChange={(passphrase) => set({ passphrase })} />}
+          {p.passphraseOn && <PassphraseBox value={p.passphrase} onChange={(passphrase) => set({ passphrase })} error={props.passError} />}
         </div>
       </div>
     </section>

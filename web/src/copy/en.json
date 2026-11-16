@@ -94,6 +94,7 @@
     "time_left": "About {duration} left",
     "field_private_key": "Private key",
     "field_certificate": "Certificate",
+    "field_connection": "Connection string",
     "field_host": "Host",
     "field_username": "Username",
     "field_password": "Password",
@@ -146,6 +147,7 @@
   },
   "dialog": {
     "destroy_keep": "Keep it",
+    "copy_title": "Copy it from here",
     "qr_title": "Scan to open on a phone",
     "qr_note": "The code is the whole link, so keep it just as private. Scanning it shows nothing until they press Reveal.",
     "close": "Close",
@@ -589,7 +591,8 @@
     "copied": "Copied",
     "link_copied": "Link copied",
     "saved": "Saved",
-    "press_to_copy": "Press {keys} to copy"
+    "press_to_copy": "Press {keys} to copy",
+    "select_to_copy": "Select it and copy"
   },
   "boot": {
     "unsupported_title": "Update your browser",

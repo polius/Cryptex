@@ -181,11 +181,11 @@ export function carryOver(from: Reading, to: Reading): Reading {
 
 /** Download what's missing, check it all (docs/crypto.md §3.4), then confirm the read. Throws Error('tampered'), or an
  *  ApiError: a 404 means the read session is gone (readingGone), anything else can be continued with this Reading. */
-export async function finishReveal(r: Reading, onProgress?: (done: number, total: number) => void): Promise<Revealed> {
+export async function finishReveal(r: Reading, onProgress?: (done: number, total: number) => void, signal?: AbortSignal): Promise<Revealed> {
   for (const s of r.streams) {
     await downloadStream({
       path: (n) => `/secrets/${r.id}/chunks/${s.stream}/${n}`, headers: r.read, key: r.contentKey, id: r.id, stream: s.stream,
-      prefix: unb64u(s.prefix), chunks: s.chunks, parts: r.parts[s.stream], onBytes: (n) => onProgress?.((r.done += n), r.total),
+      prefix: unb64u(s.prefix), chunks: s.chunks, parts: r.parts[s.stream], onBytes: (n) => onProgress?.((r.done += n), r.total), signal,
     });
   }
   const out = await assemble(r.parts, r.views_left); // throws before the read is confirmed if the files don't add up

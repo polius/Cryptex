@@ -90,6 +90,7 @@ describe('paste parser', () => {
   it('4 · one URL with credentials', () => {
     expect(parsePaste('postgres://app:pw@db:5432/x')).toEqual({
       kind: 'fields', rule: 'url', fields: [
+        { k: 'Connection string', v: 'postgres://app:pw@db:5432/x', secret: true },
         { k: 'Host', v: 'db:5432/x', secret: false }, { k: 'Username', v: 'app', secret: false },
         { k: 'Password', v: 'pw', secret: true }, { k: 'Type', v: 'postgres', secret: false },
       ],
@@ -99,20 +100,21 @@ describe('paste parser', () => {
   it('4 · secret query parameters become secret fields of their own', () => {
     expect(parsePaste('postgres://u:p@h/db?sslmode=require&password=z%26z')).toEqual({
       kind: 'fields', rule: 'url', fields: [
+        { k: 'Connection string', v: 'postgres://u:p@h/db?sslmode=require&password=z%26z', secret: true },
         { k: 'Host', v: 'h/db?sslmode=require', secret: false }, { k: 'Username', v: 'u', secret: false },
         { k: 'Password', v: 'p', secret: true }, { k: 'Type', v: 'postgres', secret: false }, { k: 'password', v: 'z&z', secret: true },
       ],
     });
-    expect(parsePaste('redis://u:p@h:6379/0?token=t')).toMatchObject({ fields: [{ v: 'h:6379/0' }, {}, {}, {}, { k: 'token', v: 't', secret: true }] });
+    expect(parsePaste('redis://u:p@h:6379/0?token=t')).toMatchObject({ fields: [{ k: 'Connection string', secret: true }, { v: 'h:6379/0' }, {}, {}, {}, { k: 'token', v: 't', secret: true }] });
   });
 
   it('4 · percent-encoded credentials are decoded', () => {
-    expect(parsePaste('mysql://us%40er:p%23ss@h/db')).toMatchObject({ fields: [{}, { v: 'us@er' }, { v: 'p#ss' }, { v: 'mysql' }] });
+    expect(parsePaste('mysql://us%40er:p%23ss@h/db')).toMatchObject({ fields: [{ k: 'Connection string', secret: true }, {}, { v: 'us@er' }, { v: 'p#ss' }, { v: 'mysql' }] });
   });
 
   it('4 · a password holding "@" is split at the last one', () => {
     expect(parsePaste('postgres://app:p@ss@db:5432/x')).toMatchObject({
-      rule: 'url', fields: [{ v: 'db:5432/x' }, { v: 'app' }, { v: 'p@ss' }, { v: 'postgres' }],
+      rule: 'url', fields: [{ k: 'Connection string', secret: true }, { v: 'db:5432/x' }, { v: 'app' }, { v: 'p@ss' }, { v: 'postgres' }],
     });
   });
 
@@ -123,24 +125,26 @@ describe('paste parser', () => {
 
   it('4 · the host part ends at the first "/", "?" or "#": an "@" in the query isn\'t the password\'s (F5)', () => {
     expect(parsePaste('postgres://app:pw@db:5432/x?sslmode=require&application_name=ops@acme')).toMatchObject({
-      rule: 'url', fields: [{ k: 'Host', v: 'db:5432/x?sslmode=require&application_name=ops@acme' }, { v: 'app' }, { v: 'pw', secret: true }, { v: 'postgres' }],
+      rule: 'url', fields: [{ k: 'Connection string', secret: true }, { k: 'Host', v: 'db:5432/x?sslmode=require&application_name=ops@acme' }, { v: 'app' }, { v: 'pw', secret: true }, { v: 'postgres' }],
     });
   });
 
   it('4 · a "+" in a value is a "+", not a space (F5)', () => {
     expect(parsePaste('postgres://u:p+q@h/db?sslpassword=Ab+cd%2B&x=1')).toMatchObject({
-      fields: [{ v: 'h/db?x=1' }, { v: 'u' }, { v: 'p+q' }, { v: 'postgres' }, { k: 'sslpassword', v: 'Ab+cd+', secret: true }],
+      fields: [{ k: 'Connection string', secret: true }, { v: 'h/db?x=1' }, { v: 'u' }, { v: 'p+q' }, { v: 'postgres' }, { k: 'sslpassword', v: 'Ab+cd+', secret: true }],
     });
   });
 
   it('4 · an empty user, and a URL whose only secret is in its query, are fields too (F5)', () => {
     expect(parsePaste('redis://:pw@host:6379')).toEqual({
       kind: 'fields', rule: 'url', fields: [
+        { k: 'Connection string', v: 'redis://:pw@host:6379', secret: true },
         { k: 'Host', v: 'host:6379', secret: false }, { k: 'Password', v: 'pw', secret: true }, { k: 'Type', v: 'redis', secret: false },
       ],
     });
     expect(parsePaste('https://api.example.com/hook?token=SECRETabc&v=2')).toEqual({
       kind: 'fields', rule: 'url', fields: [
+        { k: 'Connection string', v: 'https://api.example.com/hook?token=SECRETabc&v=2', secret: true },
         { k: 'Host', v: 'api.example.com/hook?v=2', secret: false }, { k: 'Type', v: 'https', secret: false }, { k: 'token', v: 'SECRETabc', secret: true },
       ],
     });
@@ -225,4 +229,23 @@ describe('secret field names in other languages', () => {
     expect(parsePaste(KEY + '\r\n')).toMatchObject({ fields: [{ v: KEY + '\n' }] });
     expect(parsePaste(KEY)).toMatchObject({ fields: [{ v: KEY }] });
   });
+
+  it('S10 · a flat JSON object becomes fields; anything nested stays a note', () => {
+    expect(parsePaste('{"client_id": "abc", "client_secret": "s3cr3t", "port": 5432}')).toEqual({
+      kind: 'fields', rule: 'json', fields: [
+        { k: 'client_id', v: 'abc', secret: false }, { k: 'client_secret', v: 's3cr3t', secret: true }, { k: 'port', v: '5432', secret: false },
+      ],
+    });
+    expect(parsePaste('{"a": {"b": 1}}').kind).toBe('note');
+    expect(parsePaste('{not json}').kind).toBe('note');
+  });
+
+  it('S10 · nested YAML names children after their section, with no empty field for it', () => {
+    expect(parsePaste('db:\n  host: x\n  password: y\nport: 1')).toEqual({
+      kind: 'fields', rule: 'yaml', fields: [
+        { k: 'db.host', v: 'x', secret: false }, { k: 'db.password', v: 'y', secret: true }, { k: 'port', v: '1', secret: false },
+      ],
+    });
+  });
 });
+

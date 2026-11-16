@@ -11,7 +11,7 @@ export interface ParsedField {
 }
 
 export type Parsed =
-  | { kind: 'fields'; rule: 'pem' | 'env' | 'yaml' | 'url' | 'pair'; fields: ParsedField[] }
+  | { kind: 'fields'; rule: 'pem' | 'json' | 'env' | 'yaml' | 'url' | 'pair'; fields: ParsedField[] }
   | { kind: 'note'; text: string };
 
 const SECRET_KEY = /pass|secret|token|key|pwd|private|credential|mnemonic|seed[\s_.-]*phrase|recovery[\s_.-]*(?:phrase|code)/i;
@@ -92,6 +92,8 @@ function urlFields(line: string): ParsedField[] | null {
   if (pass === undefined && !secrets.length) return null;
   const rest = params.filter((p) => !secrets.includes(p)).map((p) => p.raw).join('&');
   return [
+    // The string itself first: it's often what the recipient pastes into their tool (S10).
+    { k: t('send.field_connection'), v: line, secret: true },
     { k: t('send.field_host'), v: host + (secrets.length ? path + (rest ? `?${rest}` : '') : tail), secret: false },
     ...(user ? [{ k: t('send.field_username'), v: decode(user), secret: false }] : []),
     ...(pass !== undefined ? [{ k: t('send.field_password'), v: decode(pass), secret: true }] : []),
@@ -128,6 +130,22 @@ function pemField(text: string): ParsedField | null {
   return { k: label.charAt(0) + label.slice(1).toLowerCase(), v: text, secret: true };
 }
 
+/** A flat JSON object of names and plain values (strings, numbers, booleans): one field each. Anything nested stays
+ *  a note, as typed. */
+function jsonFields(text: string): ParsedField[] | null {
+  if (!/^\{[\s\S]*\}$/.test(text.trim())) return null;
+  let o: unknown;
+  try {
+    o = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  const entries = Object.entries(o as Record<string, unknown>);
+  if (!entries.length || !entries.every(([, v]) => ['string', 'number', 'boolean'].includes(typeof v))) return null;
+  return entries.map(([k, v]) => ({ k, v: String(v), secret: isSecretKey(k) || hasCredentials(String(v)) }));
+}
+
 function looksLikePassword(s: string): boolean {
   if (s.length < 8 || /\s/.test(s)) return false;
   const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(s)).length;
@@ -145,7 +163,11 @@ export function parsePaste(raw: string): Parsed {
   if (pem && /\n[ \t]*$/.test(raw.replace(/\r\n?/g, '\n'))) pem.v += '\n';
   if (pem) return { kind: 'fields', rule: 'pem', fields: [pem] };
 
-  // 2 · every non-empty, non-# line is KEY=value
+  // 2 · a flat JSON object: {"client_id": "…", "client_secret": "…"}
+  const json = jsonFields(text);
+  if (json) return { kind: 'fields', rule: 'json', fields: json };
+
+  // 3 · every non-empty, non-# line is KEY=value
   const content = lines.filter((l) => l.trim() && !l.trim().startsWith('#'));
   const lone = content.length === 1 && ENV_LINE.exec(content[0].trim());
   if (content.length && content.every((l) => ENV_LINE.test(l.trim())) && (!lone || loneVariable(lone[1], lone[2]))) {
@@ -157,24 +179,34 @@ export function parsePaste(raw: string): Parsed {
     return { kind: 'fields', rule: 'env', fields };
   }
 
-  // 3 · every line is `key: value` (2+ lines)
+  // 4 · every line is `key: value` (2+ lines). A key with nothing after it and indented lines below is a section
+  // (db: / host: x): its children are named db.host, and it makes no empty field of its own.
   const nonEmpty = lines.filter((l) => l.trim());
   if (nonEmpty.length >= 2 && nonEmpty.every((l) => YAML_LINE.test(l.trim()) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(l.trim()))) {
-    const fields = nonEmpty.map((l) => {
+    const indent = (l: string) => l.length - l.trimStart().length;
+    const parents: Array<{ k: string; at: number }> = [];
+    const fields: ParsedField[] = [];
+    nonEmpty.forEach((l, i) => {
       const m = YAML_LINE.exec(l.trim())!;
-      const v = unquote(m[2] ?? '', isSecretKey(m[1]));
-      return { k: m[1].trim(), v, secret: isSecretKey(m[1]) || hasCredentials(v) };
+      while (parents.length && parents[parents.length - 1].at >= indent(l)) parents.pop();
+      const k = [...parents.map((p) => p.k), m[1].trim()].join('.');
+      if (!(m[2] ?? '').trim() && i + 1 < nonEmpty.length && indent(nonEmpty[i + 1]) > indent(l)) {
+        parents.push({ k: m[1].trim(), at: indent(l) });
+        return;
+      }
+      const v = unquote(m[2] ?? '', isSecretKey(k));
+      fields.push({ k, v, secret: isSecretKey(k) || hasCredentials(v) });
     });
     return { kind: 'fields', rule: 'yaml', fields };
   }
 
-  // 4 · one URL with credentials
+  // 5 · one URL with credentials
   if (nonEmpty.length === 1) {
     const fields = urlFields(nonEmpty[0].trim());
     if (fields) return { kind: 'fields', rule: 'url', fields };
   }
 
-  // 5 · two lines: identity, then secret
+  // 6 · two lines: identity, then secret
   if (nonEmpty.length === 2) {
     const [id, secret] = nonEmpty.map((l) => l.trim());
     // Not a URL as the identity: "https://…" then a password would become "Username: https://…".
@@ -183,6 +215,6 @@ export function parsePaste(raw: string): Parsed {
     }
   }
 
-  // 6 · anything else
+  // 7 · anything else
   return { kind: 'note', text: raw };
 }

@@ -9,7 +9,7 @@ import { isId, match, navigate, route } from './lib/router';
 import { applyTheme, bootError, config, countLinks, loadConfig } from './lib/state';
 import { ReauthDialog } from './screens/server/common';
 import { Toasts } from './ui/chrome';
-import { ConfirmHost } from './ui/confirm';
+import { ConfirmHost, CopyFallbackHost } from './ui/confirm';
 import { t } from './lib/i18n';
 import { pageTitle } from './lib/title';
 
@@ -194,6 +194,7 @@ function App() {
       {account && c.user?.notice && <ResetNotice />}
       <ReauthDialog />
       <ConfirmHost />
+      <CopyFallbackHost />
       <Toasts />
     </>
   );

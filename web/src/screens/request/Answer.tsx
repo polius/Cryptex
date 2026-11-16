@@ -160,6 +160,7 @@ export function Answer({ id }: { id: string }) {
 
   const a = s.a;
   const busy = !!sending;
+  const passErr = err === t('policy.passphrase_empty');
   return page(<>
     <div class={`send-head${a.note ? ' has-note' : ''}`}>
       <H1>{t('answer.title')}</H1>
@@ -182,10 +183,10 @@ export function Answer({ id }: { id: string }) {
     {!busy && (
       <div class="answer-opts">
         <Check on={pass.on} onChange={(on) => setPass((p) => ({ ...p, on }))} title={t('policy.passphrase_ask')} help={t('policy.passphrase_help')} />
-        {pass.on && <PassphraseBox value={pass.value} onChange={(value) => setPass((p) => ({ ...p, value }))} />}
+        {pass.on && <PassphraseBox value={pass.value} onChange={(value) => { setErr(null); setPass((p) => ({ ...p, value })); }} error={passErr ? err : null} />}
       </div>
     )}
-    {err && <p class="err-msg" role="alert"><Icon name="alert" size="sm" />{err}</p>}
+    {err && !passErr && <p class="err-msg" role="alert"><Icon name="alert" size="sm" />{err}</p>}
     {sending && (composer.files.length ? (
       <Sealing files={composer.files} manifestBytes={Math.max(1, sending.progress.total - composer.files.reduce((n, f) => n + f.size, 0))}
         progress={sending.progress} offline={sending.offline} onCancel={() => void cancel()} cancelling={cancelling} />
