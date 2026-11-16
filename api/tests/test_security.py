@@ -1372,3 +1372,30 @@ def test_the_right_passphrase_gives_its_try_back(client):
     s2 = send(client, passphrase="pw", views=None)
     reveal(client, s2, passphrase="pw")
     assert db.val("SELECT failed_tries FROM secrets WHERE id = ?", s2.id) == 0
+
+
+# ------------------------------------------------------------------ D7, D1: settings that are wrong stop the server, and the key is announced
+@pytest.mark.parametrize(("name", "value"), [("LOG_LEVEL", "verbose"), ("LOG_FORMAT", "yaml"), ("DEMO", "yess"), ("LOG_IPS", "ture")])
+def test_a_mistyped_setting_stops_the_server_and_names_it(tmp_path, name, value):
+    """D7: LOG_LEVEL=verbose crashed with a traceback in a restart loop; DEMO=yess started a claimable normal server."""
+    from cryptex.app import create_app
+    import os
+    old = dict(os.environ)
+    os.environ.update({"DATA_DIR": str(tmp_path), name: value})
+    try:
+        with pytest.raises(SystemExit) as stop:
+            create_app(run_jobs=False)
+    finally:
+        os.environ.clear()
+        os.environ.update(old)
+    assert str(stop.value).startswith(f"cryptex: {name}:")
+
+
+def test_a_fresh_start_logs_the_key_message_after_the_setup_code(tmp_path, capsys):
+    """D1: the line about enc.key was logged before logging was set up, so it was dropped."""
+    from conftest import make_client
+    make_client(tmp_path)
+    out = capsys.readouterr().out
+    assert "enc.key" in out and "every backup" in out
+    make_client(tmp_path)
+    assert "enc.key" not in capsys.readouterr().out  # once, when it's made

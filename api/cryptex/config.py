@@ -76,7 +76,13 @@ def parse_rate(v: str) -> tuple[int, int]:
 
 
 def parse_bool(v: str) -> bool:
-    return v.strip().lower() in ("1", "true", "yes", "on")
+    """Strict (D7): a typo like DEMO=yess must stop the server, not quietly start a normal one."""
+    s = v.strip().lower()
+    if s in ("1", "true", "yes", "on"):
+        return True
+    if s in ("0", "false", "no", "off"):
+        return False
+    raise ValueError(f"use true or false ({v[:32]!r})")
 
 
 @dataclass(frozen=True)
@@ -161,6 +167,7 @@ class Env:
     metrics_token: str | None
     static_dir: Path | None
     min_free_disk: int = 1 * GB  # refuse new secrets that would leave less free space than this on DATA_DIR
+    new_key: bool = False  # enc.key was made on this start: create_app says so once logging is set up (D1)
     locked: dict[str, Any] = field(default_factory=dict)  # setting key -> value from env
     demo_seals_per_day: int = 10
     demo_upload_bytes_per_day: int = 10 * MB
@@ -206,8 +213,6 @@ def _load_enc_key(data_dir: Path) -> bytes:
     fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(fd, "w") as f:
         f.write(base64.b64encode(key).decode() + "\n")
-    log.info("Generated %s, the key that protects this server's sign-in data. Keep it with the data folder: "
-             "without it, nobody can sign in.", path)
     return key
 
 
@@ -216,7 +221,21 @@ def load_env(environ: dict[str, str] | None = None) -> Env:
     get = lambda k, d=None: (e.get(k) or "").strip() or d  # noqa: E731
     data_dir = Path(get("DATA_DIR", "/data"))
     data_dir.mkdir(parents=True, exist_ok=True)
-    demo = parse_bool(get("DEMO", "false"))
+
+    def flag(k: str, d: str) -> bool:
+        try:
+            return parse_bool(get(k, d))
+        except ValueError as err:
+            raise ValueError(f"{k}: {err}") from None
+
+    def one_of(k: str, d: str, choices: tuple[str, ...]) -> str:
+        v = get(k, d).lower()
+        if v not in choices:
+            raise ValueError(f"{k}: use one of {', '.join(choices)} ({v[:32]!r})")
+        return v
+
+    demo = flag("DEMO", "false")
+    new_key = not (data_dir / "enc.key").exists()
 
     def rate(k: str, d: str) -> Rate:
         try:
@@ -244,12 +263,13 @@ def load_env(environ: dict[str, str] | None = None) -> Env:
         rate_reveal=rate("RATE_REVEAL", "120/h"),
         rate_auth=rate("RATE_AUTH", "10/15m"),
         rate_status=rate("RATE_STATUS", "600/h"),
-        log_level=get("LOG_LEVEL", "info"),
-        log_format=get("LOG_FORMAT", "json"),
-        log_ips=parse_bool(get("LOG_IPS", "false")),
+        log_level=one_of("LOG_LEVEL", "info", ("debug", "info", "warning", "error")),
+        log_format=one_of("LOG_FORMAT", "json", ("json", "text")),
+        log_ips=flag("LOG_IPS", "false"),
         metrics_token=get("METRICS_TOKEN"),
         min_free_disk=min_free,
         static_dir=Path(static_dir) if static_dir else None,
+        new_key=new_key,
     )
 
     for s in EDITABLE.values():

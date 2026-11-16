@@ -26,7 +26,7 @@ COPY api/cryptex ./cryptex
 COPY --from=web /src/web/dist /usr/share/cryptex/web
 RUN python -m compileall -q cryptex
 ENV DATA_DIR=/data STATIC_DIR=/usr/share/cryptex/web PYTHONPATH=/app PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
-    TRUSTED_PROXIES=127.0.0.0/8,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+    TRUSTED_PROXIES=127.0.0.1,::1
 VOLUME /data
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --start-interval=2s --retries=3 \

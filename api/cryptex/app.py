@@ -8,6 +8,7 @@ import logging
 import os
 import re
 import secrets
+import sqlite3
 import sys
 import time
 from collections import Counter
@@ -87,9 +88,20 @@ def create_app(env: Env | None = None, run_jobs: bool = True) -> FastAPI:
     if env is None:
         try:
             env = load_env()
-        except ValueError as err:  # a setting or the key: say what, without a traceback
+        except (ValueError, OSError) as err:  # a setting, the key, an unwritable data folder: say what, no traceback
             sys.exit(f"cryptex: {err}")
+        try:
+            return _create(env, run_jobs)
+        except (OSError, RuntimeError, sqlite3.Error) as err:
+            sys.exit(f"cryptex: {err}")
+    return _create(env, run_jobs)
+
+
+def _create(env: Env, run_jobs: bool) -> FastAPI:
     setup_logging(env)
+    if env.new_key:
+        log.warning("Generated %s, the key that protects this server's sign-in data. Keep it with the data folder and "
+                    "in every backup: without it, nobody can sign in.", env.data_dir / "enc.key")
     state.init(env)
     db.configure(env.data_dir / "cryptex.db")
     security.check_canary()  # refuses to start with another enc.key than the one the database was set up with
