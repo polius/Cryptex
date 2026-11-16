@@ -100,6 +100,8 @@ def create_app(env: Env | None = None, run_jobs: bool = True) -> FastAPI:
 
 def _create(env: Env, run_jobs: bool) -> FastAPI:
     setup_logging(env)
+    for note in env.notes:
+        log.warning("%s", note)
     if env.new_key:
         log.warning("Generated %s, the key that protects this server's sign-in data. Keep it with the data folder and "
                     "in every backup: without it, nobody can sign in.", env.data_dir / "enc.key")
@@ -183,7 +185,8 @@ def _create(env: Env, run_jobs: bool) -> FastAPI:
         extra = {"route": route, "status": response.status_code, "ms": ms, "request_id": rid, "method": request.method}
         if env.log_ips:
             extra["ip"] = ratelimit.client_ip(request)
-        log.info("request", extra=extra)
+        # The image's own health check every 30 s isn't worth a line each time.
+        log.log(logging.DEBUG if route == "/healthz" else logging.INFO, "request", extra=extra)
         return response
 
     if env.static_dir:

@@ -167,6 +167,7 @@ class Env:
     metrics_token: str | None
     static_dir: Path | None
     min_free_disk: int = 1 * GB  # refuse new secrets that would leave less free space than this on DATA_DIR
+    notes: list[str] = field(default_factory=list)  # warnings for the log, said once logging is set up
     new_key: bool = False  # enc.key was made on this start: create_app says so once logging is set up (D1)
     locked: dict[str, Any] = field(default_factory=dict)  # setting key -> value from env
     demo_seals_per_day: int = 10
@@ -291,6 +292,8 @@ def load_env(environ: dict[str, str] | None = None) -> Env:
                 raise ValueError(f"{k}: {err}") from None
             if n < 1:
                 raise ValueError(f"{k}: must be at least 1")
+            if n > d:
+                env.notes.append(f"{k} can only lower the demo's default ({v} is ignored)")
             return min(d, n)
         env.demo_seals_per_day = stricter("DEMO_SEALS_PER_DAY", 10)
         env.demo_upload_bytes_per_day = stricter("DEMO_UPLOAD_BYTES_PER_DAY", 10 * MB, parse_size)

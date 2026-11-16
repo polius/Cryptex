@@ -192,6 +192,8 @@ Counted per visitor address, or per account for someone signed in (so colleagues
 | `DEMO_UPLOAD_BYTES_PER_DAY` | `10mb` | Uploads per address per day. |
 | `DEMO_STORAGE_CAP` | `1gb` | Total storage. |
 
+These can only lower the defaults: a larger value is ignored, with a warning in the log.
+
 ## Security
 
 - Secrets are encrypted in the browser with AES-GCM under keys derived from a 128-bit link key. Passphrases go through Argon2id. The format is in [docs/crypto.md](docs/crypto.md), with test vectors.

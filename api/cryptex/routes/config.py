@@ -7,7 +7,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from fastapi.responses import PlainTextResponse, Response
 
-from .. import VERSION, db, demo, items, ratelimit, state
+from .. import VERSION, db, demo, items, ratelimit, state, storage
 from ..deps import caller
 from ..errors import NotFound
 from ..util import iso, now, same
@@ -101,6 +101,7 @@ def metrics(request: Request) -> PlainTextResponse:
     lines = [
         f"cryptex_live_secrets {db.val('SELECT count(*) FROM secrets WHERE sealed = 1')}",
         f"cryptex_storage_bytes {items.stored_bytes()}",
+        f"cryptex_disk_free_bytes {storage.get().disk()[1]}",
     ]
     for r in db.all("SELECT name, last_run_at FROM jobs"):
         lines.append(f'cryptex_job_last_run_seconds{{job="{r["name"]}"}} {r["last_run_at"] or 0}')
