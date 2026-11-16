@@ -58,14 +58,18 @@ def test_upload_is_closed_after_seal(client):
     assert r.status_code == 409 and r.json()["error"]["code"] == "already_sealed"
 
 
-def test_failed_tokens_block_the_ip_for_an_hour(server):
-    c = server(RATE_FAILED_TOKENS="5/h")
+def test_wrong_tokens_never_block_the_address(server):
+    """B3: 30 wrong tokens from one address (a mistyped link, a mail scanner, a colleague behind the same NAT) used to
+    block opening, uploading and checking links from it for an hour. Tokens are 128 to 256 bits: no block, only the
+    ordinary rate limits."""
+    c = server()
     s = send(c)
-    stranger = anon(c)
-    for _ in range(5):
-        assert stranger.get(f"/api/v1/secrets/{s.id}/meta", headers={"Authorization": "Reveal " + "C" * 43}).status_code == 404
-    r = stranger.get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers())
-    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 3500
+    office = anon(c)
+    for _ in range(30):
+        assert office.get(f"/api/v1/secrets/{s.id}/meta", headers={"Authorization": "Reveal " + "C" * 43}).status_code == 404
+        assert office.get(f"/api/v1/receipts/{s.id}", headers={"Authorization": "Manage " + "A" * 43}).status_code == 404
+    assert office.get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers()).status_code == 200
+    assert office.get(f"/api/v1/receipts/{s.id}", headers=s.manage_headers()).status_code == 200
 
 
 def test_ipv6_addresses_are_grouped_by_64(server):
@@ -982,15 +986,14 @@ def test_owner_reset_recovers_a_server_with_no_owner(client, capsys):
 
 
 # ------------------------------------------------------------------ receipts (audit: no limits, no failed-token counting)
-def test_guessing_manage_tokens_in_a_lookup_counts_toward_the_block(server):
-    c = server(RATE_FAILED_TOKENS="3/h")
+def test_wrong_manage_tokens_in_a_lookup_are_left_out(server):
+    c = server()
     s = send(c)
     bob = anon(c)
-    unknown = [{"id": "ZZZZZZZZZZ", "manage_token": "A" * 43}] * 10
-    assert bob.post("/api/v1/receipts/lookup", json={"items": unknown}).status_code == 200  # purged items don't count
     guesses = [{"id": s.id, "manage_token": "B" * 43}] * 3
     assert bob.post("/api/v1/receipts/lookup", json={"items": guesses}).json()["items"] == []
-    assert bob.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 429
+    right = [{"id": s.id, "manage_token": s.manage_token}]
+    assert [i["id"] for i in bob.post("/api/v1/receipts/lookup", json={"items": right}).json()["items"]] == [s.id]
 
 
 def test_receipt_lookups_are_rate_limited(server):
@@ -1288,3 +1291,84 @@ def test_request_bodies_over_1_mib_are_refused_with_or_without_a_length(client):
     assert r.status_code == 413 and r.json()["error"]["code"] == "too_large", r.text
     r = client.post("/api/v1/auth/prelogin", content=iter([big[:600_000], big[600_000:]]), headers={"Content-Type": "application/json"})
     assert r.status_code == 413 and r.json()["error"]["code"] == "too_large", r.text
+
+
+# ------------------------------------------------------------------ B1: reserving the disk without uploading anything
+GiB = 1024**3
+
+
+def _declare(c, size: int, files: int = 1):
+    """POST /secrets declaring `files` files of `size` bytes each, and send nothing."""
+    n = max(1, -(-size // items.CHUNK))
+    streams = [{"stream": 0, "prefix": "AAAAAAAAAA", "chunks": 1, "size": 40}]
+    streams += [{"stream": i, "prefix": "AAAAAAAAAA", "chunks": n, "size": size + 16 * n} for i in range(1, files + 1)]
+    return c.post("/api/v1/secrets", json={"policy": {"views": 1, "expires_in": 3600}, "streams": streams})
+
+
+def test_one_address_cannot_reserve_the_disk(server, monkeypatch):
+    """B1: six creates declaring the largest file, with no chunks, from one address made everyone else's 100 KB
+    secret fail with 507. Now one caller holds at most the largest secret's worth of unsent space."""
+    from conftest import from_address
+
+    from cryptex import storage
+    c = server()  # 5 files of 100 MB, MIN_FREE_DISK 1 GB
+    monkeypatch.setattr(type(storage.get()), "disk", lambda self: (4 * GiB, 2 * GiB))
+    hog = from_address(c, "198.51.100.7")
+    codes = [_declare(hog, 100 * 1000**2, files=5).status_code for _ in range(6)]
+    assert codes[0] == 201 and set(codes[1:]) == {429}
+    assert _declare(hog, 50 * 1024**2).json()["error"]["code"] == "uploads_pending"
+    other = from_address(c, "203.0.113.9")
+    assert _declare(other, 100 * 1024).status_code == 201
+
+
+def test_an_unfinished_upload_ends_whatever_is_re_sent(server):
+    """B1: re-sending one chunk every 20 minutes kept an upload alive for days. Only a new chunk refreshes the idle
+    clock, and an unsealed upload ends a day after it started anyway."""
+    c = server()
+    s = send(c, files=[("a.bin", b"x" * 10)], seal=False, upload=False)
+    up = {"Authorization": f"Upload {s.upload_token}"}
+    meta = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = 0", s.id)
+    body = b"y" * meta["size_bytes"]
+    assert c.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=body, headers=up).status_code == 204
+    active = db.val("SELECT upload_active_at FROM secrets WHERE id = ?", s.id)
+    db.run("UPDATE secrets SET upload_active_at = upload_active_at - 1200 WHERE id = ?", s.id)
+    assert c.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=body, headers=up).status_code == 204  # replaced, not new
+    assert db.val("SELECT upload_active_at FROM secrets WHERE id = ?", s.id) == active - 1200
+    db.run("UPDATE secrets SET created_at = created_at - ?, upload_active_at = ? WHERE id = ?", items.UPLOAD_MAX + 1, now(), s.id)
+    assert c.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=body, headers=up).status_code == 404
+    jobs.cleanup()
+    assert db.val("SELECT 1 FROM secrets WHERE id = ?", s.id) is None
+
+
+def test_a_sealed_secret_keeps_no_address(client):
+    s = send(client)
+    assert db.val("SELECT creator FROM secrets WHERE id = ?", s.id) is None
+
+
+# ------------------------------------------------------------------ B6: the five-try limit under parallel guesses
+def test_parallel_guesses_never_get_a_sixth_try(server):
+    """B6: the passphrase was compared against a row read before the try was counted: 32 guesses at once now and then
+    checked a sixth, and once the right one got through among 31 wrong. A try is now taken before the comparison."""
+    from concurrent.futures import ThreadPoolExecutor
+    c = server(RATE_REVEAL="100000/h")
+    right_check = None
+    for _ in range(10):
+        s = send(c, passphrase="correct horse")
+        right_check = passcheck(s, "correct horse")
+        wrong = {**s.reveal_headers(), "X-Passcheck": passcheck(s, "wrong")}
+        clients = [anon(c) for _ in range(8)]
+        with ThreadPoolExecutor(8) as pool:
+            codes = list(pool.map(lambda i, cl=clients, sid=s.id, h=wrong: cl[i % 8].post(f"/api/v1/secrets/{sid}/reveal", headers=h).status_code,
+                                  range(32)))
+        assert codes.count(422) == 4 and codes.count(410) == 28  # four "wrong", then destroyed: never a sixth check
+        r = c.post(f"/api/v1/secrets/{s.id}/reveal", headers={**s.reveal_headers(), "X-Passcheck": right_check})
+        assert r.status_code == 410 and r.json()["error"]["reason"] == "too_many_tries"
+
+
+def test_the_right_passphrase_gives_its_try_back(client):
+    s = send(client, passphrase="pw")
+    wrong = {**s.reveal_headers(), "X-Passcheck": passcheck(s, "nope")}
+    assert client.post(f"/api/v1/secrets/{s.id}/reveal", headers=wrong).json()["error"]["tries_left"] == 4
+    s2 = send(client, passphrase="pw", views=None)
+    reveal(client, s2, passphrase="pw")
+    assert db.val("SELECT failed_tries FROM secrets WHERE id = ?", s2.id) == 0

@@ -101,7 +101,6 @@ def metrics(request: Request) -> PlainTextResponse:
     lines = [
         f"cryptex_live_secrets {db.val('SELECT count(*) FROM secrets WHERE sealed = 1')}",
         f"cryptex_storage_bytes {items.stored_bytes()}",
-        f"cryptex_rate_limit_blocks {db.val('SELECT count(*) FROM rate_limits WHERE bucket LIKE ? AND window_start > ?', 'block:%', now())}",
     ]
     for r in db.all("SELECT name, last_run_at FROM jobs"):
         lines.append(f'cryptex_job_last_run_seconds{{job="{r["name"]}"}} {r["last_run_at"] or 0}')

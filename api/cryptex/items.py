@@ -16,7 +16,8 @@ from .util import b64u, now, unb64u
 
 CHUNK = 5 * 1024 * 1024
 TAG = 16
-UPLOAD_IDLE = 30 * 60
+UPLOAD_IDLE = 30 * 60      # an unsealed upload with no new chunk for this long goes...
+UPLOAD_MAX = 24 * 3600     # ...and any unsealed upload this long after it started, whatever is re-sent (B1)
 READ_SESSION = 10 * 60     # a read session at first: time to fetch the first chunk
 READ_SLIDE = 15 * 60       # then each chunk request, and each chunk sent in full, keeps it open at least this much
                            # longer (a slow phone takes minutes per 5 MiB chunk; a retry after a dropped connection)...
@@ -86,8 +87,9 @@ def stream_list(secret_id: str) -> list[dict[str, Any]]:
     return [{"stream": r["stream"], "prefix": b64u(r["prefix"]), "chunks": r["chunks"], "size": r["size_bytes"]} for r in rows]
 
 
-def store_chunk(secret_id: str, stream: int, n: int, data: bytes) -> None:
-    """Idempotent: re-sending a chunk replaces it. The blob is written first and its row claimed in one transaction
+def store_chunk(secret_id: str, stream: int, n: int, data: bytes) -> bool:
+    """Idempotent: re-sending a chunk replaces it. Returns whether it was a new chunk (only that keeps the upload
+    alive: re-sending one chunk forever doesn't, B1). The blob is written first and its row claimed in one transaction
     with the checks, so a lost race, a cancelled upload or a seal in between never leaves a blob without a row."""
     st = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = ?", secret_id, stream)
     if st is None or not (0 <= n < st["chunks"]):
@@ -119,6 +121,7 @@ def store_chunk(secret_id: str, stream: int, n: int, data: bytes) -> None:
         raise
     if old is not None:
         blobs.delete(old)
+    return old is None
 
 
 def check_complete(secret_id: str) -> None:
@@ -132,9 +135,21 @@ def check_complete(secret_id: str) -> None:
         raise invalid("chunks", "Some chunks haven’t arrived yet.")
 
 
-def check_disk(upload_bytes: int) -> None:
+def pending_bytes(creator: str) -> int:
+    """What this caller's unfinished uploads declared and haven't sent yet."""
+    declared = db.val("SELECT coalesce(sum(size_bytes), 0) FROM secrets WHERE sealed = 0 AND creator = ?", creator)
+    stored = db.val("SELECT coalesce(sum(c.size_bytes), 0) FROM chunks c JOIN secrets s ON s.id = c.secret_id "
+                    "WHERE s.sealed = 0 AND s.creator = ?", creator)
+    return max(0, int(declared) - int(stored))
+
+
+def check_disk(upload_bytes: int, creator: str, one_secret_max: int) -> None:
     """Refuse a new secret that would leave less than MIN_FREE_DISK free on DATA_DIR, counting what uploads in
-    progress still have to send. A full disk takes the database down with it."""
+    progress still have to send. A full disk takes the database down with it. One caller (an account, or an address)
+    may hold at most the largest secret's worth of unsent space at once (B1), so declaring sizes and sending nothing
+    can't reserve the disk for everyone else."""
+    if pending_bytes(creator) + upload_bytes > one_secret_max:
+        raise ApiError("uploads_pending")
     _, free = storage.get().disk()
     declared = db.val("SELECT coalesce(sum(size_bytes), 0) FROM secrets WHERE sealed = 0")
     stored = db.val("SELECT coalesce(sum(c.size_bytes), 0) FROM chunks c JOIN secrets s ON s.id = c.secret_id WHERE s.sealed = 0")

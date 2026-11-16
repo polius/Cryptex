@@ -143,7 +143,6 @@ Counted per visitor address.
 | `RATE_REVEAL` | `120/h` | Links opened. |
 | `RATE_STATUS` | `600/h` | Status checks from *Your links*. |
 | `RATE_AUTH` | `10/15m` | Wrong passwords, 2FA, reset and setup codes. Each account also allows 30 an hour in total. |
-| `RATE_FAILED_TOKENS` | `30/h` | Wrong link tokens, then a 1-hour block. |
 
 ### Logs and metrics
 

@@ -10,7 +10,7 @@ from dataclasses import dataclass
 
 from fastapi import Request
 
-from . import db, state
+from . import db
 from .config import Rate
 from .errors import ApiError
 from .util import iso, now
@@ -107,34 +107,6 @@ def used(name: str, rate: Rate, key: str) -> tuple[int, int]:
     return int(c or 0), start + rate.window
 
 
-# ------------------------------------------------------------- failed capability tokens
-BLOCK_SECONDS = 3600
-
-
-def check_blocked(ip: str) -> None:
-    until = db.val("SELECT max(window_start) FROM rate_limits WHERE bucket = ?", f"block:{subject(ip)}")
-    if until and until > now():
-        raise limited(until - now())
-
-
-def failed_token(ip: str, n: int = 1) -> None:
-    """`n` 404s caused by wrong tokens. After RATE_FAILED_TOKENS, block for an hour."""
-    rate = state.env().rate_failed_tokens
-    key = subject(ip)
-    t = now()
-    start = t - t % rate.window
-    with db.tx() as c:
-        count = c.execute(
-            "INSERT INTO rate_limits(bucket, window_start, count) VALUES (?,?,?) "
-            "ON CONFLICT(bucket, window_start) DO UPDATE SET count = count + excluded.count RETURNING count",
-            (f"failed:{key}", start, n),
-        ).fetchone()[0]
-        if count >= rate.count:
-            c.execute("INSERT OR REPLACE INTO rate_limits(bucket, window_start, count) VALUES (?,?,1)",
-                      (f"block:{key}", t + BLOCK_SECONDS))
-
-
 def purge() -> int:
-    """Drop windows older than a day: no window is longer (config.MAX_WINDOW), and blocks are stored with their end
-    time."""
+    """Drop windows older than a day: no window is longer (config.MAX_WINDOW)."""
     return db.run("DELETE FROM rate_limits WHERE window_start < ?", now() - 86400).rowcount

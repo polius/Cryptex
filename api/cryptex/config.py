@@ -154,7 +154,6 @@ class Env:
     rate_create: Rate
     rate_reveal: Rate
     rate_auth: Rate        # failed sign-in attempts per IP
-    rate_failed_tokens: Rate
     rate_status: Rate      # receipt lookups: Your links, the receipt page
     log_level: str
     log_format: str
@@ -244,7 +243,6 @@ def load_env(environ: dict[str, str] | None = None) -> Env:
         rate_create=rate("RATE_CREATE", "60/h"),
         rate_reveal=rate("RATE_REVEAL", "120/h"),
         rate_auth=rate("RATE_AUTH", "10/15m"),
-        rate_failed_tokens=rate("RATE_FAILED_TOKENS", "30/h"),
         rate_status=rate("RATE_STATUS", "600/h"),
         log_level=get("LOG_LEVEL", "info"),
         log_format=get("LOG_FORMAT", "json"),

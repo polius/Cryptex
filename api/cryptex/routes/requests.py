@@ -18,7 +18,7 @@ from ..events import emit
 from ..util import is_id, iso, new_token, now, token_hash, unb64u
 from .common import B64U, HEX64, Body, check_create_allowed
 from .receipts import Lookup, status_request
-from .secrets import manifest_cap, unique_id
+from .secrets import largest_secret, manifest_cap, unique_id
 
 router = APIRouter()
 ASK_MAX = 8 * 1024  # the encrypted note (1000 characters at most) and public key
@@ -56,11 +56,10 @@ def _managed(request: Request, rid: str) -> tuple[Caller, sqlite3.Row]:
     """The requester's Manage token checked. A wrong one counts toward the failed-token block only for a request that
     exists: Your links can hold requests long gone."""
     c = caller(request)
-    ratelimit.check_blocked(c.ip)
     h = cap_hash(request, "Manage")
     row = db.one("SELECT * FROM requests WHERE id = ?", rid) if is_id(rid) and h else None
     if row is None or not matches(row["manage_hash"], h):
-        raise deny(c, presented=h is not None and row is not None)
+        raise deny()
     return c, row
 
 
@@ -109,11 +108,10 @@ def lookup(body: Lookup, request: Request) -> dict[str, Any]:
     requester deleted them, or a password reset closed them)."""
     c = caller(request)
     status_request(c)
-    out, wrong = [], 0
+    out = []
     for p in body.items:
         r = db.one("SELECT * FROM requests WHERE id = ?", p.id) if is_id(p.id) else None
         if r is None or not matches(r["manage_hash"], token_hash(p.manage_token)):
-            wrong += r is not None
             continue
         if r["closed_at"] or r["ask_ct"] is None:
             continue
@@ -121,8 +119,6 @@ def lookup(body: Lookup, request: Request) -> dict[str, Any]:
         answer = db.one("SELECT views, expires_at, passcheck_hash FROM secrets WHERE id = ?", a) if a else None
         tomb = db.one("SELECT reason, opened, at FROM tombstones WHERE id = ?", a) if a and answer is None else None
         out.append(_view(r, answer, tomb))
-    if wrong:
-        ratelimit.failed_token(c.ip, wrong)
     return {"items": out}
 
 
@@ -145,12 +141,11 @@ def close_request(rid: str, request: Request) -> Response:
 def _answerable(request: Request, rid: str) -> tuple[Caller, sqlite3.Row]:
     """The Answer token checked, and the request still open. Changes nothing."""
     c = caller(request)
-    ratelimit.check_blocked(c.ip)
     ratelimit.hit("reveal", state.env().rate_reveal, c.subject)
     h = cap_hash(request, "Answer")
     row = db.one("SELECT * FROM requests WHERE id = ?", rid) if is_id(rid) and h else None
     if row is None or not matches(row["answer_hash"], h):
-        raise deny(c, presented=h is not None)
+        raise deny()
     if row["closed_at"] or row["answered_at"] or row["expires_at"] <= now():
         raise items.request_ended(rid)
     return c, row
@@ -190,7 +185,8 @@ def start_answer(rid: str, body: StartAnswer, request: Request) -> dict[str, Any
         demo.before_create(c, request, total, len(streams) - 1)
     for s in db.all("SELECT id FROM secrets WHERE request_id = ? AND sealed = 0", rid):
         items.drop_upload(s["id"])
-    items.check_disk(total)
+    creator = c.user_id or c.subject
+    items.check_disk(total, creator, largest_secret())
     upload, upload_h = new_token()
     _, manage_h = new_token()  # nobody manages an answer by token: the requester deletes it with the request
     t = now()
@@ -198,7 +194,7 @@ def start_answer(rid: str, body: StartAnswer, request: Request) -> dict[str, Any
         sid = unique_id(conn)
         conn.execute(
             "INSERT INTO secrets(id, created_at, expires_at, max_views, passphrase_salt, manage_hash, upload_hash, upload_active_at, "
-            "size_bytes, request_id) VALUES (?,?,?,NULL,?,?,?,?,?,?)",
-            (sid, t, row["expires_at"], salt, manage_h, upload_h, t, total, rid))
+            "size_bytes, request_id, creator) VALUES (?,?,?,NULL,?,?,?,?,?,?,?)",
+            (sid, t, row["expires_at"], salt, manage_h, upload_h, t, total, rid, creator))
         items.insert_streams(conn, sid, streams)
     return {"id": sid, "upload_token": upload}

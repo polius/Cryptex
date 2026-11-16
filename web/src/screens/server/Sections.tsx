@@ -11,7 +11,7 @@ import { Dialog } from '../../ui/dialog';
 import { Icon, Mark } from '../../ui/icons';
 import { LogoDrop } from '../../ui/logo';
 import { errorText } from '../errors';
-import { Heading, LoadError, Lock, readOnly, SaveBar, sensitive, ServerShell, useServer } from './common';
+import { Heading, LoadError, Lock, readOnly, reauthThen, SaveBar, sensitive, ServerShell, useServer } from './common';
 import { actorText, eventText, EVENT_GROUPS, type AuditRow } from './labels';
 
 // ------------------------------------------------------------------ E1 overview
@@ -373,6 +373,7 @@ export function LimitsSection() {
       reload();
       void loadConfig();
     } catch (e) {
+      if (reauthThen(e, save)) return;
       const f = (e as { field?: string }).field;
       if (f) setServerErr({ [f]: errorText(e) });
       else toast(errorText(e), 'error');
@@ -442,6 +443,7 @@ export function BrandingSection() {
       reload();
       void loadConfig();
     } catch (e) {
+      if (reauthThen(e, save)) return;
       setErr(errorText(e));
     } finally {
       setBusy(false);

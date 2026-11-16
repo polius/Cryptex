@@ -29,6 +29,7 @@ MESSAGES = {
     "rate_limited": "Too many tries. Try again later.",
     "demo_locked": "This is fixed in the demo.",
     "storage_full": "This server is almost out of disk space. Try a smaller secret, or ask whoever runs it.",
+    "uploads_pending": "Other uploads you started haven't finished. Finish or cancel them, or wait for them to expire.",
     "internal": "Something went wrong on our side. Nothing was opened or deleted.",
 }
 
@@ -37,7 +38,7 @@ STATUS = {
     "reauth_required": 403, "wrong_code": 403, "wrong_password": 401, "not_found": 404,
     "already_sealed": 409, "setup_done": 409, "gone": 410, "deleted": 412,
     "too_large": 413, "wrong_passphrase": 422, "rate_limited": 429, "demo_locked": 403,
-    "storage_full": 507, "internal": 500,
+    "storage_full": 507, "internal": 500, "uploads_pending": 429,
 }
 
 

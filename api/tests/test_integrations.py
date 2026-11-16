@@ -357,12 +357,10 @@ def test_links_made_before_signing_in_join_the_account_only_with_their_manage_to
     """Audit Q1: links a browser adopted after signing in had no receipt in the account, so "Start fresh" (a new
     vault) lost them. POST /me/receipts saves them to the account, each proven with its manage token."""
     mine, theirs = send(anon(client)), send(anon(client))
-    failed = lambda: db.val("SELECT coalesce(sum(count), 0) FROM rate_limits WHERE bucket LIKE 'failed:%'")  # noqa: E731
     r = client.post("/api/v1/me/receipts", json={"items": [{"id": mine.id, "manage_token": mine.manage_token},
                                                            {"id": theirs.id, "manage_token": mine.manage_token},
                                                            {"id": "Zz00000000", "manage_token": "x"}]})
     assert r.status_code == 200 and r.json() == {"attached": [mine.id]}
-    assert failed() == 1  # the wrong token for an ID that exists; an unknown ID isn't a guess
     listed = [i["id"] for i in client.get("/api/v1/me/receipts").json()["items"]]
     assert mine.id in listed and theirs.id not in listed
     again = client.post("/api/v1/me/receipts", json={"items": [{"id": mine.id, "manage_token": mine.manage_token}]})

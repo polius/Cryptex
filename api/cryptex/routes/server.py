@@ -235,6 +235,7 @@ def get_limits(request: Request) -> dict[str, Any]:
 @router.put("/server/limits", status_code=204)
 def put_limits(body: dict[str, Any], request: Request) -> Response:
     c = require_owner(request)
+    require_reauth(c)  # limits include audit retention and the longest expiry (B7)
     parsed = {}
     for k, v in body.items():
         if k not in LIMIT_KEYS:
@@ -269,6 +270,7 @@ class BrandingBody(Body):
 @router.put("/server/branding", status_code=204)
 def put_branding(body: BrandingBody, request: Request) -> Response:
     c = require_owner(request)
+    require_reauth(c)
     if body.name is not None:
         r = state.resolve("brand_name")
         if r.locked_by:
@@ -327,6 +329,7 @@ def sanitize_svg(data: bytes) -> bytes:
 @router.put("/server/branding/logo", status_code=204)
 async def put_logo(request: Request) -> Response:
     c = await run_in_threadpool(require_owner, request)
+    require_reauth(c)
     data = await read_body(request, 1024 * 1024)  # async: reading the body is the only part that waits on the network
     await run_in_threadpool(_save_logo, c, request, data)  # parsing, files and the database: off the event loop
     return Response(status_code=204)
@@ -358,6 +361,7 @@ def _save_logo(c: Caller, request: Request, data: bytes) -> None:
 @router.delete("/server/branding/logo", status_code=204)
 def delete_logo(request: Request) -> Response:
     c = require_owner(request)
+    require_reauth(c)
     old = state.raw("brand_logo")
     if old:
         (state.env().data_dir / "brand" / old["file"]).unlink(missing_ok=True)
