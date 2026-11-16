@@ -1,0 +1,16 @@
+# Cryptex with a smaller attack surface: never root, a read-only root filesystem, no Linux capabilities, no privilege
+# escalation. Before the first start, give the folders to the container's user (it can't take them itself here):
+#   sudo install -d -o 10001 -g 10001 -m 700 data backups
+# Put an HTTPS proxy in front (docs/deploy.md); this publishes the port on this computer only.
+services:
+  cryptex:
+    image: poliuscorp/cryptex:3
+    container_name: cryptex
+    restart: unless-stopped
+    user: "10001:10001"
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: ["no-new-privileges:true"]
+    tmpfs: ["/tmp:size=16m"]
+    ports: ["127.0.0.1:8080:8080"]
+    volumes: ["./data:/data", "./backups:/backups"]  # backups: docker exec cryptex cryptex backup /backups/$(date +%F)
