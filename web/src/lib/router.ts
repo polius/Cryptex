@@ -37,6 +37,34 @@ window.addEventListener('hashchange', () => {
   }
 });
 
+/** An invite's or reset's token, read once from the address bar and moved to this tab's sessionStorage, so it isn't
+ *  left in history but a reload (a phone returning from the authenticator app) still finds it. `forgetTabToken`
+ *  once it's used or no longer works. */
+export function tabToken(path: string): string {
+  if (location.pathname !== path) return '';
+  const key = `cx-token:${path}`;
+  const fromUrl = location.hash.slice(1);
+  try {
+    if (fromUrl) sessionStorage.setItem(key, fromUrl);
+  } catch {
+    /* storage off: a reload can't find it, as before */
+  }
+  if (fromUrl) history.replaceState(null, '', path);
+  try {
+    return fromUrl || sessionStorage.getItem(key) || '';
+  } catch {
+    return fromUrl;
+  }
+}
+
+export function forgetTabToken(path: string): void {
+  try {
+    sessionStorage.removeItem(`cx-token:${path}`);
+  } catch {
+    /* nothing kept */
+  }
+}
+
 /** Secret, request and receipt IDs: 10 base62 characters. Anything else never reaches the API. */
 export const isId = (v: string): boolean => /^[0-9A-Za-z]{10}$/.test(v);
 

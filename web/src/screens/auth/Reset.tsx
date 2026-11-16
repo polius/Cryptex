@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, setCsrf, type User } from '../../api/client';
 import { dateTime, PASSWORD_MIN } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
-import { navigate } from '../../lib/router';
+import { forgetTabToken, navigate, tabToken } from '../../lib/router';
 import { loadConfig } from '../../lib/state';
 import { Btn, ErrMsg, H1, PasswordInput, SharedCheck, useViewFocus } from '../../ui/bits';
 import { Page, RecipientHeader } from '../../ui/chrome';
@@ -14,9 +14,8 @@ import type { Bundle } from '../../store/vault';
 
 interface ResetInfo extends TotpSetup { username: string; by: string; expires_at: string; tries_left: number }
 
-// Read once: the token leaves the address bar right away, so it isn't left in history.
-const token = location.pathname === '/reset' ? location.hash.slice(1) : '';
-if (token) history.replaceState(null, '', '/reset');
+// Read once: the token leaves the address bar right away, so it isn't left in history (a reload finds it: tabToken).
+const token = tabToken('/reset');
 
 export function Reset() {
   const [info, setInfo] = useState<ResetInfo | null>(null);
@@ -31,6 +30,7 @@ export function Reset() {
   const goneText = (e: unknown) => {
     const ae = e as { code?: string; reason?: string };
     if (ae.code !== 'gone') return errorText(e);
+    forgetTabToken('/reset');
     return ae.reason === 'reset_tries' ? t('reset.gone_tries_body') : t('reset.gone_body'); // too many wrong codes, or used, replaced or expired
   };
 
@@ -57,6 +57,7 @@ export function Reset() {
       // The old vault went with the old password: this makes a new one.
       await v.openAfterSignIn(r.user.id, pw.wrap, r.vault, { shared: r.shared ?? shared, authKey: pw.authKey });
       await loadConfig();
+      forgetTabToken('/reset');
       navigate('/', { replace: true });
     } catch (e) {
       const ae = e as { field?: string; code?: string };

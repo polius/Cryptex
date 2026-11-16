@@ -82,6 +82,7 @@ export function checkStreams(streams: StreamDesc[]): StreamDesc[] {
 // connection dropped) may have been counted all the same, and a later "already opened" is then most likely this tab.
 const OPENED = 'cx-opened';
 const ASKED = 'cx-revealing';
+const ANSWERED = 'cx-answered';
 
 function list(key: string): Record<string, string> {
   try {
@@ -109,6 +110,16 @@ export function markOpened(id: string): void {
 /** When this tab revealed the link, if it did. */
 export function openedHere(id: string): string | null {
   const at = list(OPENED)[id];
+  return typeof at === 'string' ? at : null;
+}
+
+/** A request answered from this tab: a reload, after the key has left the address bar, says so (M1). */
+export function markAnswered(id: string): void {
+  mark(ANSWERED, id, new Date().toISOString());
+}
+
+export function answeredHere(id: string): string | null {
+  const at = list(ANSWERED)[id];
   return typeof at === 'string' ? at : null;
 }
 

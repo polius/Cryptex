@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { fold, num, relative, stamp } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
-import { config, loadConfig, toast } from '../../lib/state';
+import { answerOf, config, loadConfig, toast } from '../../lib/state';
 import { answerLink, requestCode } from '../../flows/request';
 import { receipts } from '../../store/db';
 import { vault } from '../../store/vault';
@@ -60,7 +60,9 @@ export const answerReady = (r: Row): boolean => isRequest(r) && r.remote?.status
 /** Open a request's answer: its own link, opened with the private key from the vault, on the usual reveal page. */
 export async function openAnswer(r: Row): Promise<void> {
   try {
-    navigate(await answerLink(r.local, r.remote!));
+    const link = await answerLink(r.local, r.remote!);
+    answerOf.value = { answerId: r.remote!.answer!.id, code: requestCode(r.id), note: r.local?.note, answeredAt: r.remote!.answered_at };
+    navigate(link);
   } catch (e) {
     toast((e as Error)?.message === 'locked' ? t('ask.unlock') : errorText(e), 'error');
   }

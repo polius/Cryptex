@@ -6,7 +6,7 @@ import { askedHere, carryOver, finishReveal, loadMeta, openedHere, readingGone, 
 import { bytes, dateTime, MAX_PASSPHRASE } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { dropFragment } from '../../lib/router';
-import { config, toast } from '../../lib/state';
+import { answerOf, config, toast } from '../../lib/state';
 import { Banner, Btn, ErrMsg, H1, masked, Outcome, Status, useViewFocus } from '../../ui/bits';
 import { AppHeader, host, Page, RecipientHeader } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
@@ -249,16 +249,25 @@ export function Reveal({ id }: { id: string }) {
   const badge = m.passphrase ? t('reveal.needs_passphrase') : t('reveal.sealed');
   const nf = o.fields ?? 0;
   const contents = nf || m.files ? t('reveal.contents', { fields: nf, files: m.files, both: nf > 0 && m.files > 0 }) : t('reveal.a_message');
+  // An answer to the person's own request: name the request and quote its note; nobody "sent you" this.
+  const ans = answerOf.value?.answerId === id ? answerOf.value : null;
   return page(
     <section class="sealed">
       <div class={`sealed-top tint${revealing ? ' lifting' : ''}`}><span class="seal-badge"><Mark open={revealing} />{badge}</span></div>
       <div class="sealed-body">
-        <p class="from">{o.from ? rich(config.value?.brand.name ? 'reveal.from' : 'reveal.from_no_brand', { sender: <b>{o.from}</b>, brand })
-          : config.value?.brand.name ? rich('reveal.from_brand', { brand: <b>{brand}</b> }) : t('reveal.from_no_brand', { sender: t('reveal.someone') })}</p>
-        <H1>{o.title || t('reveal.a_secret')}</H1>
+        {ans ? <p class="from">{rich('reveal.answer_to', { code: <b class="mono">{ans.code}</b> })}</p> : <p class="from">{o.from ? rich(config.value?.brand.name ? 'reveal.from' : 'reveal.from_no_brand', { sender: <b>{o.from}</b>, brand })
+          : config.value?.brand.name ? rich('reveal.from_brand', { brand: <b>{brand}</b> }) : t('reveal.from_no_brand', { sender: t('reveal.someone') })}</p>}
+        <H1>{o.title || (ans ? t('reveal.answer_title') : t('reveal.a_secret'))}</H1>
+        {ans?.note && (
+          <figure class="ask-said">
+            <figcaption><Icon name="user" size="sm" />{t('reveal.answer_note')}</figcaption>
+            <blockquote>{ans.note}</blockquote>
+          </figure>
+        )}
         <ul class="list">
           <li><Icon name="key" /><span>{m.files ? rich('reveal.contents_size', { contents: <b>{contents.charAt(0).toUpperCase() + contents.slice(1)}</b>, size: bytes(m.size) }) : <b>{contents.charAt(0).toUpperCase() + contents.slice(1)}</b>}</span></li>
-          <li><Icon name="eye" />{m.views_left === 1 ? <span>{rich('reveal.opens_once_rich', { lead: <b>{t('reveal.opens_once_lead')}</b> })}</span> : <span>{t('reveal.opens_until_expiry')}</span>}</li>
+          {ans?.answeredAt && <li><Icon name="inbox" /><span>{t('reveal.answered_at', { date: dateTime(ans.answeredAt) })}</span></li>}
+          {!ans && <li><Icon name="eye" />{m.views_left === 1 ? <span>{rich('reveal.opens_once_rich', { lead: <b>{t('reveal.opens_once_lead')}</b> })}</span> : <span>{t('reveal.opens_until_expiry')}</span>}</li>}
           <li><Icon name="clock" /><span>{t('reveal.available_until', { date: dateTime(m.expires_at) })}</span></li>
         </ul>
         {m.passphrase && (
@@ -280,7 +289,7 @@ export function Reveal({ id }: { id: string }) {
             {revealing ? (s.pct ? t('reveal.decrypting_pct', { pct: s.pct }) : t('reveal.decrypting')) : t('reveal.reveal')}
           </Btn>
         </div>
-        <p class="fine">{t(config.value?.brand.name ? 'reveal.nothing_opened' : 'reveal.nothing_opened_no_brand')} {t('reveal.idle_note')}</p>
+        <p class="fine">{ans ? t('reveal.answer_only_you') : t(config.value?.brand.name ? 'reveal.nothing_opened' : 'reveal.nothing_opened_no_brand')} {t('reveal.idle_note')}</p>
         {demo && <p class="fine"><button type="button" class="link small" disabled={reporting || revealing} onClick={() => void doReport(o)}>{t('reveal.report')}</button></p>}
       </div>
     </section>,

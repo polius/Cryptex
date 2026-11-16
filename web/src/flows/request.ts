@@ -24,7 +24,7 @@ export async function createRequest(cfg: Config, expiresIn: number, note = ''): 
   const item: StoredReceipt = {
     kind: 'request', id, key: jwk, manage_token, title: '',
     created_at: new Date().toISOString(), expires_at, link: `${location.origin}/a/${id}#${b64u(R)}`, last_status: 'waiting',
-    fields: 0, files: 0,
+    fields: 0, files: 0, ...(note.trim() ? { note: note.trim() } : {}),
   };
   await receipts.put(item);
   try {

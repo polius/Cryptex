@@ -3,13 +3,14 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { ApiError } from '../../api/client';
 import { parseLinkFragment } from '../../crypto/format';
+import { answeredHere, markAnswered } from '../../flows/reveal';
 import { cancelUpload } from '../../flows/send';
 import { loadRequest, requestCode, sendAnswer, type Asked } from '../../flows/request';
 import { dateTime } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { dropFragment } from '../../lib/router';
 import { cfg, toast } from '../../lib/state';
-import { Banner, Btn, copyText, H1, Outcome, Status } from '../../ui/bits';
+import { Banner, Btn, copyText, H1, Outcome, Status, useViewFocus } from '../../ui/bits';
 import { host, Page, RecipientHeader } from '../../ui/chrome';
 import { Icon } from '../../ui/icons';
 import { errorText } from '../errors';
@@ -22,6 +23,8 @@ type State =
   | { k: 'loading' }
   | { k: 'broken' }
   | { k: 'missing' }
+  /** Answered from this tab earlier: a reload after the key left the address bar. */
+  | { k: 'here'; at: string }
   | { k: 'gone'; reason: string }
   | { k: 'error'; message: string }
   | { k: 'ready'; a: Asked }
@@ -39,12 +42,16 @@ export function Answer({ id }: { id: string }) {
   const drop = useRef<(files: File[]) => void>(() => undefined);
   const abort = useRef<AbortController | null>(null);
   const upload = useRef<{ id: string; token: string } | null>(null);
+  // The heading takes focus when the page changes in place (V6): "Sent" replaces the form and its button.
+  useViewFocus(s.k === 'loading' ? null : s.k);
 
   useEffect(() => {
     const R = parseLinkFragment(location.hash.slice(1));
-    if (!R) return setS({ k: 'broken' });
+    const here = answeredHere(id);
+    if (!R) return setS(here ? { k: 'here', at: here } : { k: 'broken' });
     loadRequest(id, R).then((a) => setS({ k: 'ready', a }), (e) => {
-      if (e instanceof ApiError && e.code === 'gone') setS({ k: 'gone', reason: e.reason ?? 'answered' });
+      if (e instanceof ApiError && e.code === 'gone' && here) setS({ k: 'here', at: here });
+      else if (e instanceof ApiError && e.code === 'gone') setS({ k: 'gone', reason: e.reason ?? 'answered' });
       else if (e instanceof ApiError && e.code === 'not_found') setS({ k: 'missing' });
       else if ((e as Error)?.message === 'broken') setS({ k: 'broken' });
       else setS({ k: 'error', message: errorText(e) });
@@ -79,6 +86,7 @@ export function Answer({ id }: { id: string }) {
           upload.current = { id: sid, token };
         });
       upload.current = null;
+      markAnswered(id);
       dropFragment(); // its one answer is sent: the link has nothing more to do here
       setComposer(emptyComposer());
       setPass({ on: false, value: '' });
@@ -123,6 +131,8 @@ export function Answer({ id }: { id: string }) {
           <p class="lede">{rich('reveal.broken_fix_anon', { hash: <span class="mono">#</span> })}</p>
         </div></section>,
       );
+    case 'here':
+      return page(<Outcome icon="check" title={t('answer.here_title')}><p>{t('answer.here_body', { date: dateTime(s.at) })}</p></Outcome>);
     case 'gone': {
       const r = s.reason === 'expired' || s.reason === 'closed' ? s.reason : 'answered';
       return page(<Outcome icon={r === 'answered' ? 'check' : 'clock'} tone="info" title={t(`answer.${r}_title`)}><p>{t(`answer.${r}_body`)}</p></Outcome>);

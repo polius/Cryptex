@@ -284,7 +284,9 @@
     "sent_title": "Sent",
     "sent_body": "It’s encrypted for the person who asked, and nobody else. You can close this page.",
     "passphrase_tell": "Tell them the passphrase another way, like on a call. They need it to open what you sent.",
-    "note": "From the person asking"
+    "note": "From the person asking",
+    "here_title": "You answered this request",
+    "here_body": "You answered it here on {date}. You can close this page."
   },
   "reveal": {
     "sealed": "Sealed",
@@ -299,6 +301,11 @@
     "deleted_banner": "The link no longer works. Save what you need before you leave this page.",
     "clears_in": "Clears in {time}",
     "hides_in": "Hides in {time}",
+    "answer_to": "Answer to your request {code}",
+    "answer_title": "From the person you asked",
+    "answer_note": "Your note",
+    "answered_at": "Answered {date}",
+    "answer_only_you": "Only your account can open this. It stays sealed until you press Reveal.",
     "hide_soon": "This page hides it in under a minute, to keep the secret safe. It stays on this page until you close it.",
     "hidden_idle": "Hidden after 5 minutes without activity. It’s still on this page until you close it.",
     "hidden_clearing": "Cleared from this page. You can still undo this for a few seconds.",
