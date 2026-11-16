@@ -26,7 +26,7 @@
 
 ## Features
 
-The server stores only ciphertext: it can't read the secret, its title, its file names or who sent it.
+The server stores only ciphertext: it can't read the secret, its title or its file names. If you send while signed in, it knows which account sent it.
 
 - **Encrypted before it leaves your browser.** The key is part of the link, so only the people you give the link to can open it.
 - **Links that expire.** Choose how long a link lasts, or make it work only once.
@@ -45,8 +45,8 @@ To try Cryptex. Browsers only allow its encryption on `https://` pages and on `l
 With Docker:
 
 ```sh
-docker run -d --pull always --name cryptex --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
+docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
+  -v "$PWD/data:/data" -v "$PWD/backups:/backups" poliuscorp/cryptex:3
 ```
 
 Or with Docker Compose:
@@ -56,7 +56,7 @@ curl -fsSLO https://raw.githubusercontent.com/polius/Cryptex/main/deploy/docker-
 docker compose up -d
 ```
 
-Open `http://localhost:8080`.
+Open `http://localhost:8080`. The first screen asks for a setup code: `docker exec cryptex cryptex setup-code` prints it (it's also in `docker logs cryptex`).
 
 ### Option B: on your own domain (HTTPS, recommended)
 
@@ -77,23 +77,52 @@ You need a server with a public IP address and a domain name. [Caddy](https://ca
    docker compose up -d
    ```
 
-Open `https://yourdomain.com`.
+Open `https://yourdomain.com` and enter the setup code from `docker exec cryptex cryptex setup-code`.
+
+Behind another proxy (nginx, Traefik, a Cloudflare Tunnel, Tailscale), see [docs/deploy.md](docs/deploy.md).
 
 ### Updating
+
+The image tag `:3` follows every 3.x release and never jumps to a new major version. [Back up](#backup-and-restore) first, and read the [release notes](https://github.com/polius/Cryptex/releases) before moving to a new major version.
 
 With Docker:
 
 ```sh
-docker rm -f cryptex
-docker run -d --pull always --name cryptex --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
+docker pull poliuscorp/cryptex:3
+docker stop cryptex && docker rm cryptex
+docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
+  -v "$PWD/data:/data" -v "$PWD/backups:/backups" poliuscorp/cryptex:3
 ```
+
+`docker stop` lets the server finish its writes and fold its write-ahead log into the database; `docker rm -f` doesn't.
 
 Or with Docker Compose:
 
 ```sh
 docker compose pull && docker compose up -d
 ```
+
+## Backup and restore
+
+Everything lives in the data folder (`./data`): the database, the encrypted chunks, the logo, and `enc.key`, the key that protects sign-in data. **Without `enc.key` nobody can sign in again**, so it's in every backup. Never copy a running server's data folder by hand: the database keeps recent writes in a separate log, and the copy can come out broken.
+
+Back up while the server runs, to the `./backups` folder the compose files and the commands above mount:
+
+```sh
+docker exec cryptex cryptex backup /backups/$(date +%F)
+```
+
+The folder it writes holds `cryptex.db` (a consistent copy), `chunks/`, `brand/` and `enc.key`. Keep it as private as the server: with an old link and a backup, a secret can be opened again.
+
+To restore, stop the server, replace the data folder's contents with the backup's, and start it:
+
+```sh
+docker stop cryptex
+sudo rm -rf data/* && sudo cp -a backups/2026-11-16/. data/   # the files belong to the container's user, UID 10001
+docker start cryptex
+```
+
+A restore brings back the server as it was at the backup: links opened or destroyed since then work again until they expire, and links made since then are gone.
 
 ### Required ports
 
@@ -116,7 +145,7 @@ Formats: sizes `500kb`, `10mb`, `1gb` · durations `30m`, `24h`, `7d` · rates `
 
 | Variable | Default | Description |
 |---|---|---|
-| `TRUSTED_PROXIES` | private ranges | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Set it when the proxy runs on another machine. |
+| `TRUSTED_PROXIES` | `127.0.0.1,::1` | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Name exactly your proxy: anyone listed can claim any address. The HTTPS compose file sets it to its Caddy. |
 | `MIN_FREE_DISK` | `1gb` | New links are refused when they'd leave less free disk space than this. |
 
 ### Links and access
@@ -135,7 +164,7 @@ These can also be changed in the **Server** tab. Setting the variable locks them
 
 ### Rate limits
 
-Counted per visitor address.
+Counted per visitor address, or per account for someone signed in (so colleagues behind one office address don't share them).
 
 | Variable | Default | Limits |
 |---|---|---|
@@ -165,7 +194,7 @@ Counted per visitor address.
 
 ## Security
 
-- Secrets are encrypted in the browser with AES-256-GCM. Passphrases go through Argon2id. The format is in [docs/crypto.md](docs/crypto.md), with test vectors.
+- Secrets are encrypted in the browser with AES-GCM under keys derived from a 128-bit link key. Passphrases go through Argon2id. The format is in [docs/crypto.md](docs/crypto.md), with test vectors.
 - Opening a link page changes nothing: revealing takes a click, so link previews and scanners can't use up a secret.
 - Passwords never reach the server. Owners can't read, open or destroy other people's links.
 - A strict Content Security Policy, no third-party requests, and no tokens or contents in logs (and no IP addresses unless `LOG_IPS` is on).

@@ -1,7 +1,7 @@
 services:
   cryptex:
-    image: poliuscorp/cryptex
+    image: poliuscorp/cryptex:3
     container_name: cryptex
     restart: unless-stopped
     ports: ["127.0.0.1:8080:8080"]
-    volumes: ["./data:/data"]
+    volumes: ["./data:/data", "./backups:/backups"]  # backups: docker exec cryptex cryptex backup /backups/$(date +%F)

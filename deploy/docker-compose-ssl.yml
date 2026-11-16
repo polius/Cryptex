@@ -8,13 +8,23 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
+    networks:
+      default:
+        ipv4_address: 10.213.47.2  # the one address Cryptex takes the visitor's address from (TRUSTED_PROXIES)
     depends_on: [cryptex]
 
   cryptex:
-    image: poliuscorp/cryptex
+    image: poliuscorp/cryptex:3
     container_name: cryptex
     restart: unless-stopped
-    volumes: ["./data:/data"]
+    environment:
+      TRUSTED_PROXIES: 10.213.47.2
+    volumes: ["./data:/data", "./backups:/backups"]  # backups: docker exec cryptex cryptex backup /backups/$(date +%F)
+
+networks:
+  default:
+    ipam:
+      config: [{ subnet: 10.213.47.0/24 }]
 
 volumes:
   caddy_data:
