@@ -34,9 +34,17 @@ const SLOW_MS = 3000;
 const calm = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, calm() ? 0 : Math.max(0, ms)));
 
+/** The draft, kept in memory outside the page (S6): a visit to Your links and Back finds it where it was. Never
+ *  written to storage; gone when the link is made, or with the tab (beforeunload asks first). */
+let draft: ComposerState = emptyComposer();
+
 export function Home() {
   const c = cfg();
-  const [composer, setComposer] = useState<ComposerState>(emptyComposer);
+  const [composer, setComposerState] = useState<ComposerState>(() => draft);
+  const setComposer = (s: ComposerState) => {
+    draft = s;
+    setComposerState(s);
+  };
   const [policy, setPolicy] = useState<SendPolicy>(() => defaultPolicy(c));
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -48,6 +56,25 @@ export function Home() {
   const pasteHandler = useRef<(raw: string) => void>(() => undefined);
   const dropHandler = useRef<(files: File[]) => void>(() => undefined);
   const dragging = usePageInput(phase.k === 'compose', pasteHandler, dropHandler);
+
+  // A reload or a closed tab loses what's typed and any file being sent: ask first (S6).
+  const unsaved = phase.k === 'sealing' || (phase.k !== 'sent' && !isEmpty(composer));
+  useEffect(() => {
+    if (!unsaved) return;
+    const onBefore = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onBefore);
+    return () => window.removeEventListener('beforeunload', onBefore);
+  }, [unsaved]);
+  // Leaving the page while a link is being made cancels it, so it can't finish out of sight, take over the clipboard
+  // and jump to its page from wherever the person went. The draft stays, files included.
+  const alive = useRef(true);
+  useEffect(() => () => {
+    alive.current = false;
+    if (!abort.current) return;
+    abort.current.abort();
+    if (upload.current) void cancelUpload(upload.current.id, upload.current.token);
+    upload.current = null;
+  }, []);
 
   // Restore the last-used policy, within today's limits.
   useEffect(() => {
@@ -119,6 +146,8 @@ export function Home() {
         upload.current = { id, token };
       });
       upload.current = null;
+      abort.current = null;
+      draft = emptyComposer(); // made: the next visit starts afresh (this page still shows it until it's left)
       if (!c.demo) void prefs.set('policy', { ...policy, passphraseOn: false, passphrase: '' });
       const passphrase = policy.passphraseOn ? policy.passphrase : null;
       setPolicy((p) => ({ ...p, passphraseOn: false, passphrase: '' })); // each link gets its own passphrase
@@ -129,6 +158,7 @@ export function Home() {
       await pause(SEAL.ready);
       sealing({ step: 4 }); // the page fades up and out, then the link page rises in
       await pause(SEAL.leave);
+      if (!alive.current) return; // left during the seal: the link is made and in Your links; stay where they went
       countLinks();
       if (c.demo) void loadConfig().catch(() => undefined); // refresh the quota in the demo bar
       if (sent.saved !== 'none') {
@@ -151,6 +181,7 @@ export function Home() {
       // The seal and its buttons are gone: focus goes to Try again (the error itself is announced).
       requestAnimationFrame(() => document.getElementById('send-go')?.focus({ preventScroll: true }));
     } finally {
+      if (abort.current === ctrl) abort.current = null;
       timers.forEach(clearTimeout);
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('online', onOnline);
@@ -184,7 +215,9 @@ export function Home() {
   const nav = route.value;
   const firstNav = useRef(nav);
   useEffect(() => {
-    if (nav !== firstNav.current && (phase.k === 'sent' || phase.k === 'error')) reset();
+    if (nav === firstNav.current) return;
+    if (phase.k === 'sent') reset();
+    else if (phase.k === 'error') setPhase({ k: 'compose' }); // "what you typed is still here": keep it
   }, [nav]);
 
   // ------------------------------------------------------------------ render

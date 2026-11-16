@@ -39,3 +39,16 @@ describe('X-Cryptex-User', () => {
     expect(ended).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('errors that aren\'t the API\'s (V5)', () => {
+  const page = (status: number) => vi.stubGlobal('fetch', async () => new Response('<html>413 Request Entity Too Large</html>', { status, headers: { 'content-type': 'text/html' } }));
+  it('are named by status: a proxy\'s 413 is a size limit, not a form field', async () => {
+    page(413);
+    await expect(request('PUT', '/secrets/x/chunks/0')).rejects.toMatchObject({ code: 'proxy_too_large' });
+    page(502);
+    await expect(request('GET', '/x')).rejects.toMatchObject({ code: 'internal' });
+    page(404);
+    await expect(request('GET', '/x')).rejects.toMatchObject({ code: 'http_error' });
+  });
+});
+

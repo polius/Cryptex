@@ -54,4 +54,11 @@ describe('errorText', () => {
     expect(errorText(api('invalid', 400, { field: 'user_id' }))).toContain('in the meantime');
     expect(errorText(api('invalid', 400, { field: 'logo' }))).toContain('UTF-8');
   });
+
+  it('tells the server\'s failures from this browser\'s (V5)', () => {
+    expect(errorText(api('internal', 500))).toBe('The server had a problem. Try again in a minute.');
+    expect(errorText(new Error('worker crashed'))).toContain('in this browser');
+    expect(errorText(api('proxy_too_large', 413))).toContain('proxy');
+  });
 });
+

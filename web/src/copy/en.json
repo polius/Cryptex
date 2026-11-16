@@ -400,7 +400,10 @@
     "badge_not_found": "Not found"
   },
   "errors": {
-    "invalid": "Something in the form isn’t right. Check the highlighted field.",
+    "invalid": "That didn’t go through. Check what you entered and try again.",
+    "http_error": "That didn’t go through. Try again in a minute.",
+    "proxy_too_large": "That’s larger than this server, or the proxy in front of it, accepts.",
+    "browser": "Something went wrong in this browser. Try again; if it keeps happening, reload the page.",
     "limit_exceeded": "That’s over this server’s limit: {limit}.",
     "sign_in_required": "Sign in to {brand} to do this.",
     "forbidden": "You don’t have access to this.",
@@ -414,7 +417,7 @@
     "wrong_passphrase": "That passphrase didn’t work. {tries, plural, one {# try} other {# tries}} left, then the secret is destroyed and {sender} is told.",
     "rate_limited": "Too many tries. Try again in {duration}.",
     "demo_locked": "This is fixed in the demo.",
-    "internal": "Something went wrong on our side. Nothing was opened or deleted. Try again in a minute.",
+    "internal": "The server had a problem. Try again in a minute.",
     "offline": "You’re offline. We’ll continue when you’re back.",
     "tampered": "This couldn’t be opened because it was changed after it was sent. Ask {sender} to send it again.",
     "sender_fallback": "the sender",
@@ -423,7 +426,7 @@
     "totp_code": "That code didn’t work. Check that the time on your phone is right, then try the next code.",
     "current_password": "That isn’t your current password.",
     "username_taken": "Someone already has that username.",
-    "pow": "This page waited too long to send. Reload it and try again.",
+    "pow": "This took too long to send. Try again.",
     "logo": "That logo can’t be used. Use a square PNG, or an SVG saved as UTF-8, at least 64 px wide.",
     "stale": "Someone changed this in the meantime. Reload the page and try again.",
     "locked": "This is set in the server’s environment, so it can’t be changed here.",
@@ -437,7 +440,7 @@
     "storage_full": "This server is out of space right now, so nothing was saved. Try again later.",
     "wrong_password": "That password didn’t work.",
     "date": "That date couldn’t be read. Pick the time range again.",
-    "csrf": "This page is out of date: you may have signed in or out in another tab. Reload it and try again.",
+    "csrf": "You signed in or out in another tab. Try again; what you typed is still here.",
     "setup_needed": "This server isn’t set up yet.",
     "demo_full": "The demo is full right now. Links already sent keep working. Try again later.",
     "weak_kdf": "This server asked for weaker password protection than Cryptex allows, so your password wasn’t used. Tell the people who run this server.",
@@ -585,6 +588,9 @@
   "boot": {
     "unsupported_title": "Update your browser",
     "offline_title": "Can’t reach this server",
+    "load_failed_title": "This page couldn’t load",
+    "load_failed_body": "Part of the page didn’t arrive, or the server was updated while this tab was open. Reloading usually fixes it.",
+    "reload": "Reload",
     "insecure_title": "This page needs HTTPS",
     "insecure_body": "Cryptex encrypts in your browser, and browsers allow that only on https:// pages (or at localhost on this computer). If you run this server, put it behind an HTTPS proxy."
   },

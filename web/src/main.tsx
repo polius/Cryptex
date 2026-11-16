@@ -2,8 +2,8 @@
 import './styles/fonts.css';
 import './styles/app.css';
 import './styles/live.css';
-import { render } from 'preact';
-import type { ComponentType } from 'preact';
+import { Component, render } from 'preact';
+import type { ComponentChildren, ComponentType } from 'preact';
 import { useEffect, useState } from 'preact/hooks';
 import { isId, match, navigate, route } from './lib/router';
 import { applyTheme, bootError, config, countLinks, loadConfig } from './lib/state';
@@ -29,15 +29,55 @@ function focusFirst(force = false): void {
   else document.querySelector<HTMLElement>('[data-page-heading]')?.focus({ preventScroll: true });
 }
 
+/** In place of a page whose code didn't load (a dropped connection, or a release that replaced the files this tab
+ *  knew), or that failed while rendering: never a blank page (V2). */
+function LoadFailed() {
+  return (
+    <main class="main narrow boot-error" id="main">
+      <h1 class="h1" tabIndex={-1} data-page-heading>{t('boot.load_failed_title')}</h1>
+      <p class="lede">{t('boot.load_failed_body')}</p>
+      <button class="btn primary" onClick={() => location.reload()}>{t('boot.reload')}</button>
+    </main>
+  );
+}
+
+class Boundary extends Component<{ children: ComponentChildren }, { failed: boolean }> {
+  state = { failed: false };
+  componentDidCatch(e: unknown) {
+    console.error(e);
+    this.setState({ failed: true });
+  }
+  render() {
+    return this.state.failed ? <LoadFailed /> : this.props.children;
+  }
+}
+
+// A new release replaced the files this tab's code points to: reload once to get the new ones (V2). Not twice in a
+// row, so a file that's really missing shows LoadFailed instead of reloading forever.
+window.addEventListener('vite:preloadError', () => {
+  try {
+    if (Date.now() - Number(sessionStorage.getItem('cx-reloaded') ?? 0) < 30_000) return;
+    sessionStorage.setItem('cx-reloaded', String(Date.now()));
+  } catch {
+    return;
+  }
+  location.reload();
+});
+
 /** Load a screen's code only when its route is used, so recipients download the reveal page and nothing else. */
 function lazy<P extends object>(load: () => Promise<ComponentType<P>>): ComponentType<P> {
   let C: ComponentType<P> | null = null;
   let pending: Promise<void> | null = null;
+  let failed = false;
   return (props: P) => {
     const [, ready] = useState(0);
     if (C) return <C {...props} />;
+    if (failed) return <LoadFailed />;
     pending ??= load().then((c) => {
       C = c;
+    }, () => {
+      failed = true;
+      pending = null;
     });
     void pending.then(() => {
       ready((n) => n + 1);
@@ -149,7 +189,7 @@ function App() {
   const account = c.signed_in && !path.startsWith('/s/') && !path.startsWith('/a/') && !SIGN_IN_PAGES.has(path);
   return (
     <>
-      <Screen />
+      <Boundary key={path}><Screen /></Boundary>
       {account && <VaultPrompts />}
       {account && c.user?.notice && <ResetNotice />}
       <ReauthDialog />
