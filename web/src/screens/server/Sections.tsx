@@ -1,7 +1,7 @@
 /** Server tab sections E1–E5 and E7. */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api } from '../../api/client';
-import { bytes, dateTime, fold, num, relative, stamp, USERNAME } from '../../lib/format';
+import { bytes, dateTime, fold, fullStamp, num, relative, stamp, USERNAME } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { loadConfig, toast } from '../../lib/state';
 import { Btn, copyText, ErrMsg, Radio, Status } from '../../ui/bits';
@@ -533,7 +533,7 @@ export function AuditSection() {
         <tbody aria-busy={loading || undefined}>
           {rows.length === 0 && !loading && !error && <tr><td colSpan={4} class="muted">{t('audit.no_match')}</td></tr>}
           {rows.length === 0 && loading && <tr><td colSpan={4}><div class="skeleton line" /></td></tr>}
-          {rows.map((e) => <tr key={e.id}><td class="mono">{stamp(e.at)}</td><td>{eventText(e)}</td><td class={e.actor === 'link' || e.actor === 'system' ? 'muted' : ''}>{actorText(e)}</td><td class={e.item ? 'mono' : 'mono none'}>{e.item ?? '—'}</td></tr>)}
+          {rows.map((e) => <tr key={e.id}><td class="mono">{fullStamp(e.at)}</td><td>{eventText(e)}</td><td class={e.actor === 'link' || e.actor === 'system' ? 'muted' : ''}>{actorText(e)}</td><td class={e.item ? 'mono' : 'mono none'}>{e.item ?? '—'}</td></tr>)}
         </tbody>
       </table></div></section>
       {next && <Btn kind="secondary" class="load-more" loading={moreBusy} onClick={more}>{t('audit.load_more')}</Btn>}
