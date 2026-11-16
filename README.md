@@ -79,11 +79,11 @@ You need a server with a public IP address and a domain name. [Caddy](https://ca
 
 Open `https://yourdomain.com` and enter the setup code from `docker exec cryptex cryptex setup-code`.
 
-Behind another proxy (nginx, Traefik, a Cloudflare Tunnel, Tailscale), see [docs/deploy.md](docs/deploy.md).
+Behind another proxy, such as nginx, see [docs/deploy.md](docs/deploy.md).
 
 ### Updating
 
-[Back up](#backup-and-restore) first, and read the [release notes](https://github.com/polius/Cryptex/releases) before moving to a new major version.
+Read the [release notes](https://github.com/polius/Cryptex/releases) before moving to a new major version.
 
 With Docker:
 
@@ -101,41 +101,6 @@ Or with Docker Compose:
 ```sh
 docker compose pull && docker compose up -d
 ```
-
-## Backup and restore
-
-Everything lives in the data folder (`./data`): the database, the encrypted chunks, the logo, and `enc.key`, the key that protects sign-in data. **Without `enc.key` nobody can sign in again**, so keep it in every backup.
-
-To back up, stop the server, copy the folder, and start it again. Stopping lets the database finish its writes, so the copy is complete; don't copy the folder while the server runs.
-
-```sh
-docker stop cryptex
-sudo cp -a data backup-$(date +%F)   # the files belong to the container's user, UID 10001
-docker start cryptex
-```
-
-Keep the copy as private as the server: with an old link and a backup, a secret can be opened again.
-
-To restore, stop the server, put the backup's contents back in the data folder, and start it:
-
-```sh
-docker stop cryptex
-sudo rm -rf data/* && sudo cp -a backup-2026-11-16/. data/
-docker start cryptex
-```
-
-A restore brings back the server as it was at the backup: links opened or destroyed since then work again until they expire, and links made since then are gone.
-
-### Required ports
-
-For Option B, open these on your server's firewall (and in your cloud provider's security group, if it has one):
-
-| Port | Protocol | Purpose |
-|---|---|---|
-| `443` | TCP + UDP | The web interface over HTTPS (UDP for HTTP/3) |
-| `80` | TCP | Getting the certificate, and redirecting to HTTPS |
-
-Option A opens no ports: Cryptex listens on `127.0.0.1:8080`, this computer only.
 
 ## Configuration
 

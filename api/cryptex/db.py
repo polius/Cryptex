@@ -49,7 +49,7 @@ def _connect() -> sqlite3.Connection:
 def close_all() -> None:
     """At shutdown: fold the write-ahead log into the database file and close every connection, so a copy of
     DATA_DIR taken after the server stopped is the whole database (no cryptex.db-wal it depends on) and an old -wal
-    file can never be replayed onto a restored one (README.md, Backup and restore)."""
+    file can never be replayed onto a restored one."""
     global _generation
     with _open_lock:
         conns, _open[:] = list(_open), []
