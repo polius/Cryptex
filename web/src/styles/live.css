@@ -140,6 +140,10 @@ label.row{cursor:pointer}
 @keyframes reveal{from{opacity:0;transform:translateY(8px) scale(.995)}}
 .out{outline:none}
 .out .v{user-select:all}
+/* A shown value wraps, line breaks kept, so a long token or a key can be read, not only copied. */
+.out .field .v:not(.secret){white-space:pre-wrap;overflow-wrap:anywhere;text-overflow:clip}
+.out-hidden{display:grid;gap:12px;padding:0 18px 18px}
+.out-hidden .out-h{margin:0 -18px}
 .out .note.out-note{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px;padding:14px 10px 14px 18px;border-bottom:1px solid var(--line)}
 .out .note pre{margin:0;font:400 15px/1.6 var(--f-text);white-space:pre-wrap;word-break:break-word}
 .out .field + .note,.out .note + .field{border-top:0}
