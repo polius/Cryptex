@@ -17,7 +17,7 @@ from ..errors import ApiError, NotFound, invalid
 from ..events import emit
 from ..util import is_id, iso, new_token, now, token_hash, unb64u
 from .common import B64U, HEX64, Body, check_create_allowed
-from .receipts import MAX_ITEMS, Lookup, Pair, proven, status_request
+from .receipts import Lookup, status_request
 from .secrets import largest_secret, manifest_cap, unique_id
 
 router = APIRouter()
@@ -107,25 +107,8 @@ def lookup(body: Lookup, request: Request) -> dict[str, Any]:
     """Statuses for Your links: each (id, manage token) pair that proves its token. Closed requests are left out (the
     requester deleted them, or a password reset closed them)."""
     status_request(caller(request))
-    return {"items": request_statuses(body.items)}
-
-
-class Status(Body):
-    items: list[Pair] = Field(default_factory=list, max_length=MAX_ITEMS)
-    requests: list[Pair] = Field(default_factory=list, max_length=MAX_ITEMS)
-
-
-@router.post("/status")
-def status(body: Status, request: Request) -> dict[str, Any]:
-    """Your links' poll in one request (M6): the links' receipts and the requests' statuses, counted once against
-    RATE_STATUS."""
-    status_request(caller(request))
-    return {"items": proven(body.items), "requests": request_statuses(body.requests)}
-
-
-def request_statuses(pairs: list[Pair]) -> list[dict[str, Any]]:
     out = []
-    for p in pairs:
+    for p in body.items:
         r = db.one("SELECT * FROM requests WHERE id = ?", p.id) if is_id(p.id) else None
         if r is None or not matches(r["manage_hash"], token_hash(p.manage_token)):
             continue
@@ -135,7 +118,7 @@ def request_statuses(pairs: list[Pair]) -> list[dict[str, Any]]:
         answer = db.one("SELECT views, expires_at, passcheck_hash FROM secrets WHERE id = ?", a) if a else None
         tomb = db.one("SELECT reason, opened, at FROM tombstones WHERE id = ?", a) if a and answer is None else None
         out.append(_view(r, answer, tomb))
-    return out
+    return {"items": out}
 
 
 @router.delete("/requests/{rid}", status_code=204)

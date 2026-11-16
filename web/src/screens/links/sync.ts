@@ -1,7 +1,7 @@
 /** Your links: local receipts + server statuses (lookup, account sync), read again while the page is open. */
 import { useEffect, useRef } from 'preact/hooks';
 import { api, ApiError, signedInUid, type Receipt } from '../../api/client';
-import { closeRequest } from '../../flows/request';
+import { closeRequest, lookupRequests } from '../../flows/request';
 import { destroySecret } from '../../flows/send';
 import { setLinksCount } from '../../lib/state';
 import { receipts, type StoredReceipt } from '../../store/db';
@@ -64,17 +64,14 @@ export async function loadRows(): Promise<Row[]> {
   const byId = new Map<string, Row>(local.map((l) => [l.id, { local: l, remote: null, id: l.id }]));
   const live = local.filter((l) => l.kind !== 'request' && (!l.ended_at || Date.now() - Date.parse(l.ended_at) < THIRTY_DAYS));
   const looked = new Set<string>(); // ids the server answered about
-  // Links and requests in one request per batch (M6: the poll counts once against the status limit), each proven with
-  // its manage token.
-  const requests = local.filter((l) => l.kind === 'request' && !l.ended_at);
-  const pair = (l: StoredReceipt) => ({ id: l.id, manage_token: l.manage_token });
-  for (let i = 0; i < Math.max(live.length, requests.length); i += BATCH) {
-    const links = live.slice(i, i + BATCH);
-    const asks = requests.slice(i, i + BATCH);
+  for (let i = 0; i < live.length; i += BATCH) {
+    const asked = live.slice(i, i + BATCH);
     try {
-      const r = await api<{ items: Receipt[]; requests: Receipt[] }>('POST', '/status', { body: { items: links.map(pair), requests: asks.map(pair) } });
-      for (const l of [...links, ...asks]) looked.add(l.id);
-      for (const rec of [...r.items, ...r.requests.map((x) => ({ ...x, kind: 'request' as const }))]) {
+      const r = await api<{ items: Receipt[] }>('POST', '/receipts/lookup', {
+        body: { items: asked.map((l) => ({ id: l.id, manage_token: l.manage_token })) },
+      });
+      for (const l of asked) looked.add(l.id);
+      for (const rec of r.items) {
         const row = byId.get(rec.id);
         if (row) row.remote = rec;
       }
@@ -87,6 +84,20 @@ export async function loadRows(): Promise<Row[]> {
       const row = byId.get(rec.id);
       if (row) row.remote = row.remote ?? rec;
       else byId.set(rec.id, { local: null, remote: rec, id: rec.id });
+    }
+  }
+  // Requests: the same, proven with their manage tokens.
+  const asked = local.filter((l) => l.kind === 'request' && !l.ended_at);
+  for (let i = 0; i < asked.length; i += BATCH) {
+    const part = asked.slice(i, i + BATCH);
+    try {
+      for (const rec of await lookupRequests(part)) {
+        const row = byId.get(rec.id);
+        if (row) row.remote = rec;
+      }
+      for (const l of part) looked.add(l.id);
+    } catch {
+      break; // offline or rate limited: keep the stored statuses
     }
   }
   const rows = [...byId.values()];
@@ -197,35 +208,18 @@ export async function waitingCount(): Promise<number> {
 /** How often Your links and a link's page read the statuses again, while the page is visible. */
 export const POLL_MS = 30_000;
 
-/** Calls `load` every POLL_MS while the page is visible, and when it's shown again (while `on`). When `load` says
- *  nothing changed (resolves to false), the next read waits twice as long, up to 4 × POLL_MS (M6); a change, or the
- *  page shown again, brings it back to POLL_MS. */
+/** Calls `load` every POLL_MS while the page is visible, and when it's shown again (while `on`). */
 export function usePoll(load: () => unknown, on = true): void {
   const latest = useRef(load);
   latest.current = load;
   useEffect(() => {
     if (!on) return;
-    let wait = POLL_MS;
-    let timer: ReturnType<typeof setTimeout>;
-    const next = () => {
-      timer = setTimeout(async () => {
-        if (document.visibilityState === 'visible') {
-          const changed = await Promise.resolve(latest.current()).catch(() => undefined);
-          wait = changed === false ? Math.min(wait * 2, 4 * POLL_MS) : POLL_MS;
-        }
-        next();
-      }, wait);
-    };
-    const shown = () => {
-      if (document.visibilityState !== 'visible') return;
-      wait = POLL_MS;
-      void latest.current();
-    };
-    next();
-    document.addEventListener('visibilitychange', shown);
+    const tick = () => document.visibilityState === 'visible' && void latest.current();
+    const timer = setInterval(tick, POLL_MS);
+    document.addEventListener('visibilitychange', tick);
     return () => {
-      clearTimeout(timer);
-      document.removeEventListener('visibilitychange', shown);
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', tick);
     };
   }, [on]);
 }

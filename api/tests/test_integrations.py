@@ -550,12 +550,12 @@ def test_removing_a_person_without_destroying_keeps_their_links(client):
 # ------------------------------------------------------------------ M6: shared offices
 def test_signed_in_status_and_reveal_limits_are_per_person(server):
     """M6: three colleagues behind one address shared RATE_STATUS and RATE_REVEAL, so the third open Your links
-    broke everyone's. Signed in, each person has their own; one poll is one request (POST /status)."""
+    broke everyone's. Signed in, each person has their own."""
     c = server(RATE_STATUS="3/h")
     s = send(c)
     stranger = anon(c)
     for _ in range(3):
-        assert stranger.post("/api/v1/status", json={"items": [], "requests": []}).status_code == 200
-    assert stranger.post("/api/v1/status", json={}).status_code == 429  # same address, not signed in
-    r = c.post("/api/v1/status", json={"items": [{"id": s.id, "manage_token": s.manage_token}], "requests": []})
+        assert stranger.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 200
+    assert stranger.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 429  # same address, not signed in
+    r = c.post("/api/v1/receipts/lookup", json={"items": [{"id": s.id, "manage_token": s.manage_token}]})
     assert r.status_code == 200 and [i["id"] for i in r.json()["items"]] == [s.id]  # the owner, same address: own budget
