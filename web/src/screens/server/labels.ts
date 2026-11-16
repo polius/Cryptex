@@ -48,7 +48,8 @@ export function eventText(e: Pick<AuditRow, 'type' | 'detail'>): string {
     case 'secret.passphrase_failed':
       return t('events.passphrase_failed', { n: Number(d.tries_left) });
     case 'secret.destroyed':
-      return d.reason === 'too_many_tries' ? t('events.destroyed_tries') : d.reason === 'reported' ? t('events.destroyed_reported') : t('events.destroyed_sender');
+      return d.reason === 'too_many_tries' ? t('events.destroyed_tries') : d.reason === 'reported' ? t('events.destroyed_reported')
+        : d.reason === 'owner' ? t('events.destroyed_owner') : t('events.destroyed_sender');
     case 'secret.requested':
       return t('events.requested', { duration: duration(Number(d.expires_in)) });
     case 'secret.request_answered':
@@ -71,8 +72,10 @@ export function eventText(e: Pick<AuditRow, 'type' | 'detail'>): string {
       return t('events.reset_cancelled');
     case 'user.removed':
       return t('events.removed', { role: d.role });
-    case 'user.sign_in_failed':
-      return d.method === 'totp' ? t('events.sign_in_failed_totp') : d.method === 'reset_code' ? t('events.sign_in_failed_reset_code') : t('events.sign_in_failed_password');
+    case 'user.sign_in_failed': {
+      const what = d.method === 'totp' ? t('events.sign_in_failed_totp') : d.method === 'reset_code' ? t('events.sign_in_failed_reset_code') : t('events.sign_in_failed_password');
+      return typeof d.account === 'string' ? t('events.for_account', { what, account: d.account }) : what;
+    }
     case 'user.password_changed':
       return t('events.password_changed');
     case 'user.totp_on':

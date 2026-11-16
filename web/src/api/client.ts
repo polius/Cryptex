@@ -85,7 +85,10 @@ export async function request(method: string, path: string, o: Options = {}, ret
     } catch {
       /* not JSON: a proxy error page */
     }
-    const e = new ApiError(String(err.code ?? (res.status >= 500 ? 'internal' : 'invalid')), res.status, String(err.message ?? res.statusText), err);
+    // Not the API's own answer (a proxy's error page): name it by status (V5). A 413 is a body-size limit, most often
+    // a proxy's (nginx allows 1 MB by default; chunks are 5 MiB).
+    const fallback = res.status === 413 ? 'proxy_too_large' : res.status >= 500 ? 'internal' : 'http_error';
+    const e = new ApiError(String(err.code ?? fallback), res.status, String(err.message ?? res.statusText), err);
     const ra = res.headers.get('Retry-After');
     if (ra) e.retryAfter = Number(ra);
     // A CSRF token from before a sign-in in another tab (this tab's config reload hasn't caught up yet): fetch the

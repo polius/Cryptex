@@ -166,7 +166,7 @@ def _copy_folder(src: Path, dst: Path) -> None:
     except FileNotFoundError:
         return
     for e in entries:
-        if ".tmp" in e.name:
+        if ".tmp" in e.name or e.name == "incoming":  # uploads still arriving (B2) aren't part of a backup
             continue
         try:
             if e.is_dir(follow_symlinks=False):

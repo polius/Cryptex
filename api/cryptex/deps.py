@@ -110,10 +110,10 @@ def matches(stored: str | None, presented: str | None) -> bool:
     return bool(stored and presented and same(stored, presented))
 
 
-def deny(c: Caller, presented: bool = True) -> NotFound:
-    """The uniform 404. A wrong token counts toward the failed-token block."""
-    if presented:
-        ratelimit.failed_token(c.ip)
+def deny() -> NotFound:
+    """The uniform 404 for a wrong or missing token. Nothing blocks the address afterwards (B3): tokens are 128 to
+    256 bits, so guessing isn't a realistic attack, and a block punished everyone behind the same NAT or VPN exit.
+    The ordinary rate limits still apply."""
     return NotFound()
 
 

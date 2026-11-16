@@ -82,6 +82,7 @@ export function checkStreams(streams: StreamDesc[]): StreamDesc[] {
 // connection dropped) may have been counted all the same, and a later "already opened" is then most likely this tab.
 const OPENED = 'cx-opened';
 const ASKED = 'cx-revealing';
+const ANSWERED = 'cx-answered';
 
 function list(key: string): Record<string, string> {
   try {
@@ -109,6 +110,16 @@ export function markOpened(id: string): void {
 /** When this tab revealed the link, if it did. */
 export function openedHere(id: string): string | null {
   const at = list(OPENED)[id];
+  return typeof at === 'string' ? at : null;
+}
+
+/** A request answered from this tab: a reload, after the key has left the address bar, says so (M1). */
+export function markAnswered(id: string): void {
+  mark(ANSWERED, id, new Date().toISOString());
+}
+
+export function answeredHere(id: string): string | null {
+  const at = list(ANSWERED)[id];
   return typeof at === 'string' ? at : null;
 }
 
@@ -170,11 +181,11 @@ export function carryOver(from: Reading, to: Reading): Reading {
 
 /** Download what's missing, check it all (docs/crypto.md §3.4), then confirm the read. Throws Error('tampered'), or an
  *  ApiError: a 404 means the read session is gone (readingGone), anything else can be continued with this Reading. */
-export async function finishReveal(r: Reading, onProgress?: (done: number, total: number) => void): Promise<Revealed> {
+export async function finishReveal(r: Reading, onProgress?: (done: number, total: number) => void, signal?: AbortSignal): Promise<Revealed> {
   for (const s of r.streams) {
     await downloadStream({
       path: (n) => `/secrets/${r.id}/chunks/${s.stream}/${n}`, headers: r.read, key: r.contentKey, id: r.id, stream: s.stream,
-      prefix: unb64u(s.prefix), chunks: s.chunks, parts: r.parts[s.stream], onBytes: (n) => onProgress?.((r.done += n), r.total),
+      prefix: unb64u(s.prefix), chunks: s.chunks, parts: r.parts[s.stream], onBytes: (n) => onProgress?.((r.done += n), r.total), signal,
     });
   }
   const out = await assemble(r.parts, r.views_left); // throws before the read is confirmed if the files don't add up

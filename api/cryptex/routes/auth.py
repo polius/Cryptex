@@ -90,7 +90,7 @@ def check_totp(a: Attempt, u: sqlite3.Row, code: str) -> None:
     step = security.verify_totp(security.unseal("totp", u["totp_ct"]).decode(), code.strip(), u["totp_last_step"])
     if step is None or db.run("UPDATE users SET totp_last_step = ? WHERE id = ? AND (totp_last_step IS NULL OR totp_last_step < ?)",
                               step, u["id"], step).rowcount != 1:
-        emit("user.sign_in_failed", actor="system", detail={"method": "totp"})
+        emit("user.sign_in_failed", actor="system", detail={"method": "totp", "account": u["username"]})
         raise a.wrong(ApiError("wrong_code", "That code didn’t work.", status=401))
 
 
@@ -180,7 +180,8 @@ def login(body: Login, request: Request, response: Response) -> dict[str, Any]:
         ok = security.verify_password(u["password_hash"] if u else None, body.auth_key)
         temp = u is not None and not ok and account.temp_password_matches(u, body.auth_key)
         if u is None or not (ok or temp):
-            emit("user.sign_in_failed", actor="system", detail={"method": "password"})
+            # Which account, when there is one (B8); never what was typed for a name that doesn't exist.
+            emit("user.sign_in_failed", actor="system", detail={"method": "password", **({"account": u["username"]} if u else {})})
             raise a.wrong(ApiError("wrong_password", "That username and password don’t match."))
     if ok and u["temp_expires_at"] is not None:  # they remembered: a temporary one waiting is only a risk
         with db.tx() as conn:
@@ -301,7 +302,7 @@ def check_password(c: Caller, auth_key: str, field: str | None = None, message: 
             return check_password(c, auth_key, field, message, own)
     held = account_limit(a, c.user["username"])
     if not security.verify_password(c.user["password_hash"], auth_key):
-        emit("user.sign_in_failed", actor="system", detail={"method": "password"})
+        emit("user.sign_in_failed", actor="system", detail={"method": "password", "account": c.user["username"]})
         raise a.wrong(ApiError("wrong_password", message, field=field))
     a.passed(held)  # a wrong 2FA code after it isn't a wrong password (audit N4)
 

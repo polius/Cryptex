@@ -21,6 +21,7 @@ export interface StoredReceipt {
   hint?: string;              // a default name when there's no title: the field names, or the first file name
   kind?: 'request';           // "Ask for a secret": `link` is the request link, `key` the private key its answer is
   key?: JsonWebKey;           // encrypted to
+  note?: string;              // a request's note, as sent with it: shown again when its answer is opened
 }
 
 import { signedInUid } from '../api/client';

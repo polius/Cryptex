@@ -26,7 +26,7 @@
 
 ## Features
 
-The server stores only ciphertext: it can't read the secret, its title, its file names or who sent it.
+The server stores only ciphertext: it can't read the secret, its title or its file names. If you send while signed in, it knows which account sent it.
 
 - **Encrypted before it leaves your browser.** The key is part of the link, so only the people you give the link to can open it.
 - **Links that expire.** Choose how long a link lasts, or make it work only once.
@@ -45,8 +45,8 @@ To try Cryptex. Browsers only allow its encryption on `https://` pages and on `l
 With Docker:
 
 ```sh
-docker run -d --pull always --name cryptex --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
+docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
+  -v "$PWD/data:/data" poliuscorp/cryptex
 ```
 
 Or with Docker Compose:
@@ -56,7 +56,7 @@ curl -fsSLO https://raw.githubusercontent.com/polius/Cryptex/main/deploy/docker-
 docker compose up -d
 ```
 
-Open `http://localhost:8080`.
+Open `http://localhost:8080`. The first screen asks for a setup code: `docker exec cryptex cryptex setup-code` prints it (it's also in `docker logs cryptex`).
 
 ### Option B: on your own domain (HTTPS, recommended)
 
@@ -77,17 +77,22 @@ You need a server with a public IP address and a domain name. [Caddy](https://ca
    docker compose up -d
    ```
 
-Open `https://yourdomain.com`.
+Open `https://yourdomain.com` and enter the setup code from `docker exec cryptex cryptex setup-code`.
 
 ### Updating
+
+Read the [release notes](https://github.com/polius/Cryptex/releases) before moving to a new major version.
 
 With Docker:
 
 ```sh
-docker rm -f cryptex
-docker run -d --pull always --name cryptex --restart unless-stopped \
-  -p 127.0.0.1:8080:8080 -v "$PWD/data:/data" poliuscorp/cryptex
+docker pull poliuscorp/cryptex
+docker stop cryptex && docker rm cryptex
+docker run -d --name cryptex --restart unless-stopped -p 127.0.0.1:8080:8080 \
+  -v "$PWD/data:/data" poliuscorp/cryptex
 ```
+
+`docker stop` lets the server finish its writes and fold its write-ahead log into the database; `docker rm -f` doesn't.
 
 Or with Docker Compose:
 
@@ -116,7 +121,7 @@ Formats: sizes `500kb`, `10mb`, `1gb` · durations `30m`, `24h`, `7d` · rates `
 
 | Variable | Default | Description |
 |---|---|---|
-| `TRUSTED_PROXIES` | private ranges | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Set it when the proxy runs on another machine. |
+| `TRUSTED_PROXIES` | `127.0.0.1,::1` | Proxy addresses or CIDRs, comma-separated, allowed to report the visitor's address. Name only your proxy: anyone listed can claim any address. The HTTPS compose file trusts its private network, which only Caddy can reach. |
 | `MIN_FREE_DISK` | `1gb` | New links are refused when they'd leave less free disk space than this. |
 
 ### Links and access
@@ -135,7 +140,7 @@ These can also be changed in the **Server** tab. Setting the variable locks them
 
 ### Rate limits
 
-Counted per visitor address.
+Counted per visitor address, or per account for someone signed in (so colleagues behind one office address don't share them).
 
 | Variable | Default | Limits |
 |---|---|---|
@@ -143,7 +148,6 @@ Counted per visitor address.
 | `RATE_REVEAL` | `120/h` | Links opened. |
 | `RATE_STATUS` | `600/h` | Status checks from *Your links*. |
 | `RATE_AUTH` | `10/15m` | Wrong passwords, 2FA, reset and setup codes. Each account also allows 30 an hour in total. |
-| `RATE_FAILED_TOKENS` | `30/h` | Wrong link tokens, then a 1-hour block. |
 
 ### Logs and metrics
 
@@ -164,9 +168,11 @@ Counted per visitor address.
 | `DEMO_UPLOAD_BYTES_PER_DAY` | `10mb` | Uploads per address per day. |
 | `DEMO_STORAGE_CAP` | `1gb` | Total storage. |
 
+These can only lower the defaults: a larger value is ignored, with a warning in the log.
+
 ## Security
 
-- Secrets are encrypted in the browser with AES-256-GCM. Passphrases go through Argon2id. The format is in [docs/crypto.md](docs/crypto.md), with test vectors.
+- Secrets are encrypted in the browser with AES-GCM under keys derived from a 128-bit link key. Passphrases go through Argon2id. The format is in [docs/crypto.md](docs/crypto.md), with test vectors.
 - Opening a link page changes nothing: revealing takes a click, so link previews and scanners can't use up a secret.
 - Passwords never reach the server. Owners can't read, open or destroy other people's links.
 - A strict Content Security Policy, no third-party requests, and no tokens or contents in logs (and no IP addresses unless `LOG_IPS` is on).

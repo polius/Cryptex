@@ -1,11 +1,14 @@
 """Send flow (create → chunks → seal) and recipient flow (meta → reveal → chunks)."""
 from __future__ import annotations
 
+import os
 import sqlite3
-from typing import Annotated, Any, Literal, NoReturn
+from collections.abc import AsyncIterator
+from typing import Annotated, Any, BinaryIO, Literal, NoReturn
 
 from fastapi import APIRouter, Path, Request, Response
 from fastapi.concurrency import run_in_threadpool
+from fastapi.responses import StreamingResponse
 from pydantic import ConfigDict, Field
 from starlette.background import BackgroundTask
 
@@ -14,7 +17,7 @@ from ..deps import Caller, caller, cap_hash, deny, matches, signed_in_here
 from ..errors import ApiError, NotFound, gone, invalid
 from ..events import emit
 from ..util import b64u, is_id, iso, new_id, new_token, now, token_hash, unb64u
-from .common import B64U, HEX64, Body, check_create_allowed, read_body
+from .common import B64U, HEX64, Body, check_create_allowed, receive_file
 
 router = APIRouter()
 MAX_TRIES = 5
@@ -48,6 +51,11 @@ def manifest_cap() -> int:
     return int(state.setting("max_message_length")) * 4 + int(state.setting("max_files")) * 1024 + 64 * 1024
 
 
+def largest_secret() -> int:
+    """The most one secret can declare under today's limits."""
+    return manifest_cap() + int(state.setting("max_files")) * int(state.setting("max_file_size"))
+
+
 @router.post("/secrets", status_code=201)
 def create_secret(body: CreateSecret, request: Request) -> dict[str, Any]:
     c = caller(request)
@@ -69,7 +77,7 @@ def create_secret(body: CreateSecret, request: Request) -> dict[str, Any]:
     total = sum(s["size"] for s in streams)
     if e.demo:
         demo.before_create(c, request, total, len(streams) - 1)
-    items.check_disk(total)
+    items.check_disk(total, f"user:{c.user_id}" if c.user_id else c.subject, largest_secret())
 
     upload, upload_h = new_token()
     manage, manage_h = new_token()
@@ -103,25 +111,41 @@ def unique_id(conn: sqlite3.Connection) -> str:
 
 # ------------------------------------------------------------------ upload
 def _uploading(request: Request, sid: str) -> sqlite3.Row:
-    c = caller(request)
-    ratelimit.check_blocked(c.ip)
+    caller(request)  # a session that ended answers 401 (X-Cryptex-User)
     h = cap_hash(request, "Upload")
     row = db.one("SELECT * FROM secrets WHERE id = ?", sid) if is_id(sid) else None
     if row is None or not matches(row["upload_hash"], h):
-        raise deny(c, presented=h is not None)
+        raise deny()
     if row["sealed"]:
         raise ApiError("already_sealed")
-    if row["upload_active_at"] < now() - items.UPLOAD_IDLE:
+    if row["upload_active_at"] < now() - items.UPLOAD_IDLE or row["created_at"] < now() - items.UPLOAD_MAX:
         raise NotFound()
     return row
+
+
+# Chunk uploads in progress, per upload: the real client sends one at a time; a few more are allowed for retries
+# that overlap a slow one, never hundreds that each pin a request (B2).
+_uploading_now: dict[str, int] = {}
+UPLOADS_PER_SECRET = 2
 
 
 @router.put("/secrets/{sid}/chunks/{stream}/{n}", status_code=204)
 async def put_chunk(sid: str, stream: StreamNo, n: ChunkNo, request: Request) -> Response:
     await run_in_threadpool(_uploading, request, sid)
-    data = await read_body(request, items.CHUNK + items.TAG)
-    await run_in_threadpool(items.store_chunk, sid, stream, n, data)
-    await run_in_threadpool(db.run, "UPDATE secrets SET upload_active_at = ? WHERE id = ?", now(), sid)
+    if _uploading_now.get(sid, 0) >= UPLOADS_PER_SECRET:
+        raise ratelimit.limited(5)
+    _uploading_now[sid] = _uploading_now.get(sid, 0) + 1
+    try:
+        tmp = await receive_file(request, items.CHUNK + items.TAG)
+        try:
+            if await run_in_threadpool(items.store_chunk, sid, stream, n, tmp, tmp.stat().st_size):
+                await run_in_threadpool(db.run, "UPDATE secrets SET upload_active_at = ? WHERE id = ?", now(), sid)
+        finally:
+            tmp.unlink(missing_ok=True)  # moved into place, or refused
+    finally:
+        _uploading_now[sid] -= 1
+        if not _uploading_now[sid]:
+            del _uploading_now[sid]
     return Response(status_code=204)
 
 
@@ -176,11 +200,10 @@ def cancel_upload(sid: str, request: Request) -> Response:
 def _revealable(request: Request, sid: str) -> tuple[Caller, sqlite3.Row]:
     """Reveal token check shared by meta, reveal and report. Changes nothing."""
     c = caller(request)
-    ratelimit.check_blocked(c.ip)
-    ratelimit.hit("reveal", state.env().rate_reveal, c.subject)
+    ratelimit.hit("reveal", state.env().rate_reveal, f"user:{c.user_id}" if c.user_id else c.subject)  # per person when signed in (M6)
     h = cap_hash(request, "Reveal")
     if not is_id(sid) or h is None:
-        raise deny(c, presented=h is not None)
+        raise deny()
     row = db.one("SELECT * FROM secrets WHERE id = ?", sid)
     if row is not None and matches(row["reveal_hash"], h):
         if not row["sealed"]:
@@ -200,7 +223,7 @@ def _gone_or_deny(c: Caller, sid: str, h: str) -> ApiError:
     tomb = db.one("SELECT * FROM tombstones WHERE id = ?", sid)
     if tomb is not None and matches(tomb["token_hash"], h):
         return gone(tomb["reason"], tomb["at"], bool(tomb["opened"]))
-    return deny(c)
+    return deny()
 
 
 @router.get("/secrets/{sid}/meta")
@@ -230,8 +253,10 @@ def reveal(sid: str, request: Request) -> dict[str, Any]:
         pc_h = token_hash(pc) if pc else None
         if pc_h is None:
             raise invalid("X-Passcheck", "This secret needs its passphrase.")
+        tries = _take_try(request, sid)
         if not matches(row["passcheck_hash"], pc_h):
-            _wrong_passphrase(request, sid)
+            _wrong_passphrase(request, sid, tries)
+        db.run("UPDATE secrets SET failed_tries = failed_tries - 1 WHERE id = ?", sid)  # the right one: give it back
 
     read, read_h = new_token()
     t = now()
@@ -254,32 +279,43 @@ def views_left(max_views: int | None, views: int) -> int | None:
     return None if max_views is None else max_views - views
 
 
-def _wrong_passphrase(request: Request, sid: str) -> NoReturn:
+def _take_try(request: Request, sid: str) -> sqlite3.Row:
+    """Take one of the MAX_TRIES before comparing, in the statement that checks one is left (B6): parallel guesses
+    can't all pass a check made before any of them counted. A right passphrase gives its try back."""
     with db.tx() as conn:
-        r = conn.execute("UPDATE secrets SET failed_tries = failed_tries + 1 WHERE id = ? RETURNING failed_tries, views",
-                         (sid,)).fetchone()
-        if r is None:  # purged by a parallel request (the fifth wrong try, a destroy, expiry)
-            raise _gone_or_deny(caller(request), sid, cap_hash(request, "Reveal") or "")
-        left = MAX_TRIES - r["failed_tries"]
-        emit("secret.passphrase_failed", secret_id=sid, detail={"tries_left": max(0, left)}, c=conn)
+        r = conn.execute("UPDATE secrets SET failed_tries = failed_tries + 1 WHERE id = ? AND failed_tries < ? "
+                         "RETURNING failed_tries, views", (sid, MAX_TRIES)).fetchone()
+    if r is not None:
+        return r
+    row = db.one("SELECT views FROM secrets WHERE id = ?", sid)
+    if row is None:  # purged by a parallel request (the fifth wrong try, a destroy, expiry)
+        raise _gone_or_deny(caller(request), sid, cap_hash(request, "Reveal") or "")
+    raise gone("too_many_tries", now(), row["views"] > 0)  # every try is taken: by guesses still being checked
+
+
+def _wrong_passphrase(request: Request, sid: str, tries: sqlite3.Row) -> NoReturn:
+    if db.val("SELECT 1 FROM secrets WHERE id = ?", sid) is None:  # purged meanwhile (a destroy, expiry, the fifth try)
+        raise _gone_or_deny(caller(request), sid, cap_hash(request, "Reveal") or "")
+    left = MAX_TRIES - tries["failed_tries"]
+    emit("secret.passphrase_failed", secret_id=sid, detail={"tries_left": max(0, left)})
     if left <= 0:
         items.purge_secret(sid, "too_many_tries", event=("secret.destroyed", {"reason": "too_many_tries"}), actor="link")
-        raise gone("too_many_tries", now(), r["views"] > 0)
+        raise gone("too_many_tries", now(), tries["views"] > 0)
     raise ApiError("wrong_passphrase", tries_left=left)
 
 
 def _read_session(request: Request, sid: str) -> sqlite3.Row:
-    c = caller(request)
+    caller(request)
     h = cap_hash(request, "Read")
     s = db.one("SELECT * FROM read_sessions WHERE token_hash = ?", h) if h else None
     if s is None or s["secret_id"] != sid or s["expires_at"] < now():
-        raise deny(c, presented=h is not None)
+        raise deny()
     return s
 
 
-def _get_chunk(sid: str, stream: int, n: int, request: Request) -> tuple[bytes, str]:
+def _get_chunk(sid: str, stream: int, n: int, request: Request) -> tuple[BinaryIO, str]:
     s = _read_session(request, sid)
-    data = items.read_chunk(sid, stream, n)
+    data = items.open_chunk(sid, stream, n)
     if data is None:
         raise NotFound()
     db.run("UPDATE chunks SET served = 1 WHERE secret_id = ? AND stream = ? AND n = ?", sid, stream, n)
@@ -317,11 +353,24 @@ def read_done(sid: str, request: Request) -> Response:
 
 @router.get("/secrets/{sid}/chunks/{stream}/{n}")
 async def get_chunk(sid: str, stream: StreamNo, n: ChunkNo, request: Request) -> Response:
-    data, session = await run_in_threadpool(_get_chunk, sid, stream, n, request)
+    f, session = await run_in_threadpool(_get_chunk, sid, stream, n, request)
+    size = os.fstat(f.fileno()).st_size
+
+    async def body() -> AsyncIterator[bytes]:
+        try:
+            while part := await run_in_threadpool(f.read, 256 * 1024):
+                yield part
+        finally:
+            f.close()
+
+    async def done() -> None:
+        f.close()  # a response that never started streaming
+        await run_in_threadpool(_keep_open, session, sent=True)
+
     # When the response is done (sent, or the connection dropped part-way), the session's clock starts again.
-    return Response(data, media_type="application/octet-stream",
-                    headers={"Content-Disposition": "attachment", "Cache-Control": "no-store"},
-                    background=BackgroundTask(run_in_threadpool, _keep_open, session, sent=True))
+    return StreamingResponse(body(), media_type="application/octet-stream",
+                             headers={"Content-Disposition": "attachment", "Cache-Control": "no-store", "Content-Length": str(size)},
+                             background=BackgroundTask(done))
 
 
 # ------------------------------------------------------------------ sender
@@ -340,7 +389,6 @@ def manage_allowed(request: Request, sid: str, manage_hash: str | None) -> bool:
 @router.delete("/secrets/{sid}", status_code=204)
 def destroy(sid: str, request: Request) -> Response:
     c = caller(request)
-    ratelimit.check_blocked(c.ip)
     row = db.one("SELECT * FROM secrets WHERE id = ?", sid) if is_id(sid) else None
     if row is not None and manage_allowed(request, sid, row["manage_hash"]):
         items.purge_secret(sid, "destroyed", event=("secret.destroyed", {"reason": "sender"}), actor=c.actor if c.user else "link",
@@ -349,9 +397,7 @@ def destroy(sid: str, request: Request) -> Response:
     tomb = db.one("SELECT manage_hash FROM tombstones WHERE id = ?", sid) if is_id(sid) else None
     if tomb is not None and manage_allowed(request, sid, tomb["manage_hash"]):
         return Response(status_code=204)  # already gone: destroying is idempotent
-    # A wrong token counts toward the failed-token block only for an item that exists: Your links can hold items
-    # whose tombstones are long gone.
-    raise deny(c, presented=cap_hash(request, "Manage") is not None and (row is not None or tomb is not None))
+    raise deny()
 
 
 # ------------------------------------------------------------------ demo reports

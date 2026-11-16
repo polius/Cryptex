@@ -74,12 +74,6 @@ def _receipt(secret_id: str, manage_hash: str, r: sqlite3.Row | None, t: sqlite3
     return out
 
 
-def known(secret_id: str) -> bool:
-    """Does the ID exist, or did it recently (a tombstone)? Only then is a wrong manage token a guess worth counting."""
-    return is_id(secret_id) and (db.val("SELECT 1 FROM secrets WHERE id = ?", secret_id) is not None
-                                 or db.val("SELECT 1 FROM tombstones WHERE id = ?", secret_id) is not None)
-
-
 class Pair(Body):
     id: str = Field(max_length=16)
     manage_token: str = Field(max_length=64)
@@ -90,19 +84,14 @@ class Lookup(Body):
 
 
 def status_request(c: Caller) -> None:
-    """Receipt lookups (Your links, the receipt page): the failed-token block, then RATE_STATUS."""
-    ratelimit.check_blocked(c.ip)
-    ratelimit.hit("status", state.env().rate_status, c.subject)
+    """Receipt lookups (Your links, the receipt page): RATE_STATUS, per person when signed in (M6: colleagues behind
+    one office address don't share it), per address otherwise."""
+    ratelimit.hit("status", state.env().rate_status, f"user:{c.user_id}" if c.user_id else c.subject)
 
 
-def proven(c: Caller, pairs: list[Pair], *, with_events: bool = True) -> list[dict[str, Any]]:
-    """The receipts these (id, manage token) pairs prove. A wrong token for an ID that exists (or did, recently)
-    counts toward RATE_FAILED_TOKENS; unknown IDs don't, since Your links can hold items long purged."""
+def proven(pairs: list[Pair], *, with_events: bool = True) -> list[dict[str, Any]]:
+    """The receipts these (id, manage token) pairs prove; the rest are left out."""
     found = receipts([(p.id, token_hash(p.manage_token)) for p in pairs], with_events=with_events)
-    wrong = [p.id for p, r in zip(pairs, found, strict=True) if r is None]
-    gone_ids = set(_by_id("secrets", wrong)) | set(_by_id("tombstones", wrong))
-    if n := sum(1 for i in wrong if i in gone_ids):
-        ratelimit.failed_token(c.ip, n)
     return [r for r in found if r is not None]
 
 
@@ -110,7 +99,7 @@ def proven(c: Caller, pairs: list[Pair], *, with_events: bool = True) -> list[di
 def lookup(body: Lookup, request: Request) -> dict[str, Any]:
     c = caller(request)
     status_request(c)
-    return {"items": proven(c, body.items)}
+    return {"items": proven(body.items)}
 
 
 _CURSOR = re.compile(r"^(\d{1,12})\.([0-9A-Za-z]{10})$")
@@ -144,11 +133,11 @@ class Attach(Body):
 def attach(body: Attach, request: Request) -> dict[str, Any]:
     """Save links this browser holds to the signed-in account (links made before signing in, or kept here when the
     account couldn't save them), so their statuses follow the account. Each must prove its manage token; as for a
-    lookup, a wrong token counts toward RATE_FAILED_TOKENS only for an ID that exists or has a tombstone."""
+    lookup, a wrong token just leaves that item out."""
     c = require_session(request)
     status_request(c)
     hashes = {p.id: token_hash(p.manage_token) for p in body.items}
-    ids = [r["id"] for r in proven(c, body.items, with_events=False)]
+    ids = [r["id"] for r in proven(body.items, with_events=False)]
     with db.tx() as conn:
         conn.executemany("INSERT OR IGNORE INTO user_receipts(user_id, secret_id, manage_hash, added_at) VALUES (?,?,?,?)",
                          [(c.user_id, i, hashes[i], now()) for i in ids])
@@ -165,7 +154,6 @@ def detach(secret_id: str, request: Request) -> Response:
 @router.get("/receipts/{secret_id}")
 def get_receipt(secret_id: str, request: Request) -> dict[str, Any]:
     c = caller(request)
-    ratelimit.check_blocked(c.ip)
     presented = cap_hash(request, "Manage")
     h = presented
     if h is None and c.user_id:
@@ -173,5 +161,5 @@ def get_receipt(secret_id: str, request: Request) -> dict[str, Any]:
     out = receipt(secret_id, h)
     if out is None:
         # Counted only for an ID that exists (or has a tombstone): Your links asks about items long gone.
-        raise deny(c, presented=presented is not None and known(secret_id))
+        raise deny()
     return out

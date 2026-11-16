@@ -5,9 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="referrer" content="no-referrer">
   <meta name="theme-color" content="#F4F6F9">
-  <meta name="description" content="Share passwords, private notes and files through end-to-end encrypted links that expire. Only the people you send the link to can read it.">
+  <meta name="description" content="Share passwords, private notes and files through end-to-end encrypted links that expire. Only people with the link can read it.">
   <meta property="og:title" content="Cryptex">
-  <meta property="og:description" content="Share passwords, private notes and files through end-to-end encrypted links that expire. Only the people you send the link to can read it.">
+  <meta property="og:description" content="Share passwords, private notes and files through end-to-end encrypted links that expire. Only people with the link can read it.">
   <meta property="og:image" content="/og-image.png">
   <title>Cryptex</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
@@ -17,7 +17,7 @@
   <script src="/theme.js"></script>
 </head>
 <body>
-  <div id="app"><noscript><main class="main narrow"><h1 class="h1">Cryptex needs JavaScript</h1><p class="lede">Cryptex needs a current browser to decrypt secrets on your device.</p></main></noscript></div>
+  <div id="app"><main class="main narrow" aria-hidden="true"><div class="skeleton h1"></div></main><noscript><main class="main narrow"><h1 class="h1">Cryptex needs JavaScript</h1><p class="lede">Cryptex needs a current browser to decrypt secrets on your device.</p></main></noscript></div>
   <script type="module" src="/src/main.tsx"></script>
 </body>
 </html>

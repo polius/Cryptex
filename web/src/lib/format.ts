@@ -1,5 +1,16 @@
-/** Sizes, durations and dates, in English and the viewer's time zone. */
+/** Sizes, durations and dates, in the viewer's time zone. Words (units, "in 3 hours") are English like the copy;
+ *  dates, times and plain numbers follow the browser's locale (V1): 17:18 in Madrid, 5:18 PM in New York. */
 import { LOCALE } from './i18n';
+
+/** The browser's locale for dates and numbers, falling back to English. */
+export const READER = (() => {
+  try {
+    const l = typeof navigator !== 'undefined' ? navigator.languages?.[0] ?? navigator.language : undefined;
+    return l ? Intl.DateTimeFormat.supportedLocalesOf([l])[0] ?? LOCALE : LOCALE;
+  } catch {
+    return LOCALE;
+  }
+})();
 
 const unit = (n: number, u: string, unitDisplay: 'long' | 'short' = 'long') =>
   new Intl.NumberFormat(LOCALE, { style: 'unit', unit: u, unitDisplay }).format(n);
@@ -42,33 +53,46 @@ export function shortDuration(seconds: number): string {
   return unit(Math.max(1, m), 'minute', 'short');
 }
 
-const dtf = () => new Intl.DateTimeFormat(LOCALE, { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
-const df = () => new Intl.DateTimeFormat(LOCALE, { weekday: 'short', day: 'numeric', month: 'short' });
-const tf = () => new Intl.DateTimeFormat(LOCALE, { hour: '2-digit', minute: '2-digit' });
+const HM = { hour: 'numeric', minute: '2-digit' } as const;
+/** The year only when it isn't this one. */
+const year = (d: Date) => (d.getFullYear() !== new Date().getFullYear() ? { year: 'numeric' as const } : {});
+const fmt = (d: Date, o: Intl.DateTimeFormatOptions, locale = READER) => new Intl.DateTimeFormat(locale, o).format(d);
 
-export const dateTime = (iso: string | number | Date) => dtf().format(new Date(iso));
-export const date = (iso: string | number | Date) => df().format(new Date(iso));
-export const time = (iso: string | number | Date) => tf().format(new Date(iso));
+export const dateTime = (iso: string | number | Date) => {
+  const d = new Date(iso);
+  return fmt(d, { weekday: 'short', day: 'numeric', month: 'short', ...year(d), ...HM });
+};
+export const date = (iso: string | number | Date) => {
+  const d = new Date(iso);
+  return fmt(d, { weekday: 'short', day: 'numeric', month: 'short', ...year(d) });
+};
+export const time = (iso: string | number | Date) => fmt(new Date(iso), HM);
+/** Date and time in full, for logs kept a long time (the audit log): never just "Mar 2". */
+export const fullStamp = (iso: string | number | Date) => fmt(new Date(iso), { day: 'numeric', month: 'short', year: 'numeric', ...HM });
 
-/** Short stamp for lists: time today, weekday + time this week, else date. */
+/** Short stamp for lists: time today, weekday + time this week, else the date. */
 export function stamp(iso: string | number | Date): string {
   const d = new Date(iso);
   const now = new Date();
   if (d.toDateString() === now.toDateString()) return time(d);
-  if (Math.abs(now.getTime() - d.getTime()) < 6 * 86400_000) {
-    return new Intl.DateTimeFormat(LOCALE, { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(d);
-  }
-  return new Intl.DateTimeFormat(LOCALE, { day: 'numeric', month: 'short' }).format(d);
+  if (Math.abs(now.getTime() - d.getTime()) < 6 * 86400_000) return fmt(d, { weekday: 'short', ...HM });
+  return fmt(d, { day: 'numeric', month: 'short', ...year(d) });
 }
 
+/** "in 21 hours", "3 minutes ago", and from 48 hours on calendar days: "in 3 days". Never "tomorrow" for later today. */
 export function relative(iso: string | number | Date, now = Date.now()): string {
-  const diff = (new Date(iso).getTime() - now) / 1000;
+  const at = new Date(iso).getTime();
+  const diff = (at - now) / 1000;
   const rtf = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' });
   const abs = Math.abs(diff);
   if (abs < 60) return rtf.format(Math.round(diff), 'second');
   if (abs < 3600) return rtf.format(Math.round(diff / 60), 'minute');
-  if (abs < 20 * 3600) return rtf.format(Math.round(diff / 3600), 'hour');
-  return rtf.format(Math.round(diff / 86400), 'day');
+  if (abs < 48 * 3600) return rtf.format(Math.round(diff / 3600), 'hour');
+  const day = (t: number) => {
+    const d = new Date(t);
+    return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / 86400_000;
+  };
+  return rtf.format(day(at) - day(now), 'day');
 }
 
 /** What people sign in with (api/cryptex/account.py USERNAME): 2 to 32 letters, numbers, dots, dashes or underscores. */
@@ -93,4 +117,4 @@ export const MIN_EXPIRES_IN = 300;
 /** Any length works; the cap only stops a pasted novel from being hashed on every try. */
 export const MAX_PASSPHRASE = 256;
 
-export const num = (n: number) => new Intl.NumberFormat(LOCALE).format(n);
+export const num = (n: number) => new Intl.NumberFormat(READER).format(n);

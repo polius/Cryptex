@@ -6,7 +6,7 @@ import { askedHere, carryOver, finishReveal, loadMeta, openedHere, readingGone, 
 import { bytes, dateTime, MAX_PASSPHRASE } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { dropFragment } from '../../lib/router';
-import { config, toast } from '../../lib/state';
+import { answerOf, config, toast } from '../../lib/state';
 import { Banner, Btn, ErrMsg, H1, masked, Outcome, Status, useViewFocus } from '../../ui/bits';
 import { AppHeader, host, Page, RecipientHeader } from '../../ui/chrome';
 import { Icon, Mark } from '../../ui/icons';
@@ -45,6 +45,7 @@ export function Reveal({ id }: { id: string }) {
   const K = useRef<Uint8Array | null>(null);
   const inFlight = useRef(false); // Enter twice, or Enter and a click, must not ask the server twice
   const reading = useRef<Reading | null>(null); // after POST /reveal, until everything is shown
+  const downloading = useRef<AbortController | null>(null); // Cancel stops the download; Try again continues it (S9)
   // The page changes in place: its heading takes focus once it has loaded, and again when a state replaces another
   // (the stopped download, an error, cleared), since the button that was pressed is gone. Revealing is still the
   // sealed page, its button busy; the revealed secret takes focus itself (doReveal).
@@ -115,12 +116,16 @@ export function Reveal({ id }: { id: string }) {
    *  view, nothing lost); a one-time link can't be, so its gone read session ends the download. */
   async function download(o: Opened, progress: (done: number, total: number) => void): Promise<Revealed> {
     const r = reading.current!;
+    const ctrl = new AbortController();
+    downloading.current = ctrl;
     try {
-      return await finishReveal(r, progress);
+      return await finishReveal(r, progress, ctrl.signal);
     } catch (e) {
       if (!readingGone(e) || r.views_left === 0) throw e;
       reading.current = carryOver(r, await startReveal(id, K.current!, o, { passphrase: pass }));
-      return finishReveal(reading.current, progress);
+      return finishReveal(reading.current, progress, ctrl.signal);
+    } finally {
+      downloading.current = null;
     }
   }
 
@@ -249,16 +254,25 @@ export function Reveal({ id }: { id: string }) {
   const badge = m.passphrase ? t('reveal.needs_passphrase') : t('reveal.sealed');
   const nf = o.fields ?? 0;
   const contents = nf || m.files ? t('reveal.contents', { fields: nf, files: m.files, both: nf > 0 && m.files > 0 }) : t('reveal.a_message');
+  // An answer to the person's own request: name the request and quote its note; nobody "sent you" this.
+  const ans = answerOf.value?.answerId === id ? answerOf.value : null;
   return page(
     <section class="sealed">
       <div class={`sealed-top tint${revealing ? ' lifting' : ''}`}><span class="seal-badge"><Mark open={revealing} />{badge}</span></div>
       <div class="sealed-body">
-        <p class="from">{o.from ? rich(config.value?.brand.name ? 'reveal.from' : 'reveal.from_no_brand', { sender: <b>{o.from}</b>, brand })
-          : config.value?.brand.name ? rich('reveal.from_brand', { brand: <b>{brand}</b> }) : t('reveal.from_no_brand', { sender: t('reveal.someone') })}</p>
-        <H1>{o.title || t('reveal.a_secret')}</H1>
+        {ans ? <p class="from">{rich('reveal.answer_to', { code: <b class="mono">{ans.code}</b> })}</p> : <p class="from">{o.from ? rich(config.value?.brand.name ? 'reveal.from' : 'reveal.from_no_brand', { sender: <b>{o.from}</b>, brand })
+          : config.value?.brand.name ? rich('reveal.from_brand', { brand: <b>{brand}</b> }) : t('reveal.from_no_brand', { sender: t('reveal.someone') })}</p>}
+        <H1>{o.title || (ans ? t('reveal.answer_title') : t('reveal.a_secret'))}</H1>
+        {ans?.note && (
+          <figure class="ask-said">
+            <figcaption><Icon name="user" size="sm" />{t('reveal.answer_note')}</figcaption>
+            <blockquote>{ans.note}</blockquote>
+          </figure>
+        )}
         <ul class="list">
           <li><Icon name="key" /><span>{m.files ? rich('reveal.contents_size', { contents: <b>{contents.charAt(0).toUpperCase() + contents.slice(1)}</b>, size: bytes(m.size) }) : <b>{contents.charAt(0).toUpperCase() + contents.slice(1)}</b>}</span></li>
-          <li><Icon name="eye" />{m.views_left === 1 ? <span>{rich('reveal.opens_once_rich', { lead: <b>{t('reveal.opens_once_lead')}</b> })}</span> : <span>{t('reveal.opens_until_expiry')}</span>}</li>
+          {ans?.answeredAt && <li><Icon name="inbox" /><span>{t('reveal.answered_at', { date: dateTime(ans.answeredAt) })}</span></li>}
+          {!ans && <li><Icon name="eye" />{m.views_left === 1 ? <span>{rich('reveal.opens_once_rich', { lead: <b>{t('reveal.opens_once_lead')}</b> })}</span> : <span>{t('reveal.opens_until_expiry')}</span>}</li>}
           <li><Icon name="clock" /><span>{t('reveal.available_until', { date: dateTime(m.expires_at) })}</span></li>
         </ul>
         {m.passphrase && (
@@ -270,16 +284,18 @@ export function Reveal({ id }: { id: string }) {
                 onInput={(e) => setPass((e.target as HTMLInputElement).value)} onKeyDown={(e) => e.key === 'Enter' && pass && void doReveal(o)} />
               <button type="button" class="btn icon sm ghost" aria-label={passShown ? t('reveal.hide') : t('reveal.show')} onClick={() => setPassShown(!passShown)}><Icon name={passShown ? 'eyeoff' : 'eye'} size="sm" /></button>
             </div>
-            {!err && <p class="fine" id="pass-hint" style="margin-top:8px">{o.from ? t('reveal.passphrase_hint', { sender: o.from }) : t('reveal.passphrase_hint_anon')}</p>}
+            {!err && <p class="fine" id="pass-hint" style="margin-top:8px">{o.from ? t('reveal.passphrase_hint', { sender: o.from }) : t('reveal.passphrase_hint_anon')}{' '}
+              {t('reveal.passphrase_tries', { n: m.tries_left ?? 5 })}</p>}
           </div>
         )}
         {err && <ErrMsg id="pass-err">{err}</ErrMsg>}
         <div class="actions-m">
           <Btn kind="primary" class="lg full" icon="eye" loading={busy || revealing} disabled={m.passphrase && !pass} onClick={() => doReveal(o)}>
-            {revealing ? (s.pct ? t('reveal.decrypting_pct', { pct: s.pct }) : t('reveal.decrypting')) : err && m.passphrase ? t('send.try_again') : t('reveal.reveal')}
+            {revealing ? (s.pct ? t('reveal.decrypting_pct', { pct: s.pct }) : t('reveal.decrypting')) : t('reveal.reveal')}
           </Btn>
+          {revealing && m.files > 0 && <button type="button" class="btn secondary" onClick={() => downloading.current?.abort()}>{t('send.cancel')}</button>}
         </div>
-        <p class="fine">{rich(config.value?.brand.name ? 'reveal.nothing_opened' : 'reveal.nothing_opened_no_brand', { brand: config.value?.brand.name, host: <span class="mono">{host()}</span> })}</p>
+        <p class="fine">{ans ? t('reveal.answer_only_you') : t(config.value?.brand.name ? 'reveal.nothing_opened' : 'reveal.nothing_opened_no_brand')} {t('reveal.idle_note')}</p>
         {demo && <p class="fine"><button type="button" class="link small" disabled={reporting || revealing} onClick={() => void doReport(o)}>{t('reveal.report')}</button></p>}
       </div>
     </section>,

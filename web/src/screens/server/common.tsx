@@ -92,6 +92,14 @@ export function LoadError({ error, retry }: { error: string; retry: () => void }
 // The server alone decides when identity must be confirmed (403 reauth_required): this tab keeps no clock of its own.
 let openReauth: ((retry: () => Promise<void>) => void) | null = null;
 
+/** For a form that shows its own errors (Limits, Branding, the logo): when the server asks to confirm identity (B7),
+ *  show the dialog and run `again` after it; true when it did. */
+export function reauthThen(e: unknown, again: () => unknown): boolean {
+  if (!(e instanceof ApiError && e.code === 'reauth_required' && openReauth)) return false;
+  openReauth(async () => void again());
+  return true;
+}
+
 /** Run a sensitive change; if the server asks to confirm identity, show the dialog and run it again after. A failure
  *  of the retry is reported the same way (a toast), not lost in the closed dialog. */
 export async function sensitive(fn: () => Promise<void>): Promise<void> {

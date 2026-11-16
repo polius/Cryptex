@@ -1,17 +1,17 @@
 /** Server tab sections E1–E5 and E7. */
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { api } from '../../api/client';
-import { bytes, dateTime, fold, num, relative, stamp, USERNAME } from '../../lib/format';
+import { bytes, dateTime, fold, fullStamp, num, relative, stamp, USERNAME } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
 import { loadConfig, toast } from '../../lib/state';
 import { Btn, copyText, ErrMsg, Radio, Status } from '../../ui/bits';
-import { confirmDialog } from '../../ui/confirm';
+import { confirmChoice, confirmDialog } from '../../ui/confirm';
 import { BrandLockup } from '../../ui/chrome';
 import { Dialog } from '../../ui/dialog';
 import { Icon, Mark } from '../../ui/icons';
 import { LogoDrop } from '../../ui/logo';
 import { errorText } from '../errors';
-import { Heading, LoadError, Lock, readOnly, SaveBar, sensitive, ServerShell, useServer } from './common';
+import { Heading, LoadError, Lock, readOnly, reauthThen, SaveBar, sensitive, ServerShell, useServer } from './common';
 import { actorText, eventText, EVENT_GROUPS, type AuditRow } from './labels';
 
 // ------------------------------------------------------------------ E1 overview
@@ -29,17 +29,23 @@ const ATTN: Record<string, (a: Overview['attention'][number]) => { title: string
   cleanup: (a) => ({ title: t('server.attn_cleanup_title'), body: t('server.attn_cleanup', { minutes: a.minutes }) }),
 };
 
+const RELEASES = 'https://github.com/polius/cryptex/releases';
+
 export function OverviewSection() {
   const { data, error, reload } = useServer<Overview>('/server/overview');
   const host = location.host;
   return (
     <ServerShell active="overview">
-      <Heading title={t('server.overview')} lede={data ? (data.update_available ? t('server.overview_lede_update', { host, version: data.version, update: data.update_available }) : t('server.overview_lede', { host, version: data.version })) : ' '} />
+      <Heading title={t('server.overview')} lede={data ? (data.update_available ? t('server.overview_lede_update', { host, version: data.version, update: data.update_available })
+        // The server never checks for updates (it makes no outbound requests): point to the releases, claim nothing (M3).
+        : rich('server.overview_lede', { host, version: data.version, releases: <a class="link" href={RELEASES} rel="external noopener" target="_blank">{t('server.see_releases')}</a> })) : ' '} />
       {error && <LoadError error={error} retry={reload} />}
       {data && (
         <>
           <div class="health">
+            {/* What Cryptex stores, as text; the bar is the host's disk, which other things fill too (M10). */}
             <div class="metric"><small>{t('server.storage')}</small><b>{rich('server.storage_used', { size: bytes(data.storage.used), stored: <span>{t('server.stored')}</span> })}</b>
+              <span class="sub">{t('server.disk')}</span>
               <div class="meter" role="meter" aria-valuenow={data.storage.disk_total - data.storage.disk_free} aria-valuemin={0} aria-valuemax={data.storage.disk_total} aria-label={t('server.disk_used')}>
                 <i style={{ width: `${Math.min(100, Math.max(2, (100 * (data.storage.disk_total - data.storage.disk_free)) / Math.max(1, data.storage.disk_total)))}%` }} /></div>
               <span class="sub">{t('server.disk_free', { free: bytes(data.storage.disk_free), total: bytes(data.storage.disk_total) })}</span></div>
@@ -77,7 +83,7 @@ export function OverviewSection() {
 // ------------------------------------------------------------------ E2 access and people
 interface Person {
   id: string; username: string; role: 'owner' | 'member'; status: 'active' | 'invited' | 'expired' | 'reset' | 'locked';
-  invite_expires_at: string | null; reset_expires_at: string | null; last_seen_at: string | null;
+  invite_expires_at: string | null; reset_expires_at: string | null; last_seen_at: string | null; live_links?: number;
 }
 interface Access { mode: 'anyone' | 'signed_in'; locked_by: string | null; people: Person[]; me: string }
 interface InviteLink { name: string; invite_url: string; expires_at: string }
@@ -91,14 +97,30 @@ export function AccessSection() {
   // goes back there when it closes.
   const inviteFrom = useRef<HTMLElement | null>(null);
   const [resetting, setResetting] = useState<Person | null>(null);
-  const setMode = (mode: 'anyone' | 'signed_in') => sensitive(async () => {
-    await api('PUT', '/server/access', { body: { mode } });
-    toast(t('toast.saved'));
-    await loadConfig();
-    reload();
-  });
+  // Staged like every other setting (M8): arrowing through the radios, or a stray click, changes nothing until Save.
+  const [mode, setMode] = useState<Access['mode'] | null>(null);
+  const [savingMode, setSavingMode] = useState(false);
+  const saveMode = async () => {
+    if (mode === 'anyone' && !(await confirmDialog({ title: t('access.open_title'), body: t('access.open_body'), confirm: t('access.open_confirm') }))) return;
+    setSavingMode(true);
+    try {
+      await sensitive(async () => {
+        await api('PUT', '/server/access', { body: { mode } });
+        toast(t('toast.saved'));
+        setMode(null);
+        await loadConfig();
+        reload();
+      });
+    } finally {
+      setSavingMode(false);
+    }
+  };
   const name = (p: Person) => p.username;
-  const setRole = (p: Person, role: 'owner' | 'member') => sensitive(async () => {
+  const setRole = async (p: Person, role: 'owner' | 'member') => {
+    if (role === 'owner' && !(await confirmDialog({ title: t('access.owner_title', { name: name(p) }), body: t('access.owner_body'), confirm: t('people.make_owner') }))) return;
+    return setRoleNow(p, role);
+  };
+  const setRoleNow = (p: Person, role: 'owner' | 'member') => sensitive(async () => {
     await api('PATCH', `/server/users/${p.id}`, { body: { role } });
     toast(t('access.role_now', { name: name(p), role }));
     reload();
@@ -113,12 +135,14 @@ export function AccessSection() {
     });
   };
   const remove = async (p: Person) => {
-    if (!(await confirmDialog({
-      title: t('access.remove_title', { name: name(p) }), confirm: t('people.remove'), danger: true,
-      body: t('access.remove_body'),
-    }))) return;
+    // Their live links can go with them (M7): on by default, the offboarding case.
+    const ask = { title: t('access.remove_title', { name: name(p) }), confirm: t('people.remove'), danger: true };
+    const { ok, choice: destroy } = p.live_links
+      ? await confirmChoice({ ...ask, body: t('access.remove_body_links'), choice: { label: t('access.remove_destroy_links', { n: p.live_links }), on: true } })
+      : { ok: await confirmDialog({ ...ask, body: t('access.remove_body') }), choice: false };
+    if (!ok) return;
     await sensitive(async () => {
-      await api('DELETE', `/server/users/${p.id}`);
+      await api('DELETE', `/server/users/${p.id}${destroy ? '?destroy_links=true' : ''}`);
       toast(t('access.removed', { name: name(p) }));
       reload();
     });
@@ -135,8 +159,8 @@ export function AccessSection() {
             <div class="set"><div class="k"><b>{t('setup.access')}</b><small>{t('access.mode_help')}</small></div>
               <div class="stack">
                 <div class="radios" role="radiogroup" aria-label={t('setup.access')}>
-                  <Radio name="mode" on={data.mode === 'anyone'} onSelect={() => setMode('anyone')} title={t('access.anyone')} help={t('access.anyone_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
-                  <Radio name="mode" on={data.mode === 'signed_in'} onSelect={() => setMode('signed_in')} title={t('access.signed_in')} help={t('access.signed_in_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
+                  <Radio name="mode" on={(mode ?? data.mode) === 'anyone'} onSelect={() => setMode(data.mode === 'anyone' ? null : 'anyone')} title={t('access.anyone')} help={t('access.anyone_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
+                  <Radio name="mode" on={(mode ?? data.mode) === 'signed_in'} onSelect={() => setMode(data.mode === 'signed_in' ? null : 'signed_in')} title={t('access.signed_in')} help={t('access.signed_in_help')} disabled={data.locked_by || readOnly() ? ' ' : undefined} />
                 </div>
                 {data.locked_by && <Lock vars={data.locked_by} />}
               </div></div>
@@ -157,6 +181,10 @@ export function AccessSection() {
                 <button type="button" class="link" onClick={() => setQ('')}>{t('links.search_clear')}</button></p>}
           </section>
         </>
+      )}
+      {mode && (
+        <SaveBar summary={t('server.unsaved', { n: 1 })} busy={savingMode} onDiscard={() => setMode(null)} onSave={() => void saveMode()}
+          back={() => document.querySelector<HTMLElement>('.radios input:checked')} />
       )}
       {adding && <AddPersonDialog onClose={() => setAdding(false)} onAdded={(link) => { setAdding(false); setInvite(link); reload(); }} />}
       {invite && <InviteDialog invite={invite} returnTo={inviteFrom.current} onClose={() => setInvite(null)} />}
@@ -188,9 +216,9 @@ function PeopleTable({ people, me, onRole, onInvite, onRemove }: {
                 : p.status === 'locked' ? <Status kind="danger">{t('people.locked')}</Status>
                   : <Status kind="expired">{t('people.invite_expired')}</Status>}</td>
           <td style="text-align:right;white-space:nowrap">{!readOnly() && p.id !== me && <>
-            <button class="btn sm ghost" onClick={() => onRole(p, p.role === 'owner' ? 'member' : 'owner')}>{p.role === 'owner' ? t('people.make_member') : t('people.make_owner')}</button>
-            <button class="btn sm ghost" onClick={() => onInvite(p)}>{p.status === 'invited' || p.status === 'expired' ? t('people.new_invite') : t('people.reset_signin')}</button>
-            <button class="btn sm ghost danger" onClick={() => onRemove(p)}>{t('people.remove')}</button>
+            <button class="btn sm ghost" aria-label={t(p.role === 'owner' ? 'people.make_member_named' : 'people.make_owner_named', { name: p.username })} onClick={() => onRole(p, p.role === 'owner' ? 'member' : 'owner')}>{p.role === 'owner' ? t('people.make_member') : t('people.make_owner')}</button>
+            <button class="btn sm ghost" aria-label={t(p.status === 'invited' || p.status === 'expired' ? 'people.new_invite_named' : 'people.reset_signin_named', { name: p.username })} onClick={() => onInvite(p)}>{p.status === 'invited' || p.status === 'expired' ? t('people.new_invite') : t('people.reset_signin')}</button>
+            <button class="btn sm ghost danger" aria-label={t('people.remove_named', { name: p.username })} onClick={() => onRemove(p)}>{t('people.remove')}</button>
           </>}</td>
         </tr>
       ))}</tbody>
@@ -347,6 +375,7 @@ export function LimitsSection() {
       reload();
       void loadConfig();
     } catch (e) {
+      if (reauthThen(e, save)) return;
       const f = (e as { field?: string }).field;
       if (f) setServerErr({ [f]: errorText(e) });
       else toast(errorText(e), 'error');
@@ -416,6 +445,7 @@ export function BrandingSection() {
       reload();
       void loadConfig();
     } catch (e) {
+      if (reauthThen(e, save)) return;
       setErr(errorText(e));
     } finally {
       setBusy(false);
@@ -507,7 +537,7 @@ export function AuditSection() {
         <tbody aria-busy={loading || undefined}>
           {rows.length === 0 && !loading && !error && <tr><td colSpan={4} class="muted">{t('audit.no_match')}</td></tr>}
           {rows.length === 0 && loading && <tr><td colSpan={4}><div class="skeleton line" /></td></tr>}
-          {rows.map((e) => <tr key={e.id}><td class="mono">{stamp(e.at)}</td><td>{eventText(e)}</td><td class={e.actor === 'link' || e.actor === 'system' ? 'muted' : ''}>{actorText(e)}</td><td class={e.item ? 'mono' : 'mono none'}>{e.item ?? '—'}</td></tr>)}
+          {rows.map((e) => <tr key={e.id}><td class="mono">{fullStamp(e.at)}</td><td>{eventText(e)}</td><td class={e.actor === 'link' || e.actor === 'system' ? 'muted' : ''}>{actorText(e)}</td><td class={e.item ? 'mono' : 'mono none'}>{e.item ?? '—'}</td></tr>)}
         </tbody>
       </table></div></section>
       {next && <Btn kind="secondary" class="load-more" loading={moreBusy} onClick={more}>{t('audit.load_more')}</Btn>}

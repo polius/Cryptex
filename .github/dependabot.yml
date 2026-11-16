@@ -1,7 +1,9 @@
 version: 2
 # Every update goes through CI (api, web, e2e, image). Low-risk ones merge themselves once it passes
 # (.github/workflows/dependabot-automerge.yml): patch releases, minor releases from 1.0 on, and base-image digest
-# refreshes of the same tag. Everything else waits for review.
+# refreshes of the same tag. Everything else waits for review, and so do GitHub Actions (they run with the release
+# secrets) and the crypto libraries (cryptography, argon2-cffi, hash-wasm), whatever the update (D8).
+# A release has to be 7 days old before it's proposed (cooldown), so a compromised one has time to be noticed.
 
 # @playwright/test (e2e/package.json) and the Playwright image (e2e/compose.yml) must be the same version,
 # so they move together in one pull request.
@@ -18,6 +20,8 @@ updates:
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
+    cooldown:
+      default-days: 7
     groups:
       github-actions:
         patterns: ["*"]
@@ -28,6 +32,8 @@ updates:
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
+    cooldown:
+      default-days: 7
     groups:
       pip-api:
         patterns: ["*"]
@@ -38,6 +44,8 @@ updates:
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
+    cooldown:
+      default-days: 7
     groups:
       npm-web:
         patterns: ["*"]
@@ -47,10 +55,14 @@ updates:
     directory: "/e2e"
     patterns: ["*"]
     multi-ecosystem-group: "e2e"
+    cooldown:
+      default-days: 7
   - package-ecosystem: "docker-compose"
     directory: "/e2e"
     patterns: ["*"]
     multi-ecosystem-group: "e2e"
+    cooldown:
+      default-days: 7
 
   # Base images in the Dockerfile (pinned by digest; updates keep the tag and the digest)
   - package-ecosystem: "docker"
@@ -58,6 +70,8 @@ updates:
     schedule:
       interval: "weekly"
     labels: ["dependencies"]
+    cooldown:
+      default-days: 7
     groups:
       docker:
         patterns: ["*"]

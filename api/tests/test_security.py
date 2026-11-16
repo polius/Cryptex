@@ -58,14 +58,18 @@ def test_upload_is_closed_after_seal(client):
     assert r.status_code == 409 and r.json()["error"]["code"] == "already_sealed"
 
 
-def test_failed_tokens_block_the_ip_for_an_hour(server):
-    c = server(RATE_FAILED_TOKENS="5/h")
+def test_wrong_tokens_never_block_the_address(server):
+    """B3: 30 wrong tokens from one address (a mistyped link, a mail scanner, a colleague behind the same NAT) used to
+    block opening, uploading and checking links from it for an hour. Tokens are 128 to 256 bits: no block, only the
+    ordinary rate limits."""
+    c = server()
     s = send(c)
-    stranger = anon(c)
-    for _ in range(5):
-        assert stranger.get(f"/api/v1/secrets/{s.id}/meta", headers={"Authorization": "Reveal " + "C" * 43}).status_code == 404
-    r = stranger.get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers())
-    assert r.status_code == 429 and int(r.headers["Retry-After"]) > 3500
+    office = anon(c)
+    for _ in range(30):
+        assert office.get(f"/api/v1/secrets/{s.id}/meta", headers={"Authorization": "Reveal " + "C" * 43}).status_code == 404
+        assert office.get(f"/api/v1/receipts/{s.id}", headers={"Authorization": "Manage " + "A" * 43}).status_code == 404
+    assert office.get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers()).status_code == 200
+    assert office.get(f"/api/v1/receipts/{s.id}", headers=s.manage_headers()).status_code == 200
 
 
 def test_ipv6_addresses_are_grouped_by_64(server):
@@ -858,6 +862,15 @@ def test_resending_a_chunk_leaves_one_blob(client):
     assert len(chunk_files()) == len(before)
 
 
+def _incoming(data: bytes):
+    """A chunk as put_chunk has it: streamed into a temporary file (B2)."""
+    from cryptex import storage
+    f, path = storage.get().incoming()
+    with f:
+        f.write(data)
+    return path, len(data)
+
+
 def test_a_chunk_that_loses_a_race_leaves_no_blob(client, monkeypatch):
     from cryptex import storage
     from cryptex.errors import NotFound
@@ -865,21 +878,21 @@ def test_a_chunk_that_loses_a_race_leaves_no_blob(client, monkeypatch):
     st = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = 0", s.id)
     data = b"z" * items.expected_chunk_size(st, 0)
     blobs = storage.get()
-    real_put = blobs.put
+    real_put = blobs.put_file
 
-    def cancelled_meanwhile(d):
-        key = real_put(d)
+    def cancelled_meanwhile(tmp):
+        key = real_put(tmp)
         items.purge_secret(s.id, None)  # DELETE /upload, between the checks and the row
         return key
-    monkeypatch.setattr(blobs, "put", cancelled_meanwhile)
+    monkeypatch.setattr(blobs, "put_file", cancelled_meanwhile)
     with pytest.raises(NotFound):
-        items.store_chunk(s.id, 0, 0, data)
-    monkeypatch.setattr(blobs, "put", real_put)
+        items.store_chunk(s.id, 0, 0, *_incoming(data))
+    monkeypatch.setattr(blobs, "put_file", real_put)
     assert chunk_files() == [] and db.val("SELECT count(*) FROM chunks") == 0
     s = send(client, upload=True)
     with pytest.raises(Exception, match="already_sealed"):
-        items.store_chunk(s.id, 0, 0, data)
-    assert db.val("SELECT count(*) FROM chunks") == len(chunk_files())
+        items.store_chunk(s.id, 0, 0, *_incoming(data))
+    assert db.val("SELECT count(*) FROM chunks") == len([p for p in chunk_files() if p.parent.name != "incoming"])
 
 
 def test_parallel_uploads_of_one_chunk_leave_no_orphans(client):
@@ -888,7 +901,7 @@ def test_parallel_uploads_of_one_chunk_leave_no_orphans(client):
     st = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = 0", s.id)
     data = b"z" * items.expected_chunk_size(st, 0)
     with concurrent.futures.ThreadPoolExecutor(8) as pool:
-        list(pool.map(lambda _: items.store_chunk(s.id, 0, 0, data), range(16)))
+        list(pool.map(lambda _: items.store_chunk(s.id, 0, 0, *_incoming(data)), range(16)))
     assert len(chunk_files()) == db.val("SELECT count(*) FROM chunks") == 1
 
 
@@ -982,15 +995,14 @@ def test_owner_reset_recovers_a_server_with_no_owner(client, capsys):
 
 
 # ------------------------------------------------------------------ receipts (audit: no limits, no failed-token counting)
-def test_guessing_manage_tokens_in_a_lookup_counts_toward_the_block(server):
-    c = server(RATE_FAILED_TOKENS="3/h")
+def test_wrong_manage_tokens_in_a_lookup_are_left_out(server):
+    c = server()
     s = send(c)
     bob = anon(c)
-    unknown = [{"id": "ZZZZZZZZZZ", "manage_token": "A" * 43}] * 10
-    assert bob.post("/api/v1/receipts/lookup", json={"items": unknown}).status_code == 200  # purged items don't count
     guesses = [{"id": s.id, "manage_token": "B" * 43}] * 3
     assert bob.post("/api/v1/receipts/lookup", json={"items": guesses}).json()["items"] == []
-    assert bob.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 429
+    right = [{"id": s.id, "manage_token": s.manage_token}]
+    assert [i["id"] for i in bob.post("/api/v1/receipts/lookup", json={"items": right}).json()["items"]] == [s.id]
 
 
 def test_receipt_lookups_are_rate_limited(server):
@@ -999,7 +1011,7 @@ def test_receipt_lookups_are_rate_limited(server):
     for _ in range(2):
         assert bob.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 200
     assert bob.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 429
-    assert c.get("/api/v1/me/receipts").status_code == 429  # Your links counts too (same address)
+    assert c.get("/api/v1/me/receipts").status_code == 200  # signed in: the person's own budget, not the address's (M6)
 
 
 # ------------------------------------------------------------------ phishing with a sender name (audit: the page showed what the sender's browser claimed)
@@ -1288,3 +1300,196 @@ def test_request_bodies_over_1_mib_are_refused_with_or_without_a_length(client):
     assert r.status_code == 413 and r.json()["error"]["code"] == "too_large", r.text
     r = client.post("/api/v1/auth/prelogin", content=iter([big[:600_000], big[600_000:]]), headers={"Content-Type": "application/json"})
     assert r.status_code == 413 and r.json()["error"]["code"] == "too_large", r.text
+
+
+# ------------------------------------------------------------------ B1: reserving the disk without uploading anything
+GiB = 1024**3
+
+
+def _declare(c, size: int, files: int = 1):
+    """POST /secrets declaring `files` files of `size` bytes each, and send nothing."""
+    n = max(1, -(-size // items.CHUNK))
+    streams = [{"stream": 0, "prefix": "AAAAAAAAAA", "chunks": 1, "size": 40}]
+    streams += [{"stream": i, "prefix": "AAAAAAAAAA", "chunks": n, "size": size + 16 * n} for i in range(1, files + 1)]
+    return c.post("/api/v1/secrets", json={"policy": {"views": 1, "expires_in": 3600}, "streams": streams})
+
+
+def test_one_address_cannot_reserve_the_disk(server, monkeypatch):
+    """B1: six creates declaring the largest file, with no chunks, from one address made everyone else's 100 KB
+    secret fail with 507. Now one caller declares at most two of the largest secrets' worth of bytes an hour."""
+    from conftest import from_address
+
+    from cryptex import storage
+    c = server()  # 5 files of 100 MB, MIN_FREE_DISK 1 GB
+    monkeypatch.setattr(type(storage.get()), "disk", lambda self: (4 * GiB, 2 * GiB))
+    hog = from_address(c, "198.51.100.7")
+    codes = [_declare(hog, 100 * 1000**2, files=5).status_code for _ in range(6)]
+    assert codes[:2] == [201, 201] and set(codes[2:]) == {429}
+    assert _declare(hog, 50 * 1024**2).json()["error"]["code"] == "rate_limited"
+    other = from_address(c, "203.0.113.9")
+    assert _declare(other, 100 * 1024).status_code == 201
+
+
+def test_an_unfinished_upload_ends_whatever_is_re_sent(server):
+    """B1: re-sending one chunk every 20 minutes kept an upload alive for days. Only a new chunk refreshes the idle
+    clock, and an unsealed upload ends a day after it started anyway."""
+    c = server()
+    s = send(c, files=[("a.bin", b"x" * 10)], seal=False, upload=False)
+    up = {"Authorization": f"Upload {s.upload_token}"}
+    meta = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = 0", s.id)
+    body = b"y" * meta["size_bytes"]
+    assert c.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=body, headers=up).status_code == 204
+    active = db.val("SELECT upload_active_at FROM secrets WHERE id = ?", s.id)
+    db.run("UPDATE secrets SET upload_active_at = upload_active_at - 1200 WHERE id = ?", s.id)
+    assert c.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=body, headers=up).status_code == 204  # replaced, not new
+    assert db.val("SELECT upload_active_at FROM secrets WHERE id = ?", s.id) == active - 1200
+    db.run("UPDATE secrets SET created_at = created_at - ?, upload_active_at = ? WHERE id = ?", items.UPLOAD_MAX + 1, now(), s.id)
+    assert c.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=body, headers=up).status_code == 404
+    jobs.cleanup()
+    assert db.val("SELECT 1 FROM secrets WHERE id = ?", s.id) is None
+
+
+# ------------------------------------------------------------------ B6: the five-try limit under parallel guesses
+def test_parallel_guesses_never_get_a_sixth_try(server):
+    """B6: the passphrase was compared against a row read before the try was counted: 32 guesses at once now and then
+    checked a sixth, and once the right one got through among 31 wrong. A try is now taken before the comparison."""
+    from concurrent.futures import ThreadPoolExecutor
+    c = server(RATE_REVEAL="100000/h")
+    right_check = None
+    for _ in range(10):
+        s = send(c, passphrase="correct horse")
+        right_check = passcheck(s, "correct horse")
+        wrong = {**s.reveal_headers(), "X-Passcheck": passcheck(s, "wrong")}
+        clients = [anon(c) for _ in range(8)]
+        with ThreadPoolExecutor(8) as pool:
+            codes = list(pool.map(lambda i, cl=clients, sid=s.id, h=wrong: cl[i % 8].post(f"/api/v1/secrets/{sid}/reveal", headers=h).status_code,
+                                  range(32)))
+        assert codes.count(422) == 4 and codes.count(410) == 28  # four "wrong", then destroyed: never a sixth check
+        r = c.post(f"/api/v1/secrets/{s.id}/reveal", headers={**s.reveal_headers(), "X-Passcheck": right_check})
+        assert r.status_code == 410 and r.json()["error"]["reason"] == "too_many_tries"
+
+
+def test_the_right_passphrase_gives_its_try_back(client):
+    s = send(client, passphrase="pw")
+    wrong = {**s.reveal_headers(), "X-Passcheck": passcheck(s, "nope")}
+    assert client.post(f"/api/v1/secrets/{s.id}/reveal", headers=wrong).json()["error"]["tries_left"] == 4
+    s2 = send(client, passphrase="pw", views=None)
+    reveal(client, s2, passphrase="pw")
+    assert db.val("SELECT failed_tries FROM secrets WHERE id = ?", s2.id) == 0
+
+
+# ------------------------------------------------------------------ D7, D1: settings that are wrong stop the server, and the key is announced
+@pytest.mark.parametrize(("name", "value"), [("LOG_LEVEL", "verbose"), ("LOG_FORMAT", "yaml"), ("DEMO", "yess"), ("LOG_IPS", "ture")])
+def test_a_mistyped_setting_stops_the_server_and_names_it(tmp_path, name, value):
+    """D7: LOG_LEVEL=verbose crashed with a traceback in a restart loop; DEMO=yess started a claimable normal server."""
+    import os
+
+    from cryptex.app import create_app
+    old = dict(os.environ)
+    os.environ.update({"DATA_DIR": str(tmp_path), name: value})
+    try:
+        with pytest.raises(SystemExit) as stop:
+            create_app(run_jobs=False)
+    finally:
+        os.environ.clear()
+        os.environ.update(old)
+    assert str(stop.value).startswith(f"cryptex: {name}:")
+
+
+def test_a_fresh_start_logs_the_key_message_after_the_setup_code(tmp_path, capsys):
+    """D1: the line about enc.key was logged before logging was set up, so it was dropped."""
+    from conftest import make_client
+    make_client(tmp_path)
+    out = capsys.readouterr().out
+    assert "enc.key" in out and "every backup" in out
+    make_client(tmp_path)
+    assert "enc.key" not in capsys.readouterr().out  # once, when it's made
+
+
+# ------------------------------------------------------------------ B2, B5: chunks on disk, and deletion that reaches the disk
+def test_chunk_files_without_a_row_are_swept(client):
+    """B5: a crash between writing a chunk and recording it (or deleting a row and its file) left files nothing ever
+    removed. The orphans job runs at start and daily."""
+    import os
+    import time
+
+    from cryptex import storage
+    s = send(client)
+    blobs = storage.get()
+    stray = blobs.put(b"left behind by a crash")
+    f, tmp = blobs.incoming()
+    f.close()
+    old = time.time() - 7200
+    for p in (blobs._path(stray), tmp):
+        os.utime(p, (old, old))
+    assert items.sweep_orphans() == 2
+    assert not blobs._path(stray).exists() and not tmp.exists()
+    assert len([p for p in chunk_files() if p.parent.name != "incoming"]) == db.val("SELECT count(*) FROM chunks")
+    reveal(anon(client), s)  # what's recorded is untouched
+
+
+def test_deletes_reach_the_database_file_and_burns_are_durable(client):
+    """B5: destroyed metadata stayed in free pages (secure_delete off), and with synchronous = NORMAL a burn could be
+    undone by a power cut."""
+    assert db.val("PRAGMA secure_delete") == 1
+    assert db.val("PRAGMA synchronous") == 2  # FULL
+
+
+def test_one_upload_takes_at_most_two_chunks_at_once(client):
+    """B2: one upload token could open hundreds of slow chunk requests, each pinning memory."""
+    from cryptex.routes import secrets as routes
+    s = send(client, seal=False, upload=False)
+    routes._uploading_now[s.id] = routes.UPLOADS_PER_SECRET
+    try:
+        r = client.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=b"z" * 40, headers={"Authorization": f"Upload {s.upload_token}"})
+        assert r.status_code == 429
+    finally:
+        del routes._uploading_now[s.id]
+    assert chunk_files() == []  # nothing was written for it
+
+
+def test_built_files_are_served_compressed(server, tmp_path):
+    """D9: the stylesheet and every script went out uncompressed; the size budgets assume gzip. The build makes .br and
+    .gz copies, sent by Accept-Encoding with Vary."""
+    import gzip
+    web = tmp_path / "web"
+    (web / "assets").mkdir(parents=True)
+    (web / "index.html").write_text("<!doctype html>")
+    css = b"body{color:red}" * 100
+    (web / "assets" / "app-1.css").write_bytes(css)
+    (web / "assets" / "app-1.css.gz").write_bytes(gzip.compress(css))
+    (web / "assets" / "app-1.css.br").write_bytes(b"brotli")
+    c = server(setup=False, STATIC_DIR=str(web))
+    r = c.get("/assets/app-1.css", headers={"Accept-Encoding": "gzip, br, zstd"})
+    assert r.headers["content-encoding"] == "br" and r.headers["vary"] == "Accept-Encoding" and r.headers["content-type"].startswith("text/css")
+    r = c.get("/assets/app-1.css", headers={"Accept-Encoding": "gzip"})
+    assert r.headers["content-encoding"] == "gzip" and r.content == css  # the client undoes it
+    r = c.get("/assets/app-1.css", headers={"Accept-Encoding": "identity"})
+    assert "content-encoding" not in r.headers and r.content == css
+
+
+# ------------------------------------------------------------------ B8: smaller server items
+def test_rate_limit_rows_hold_no_address_or_typed_name(server):
+    """B8: the rate-limit table kept raw addresses and whatever was typed as a username for a day, in every backup."""
+    from conftest import from_address
+    c = server()
+    b = from_address(c, "203.0.113.77")
+    b.post("/api/v1/auth/login", json={"username": "hunter2-typed-here", "auth_key": "A" * 43})
+    send(b)
+    rows = " ".join(r[0] for r in db.all("SELECT bucket FROM rate_limits"))
+    assert rows and "203.0.113" not in rows and "hunter2" not in rows
+
+
+def test_a_failed_sign_in_names_the_account_when_there_is_one(client):
+    from conftest import login_body
+    b = anon(client)
+    b.post("/api/v1/auth/login", json=login_body(b, OWNER["username"], "wrong password"))
+    b.post("/api/v1/auth/login", json=login_body(b, "nobody-here", "wrong password"))
+    details = [json.loads(r[0]) for r in db.all("SELECT detail FROM events WHERE type = 'user.sign_in_failed' ORDER BY id")]
+    assert details[0].get("account") == OWNER["username"] and "account" not in details[1]
+
+
+def test_max_files_has_an_upper_bound(server):
+    from cryptex.config import load_env
+    with pytest.raises(ValueError, match="MAX_FILES"):
+        load_env({"DATA_DIR": str(state.env().data_dir), "MAX_FILES": "5000"})

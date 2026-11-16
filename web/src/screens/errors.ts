@@ -53,7 +53,7 @@ export function errorText(e: unknown, sender = t('errors.sender_fallback')): str
     if (m === 'tampered') return t('errors.tampered', { sender });
     if (m === 'weak_kdf') return t('errors.weak_kdf'); // store/vault.ts checkKdf
     if (m === 'locked') return t('errors.vault_locked');
-    return t('errors.internal');
+    return t('errors.browser'); // the crypto worker, a file that can't be read, storage: nothing the server did
   }
   const brand = config.value?.brand.name || t('errors.brand_fallback');
   switch (e.code) {

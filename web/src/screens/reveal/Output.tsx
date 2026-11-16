@@ -1,5 +1,7 @@
-/** D4: the revealed secret. Clears itself after 5 idle or hidden minutes, with a warning in the last minute. Any
- *  input, focus move, scroll or return to the tab counts as activity (screen readers in browse mode move focus). */
+/** D4: the revealed secret. After 5 idle or hidden minutes, with a warning in the last minute, a link that opens again
+ *  clears itself (the link still works). A one-time link can't be opened again, so this page holds the only copy: it
+ *  hides the values instead, keeps them until the tab closes, and Clear now can be undone for a few seconds (R1, R2).
+ *  Any input, focus move, scroll or return to the tab counts as activity (screen readers in browse mode move focus). */
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { CHUNK } from '../../crypto/format';
 import { safeFileName, type Revealed } from '../../flows/reveal';
@@ -10,6 +12,7 @@ import { Icon } from '../../ui/icons';
 
 const IDLE = 5 * 60;
 const WARN = 60; // seconds left when the warning shows
+export const UNDO_MS = 8000; // how long Clear now on a one-time link can be undone
 const ACTIVITY = ['pointerdown', 'keydown', 'scroll', 'wheel', 'touchstart', 'focusin'] as const;
 
 /** Names that make a shell (bash, zsh) or the programs it starts do more than hold a value: prompts and their hooks
@@ -72,8 +75,14 @@ function save(blob: Blob, name: string, urls: string[]) {
 export function Output({ data, title, from, deletedNote, onCleared }: {
   data: Revealed; title: string; from: string | null; deletedNote: string; onCleared: () => void;
 }) {
+  const once = data.views_left === 0;
   const [left, setLeft] = useState(IDLE);
   const [shown, setShown] = useState<Set<number>>(new Set());
+  /** One-time links only: covered after the idle timeout, or cleared with Undo still possible. */
+  const [hidden, setHidden] = useState<null | 'idle' | 'clearing'>(null);
+  const [copied, setCopied] = useState(false);
+  const undoTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hiddenNow = useRef(false);
   const [zipping, setZipping] = useState(false);
   const urls = useRef<string[]>([]);
   const last = useRef(Date.now());
@@ -82,6 +91,8 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
   const gone = useRef(false);
 
   const clear = () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    if (gone.current) return; // once
     gone.current = true;
     urls.current.forEach((u) => URL.revokeObjectURL(u));
     urls.current = [];
@@ -90,6 +101,34 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
     data.files.length = 0;
     onCleared();
   };
+  const restart = () => {
+    last.current = Date.now();
+    setLeft(IDLE);
+  };
+  /** Idle too long: a link that opens again is cleared; a one-time one is covered and every value masked again. */
+  const timedOut = () => {
+    if (!once) return clear();
+    if (hiddenNow.current) return;
+    hiddenNow.current = true;
+    setShown(new Set());
+    setHidden('idle');
+  };
+  const showAgain = () => {
+    if (undoTimer.current) clearTimeout(undoTimer.current);
+    undoTimer.current = null;
+    hiddenNow.current = false;
+    setHidden(null);
+    restart();
+  };
+  /** Clear now: at once for a link that opens again; a one-time link's only copy can be brought back for UNDO_MS. */
+  const clearNowClick = () => {
+    if (!once) return clear();
+    hiddenNow.current = true;
+    setShown(new Set());
+    setHidden('clearing');
+    undoTimer.current = setTimeout(clear, UNDO_MS);
+  };
+  const copy = (text: string, msg?: string) => void copyText(text, msg).then((ok) => ok && setCopied(true));
 
   useEffect(() => {
     const bump = () => {
@@ -98,22 +137,24 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
     const vis = () => {
       if (document.hidden) hiddenAt.current = Date.now();
       else {
-        if (hiddenAt.current && Date.now() - hiddenAt.current >= IDLE * 1000) clear();
+        if (hiddenAt.current && Date.now() - hiddenAt.current >= IDLE * 1000) timedOut();
         hiddenAt.current = null;
         bump();
       }
     };
     const id = setInterval(() => {
+      if (hiddenNow.current) return;
       const idle = (Date.now() - last.current) / 1000;
       const remaining = Math.max(0, Math.ceil(IDLE - idle));
       setLeft(remaining);
-      if (remaining === 0) clear();
+      if (remaining === 0) timedOut();
     }, 1000);
     // Capture: scroll and focus don't bubble to window, and a scroll inside a long note counts too.
     for (const ev of [...ACTIVITY, 'pointermove']) window.addEventListener(ev, bump, { passive: true, capture: true });
     document.addEventListener('visibilitychange', vis);
     return () => {
       clearInterval(id);
+      if (undoTimer.current) clearTimeout(undoTimer.current);
       for (const ev of [...ACTIVITY, 'pointermove']) window.removeEventListener(ev, bump, { capture: true });
       document.removeEventListener('visibilitychange', vis);
       gone.current = true;
@@ -122,6 +163,8 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
   }, []);
 
   const fields = data.items.filter((i) => i.t === 'field');
+  // "Copy all as .env" only when there's more than one line to make: two or more one-line fields.
+  const envable = fields.filter((f) => !(f as { v: string }).v.includes('\n')).length >= 2;
   /** Stored, not compressed, and streamed: each file is read a chunk at a time and the archive is built from Blob
    *  parts, so a large download never sits whole in the page's memory. */
   const zipAll = async () => {
@@ -160,33 +203,50 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
     }
   };
   const zippable = data.files.length > 1 && data.files.reduce((n, f) => n + f.size, 0) < ZIP_MAX;
-  const tools = fields.length > 0 || zippable;
+  const tools = envable || zippable;
   const clearNow = (cls: string) => (
-    <button type="button" class={`btn danger ${cls}`} style="justify-self:start" onClick={clear}><Icon name="eyeoff" size="sm" />{t('reveal.clear_now')}</button>
+    <button type="button" class={`btn danger ${cls}`} style="justify-self:start" onClick={clearNowClick}><Icon name="eyeoff" size="sm" />{t('reveal.clear_now')}</button>
   );
+  const time = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}`;
+
+  if (hidden) {
+    const n = fields.length + data.items.filter((i) => i.t === 'note').length + data.files.length;
+    return (
+      <section class="out out-hidden" aria-label={t('reveal.secret')} tabIndex={-1}>
+        <div class="out-h"><h1 class="h3">{title || t('reveal.secret')}</h1></div>
+        <p role="status">{hidden === 'idle' ? t('reveal.hidden_idle') : t('reveal.hidden_clearing')}</p>
+        <p class="muted small">{t('reveal.hidden_count', { n })}</p>
+        <div class="row">
+          <Btn kind="primary" icon={hidden === 'idle' ? 'eye' : 'refresh'} onClick={showAgain}>{hidden === 'idle' ? t('reveal.show_again') : t('reveal.undo_clear')}</Btn>
+          {hidden === 'idle' && <button type="button" class="btn danger" onClick={clear}><Icon name="eyeoff" size="sm" />{t('reveal.clear_for_good')}</button>}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <>
-      <Banner kind="ok" icon="check" action={<span class="timer" aria-live="off">{t('reveal.clears_in', { time: `${Math.floor(left / 60)}:${String(left % 60).padStart(2, '0')}` })}</span>}>
+      {/* A one-time link is gone from the server: the most important caution on the page, so it's a warning. */}
+      <Banner kind={once ? 'warn' : 'ok'} icon={once ? 'alert' : 'check'} action={<span class="timer" aria-live="off">{t(once ? 'reveal.hides_in' : 'reveal.clears_in', { time })}</span>}>
         {deletedNote}
       </Banner>
       {/* Said once, as the last minute starts (the countdown itself isn't announced). */}
       <div role="alert" class="clear-soon">{left <= WARN && left > 0 && (
-        <Banner kind="warn" icon="clock" action={<button type="button" class="btn sm secondary" onClick={() => { last.current = Date.now(); setLeft(IDLE); }}>{t('reveal.keep_showing')}</button>}>
-          {t('reveal.clear_soon')}
+        <Banner kind="warn" icon="clock" action={<button type="button" class="btn sm secondary" onClick={restart}>{t('reveal.keep_showing')}</button>}>
+          {t(once ? 'reveal.hide_soon' : 'reveal.clear_soon')}
         </Banner>
       )}</div>
       <section class="out reveal-in" aria-label={t('reveal.secret')} tabIndex={-1}>
         <div class="out-h"><h1 class="h3">{title || t('reveal.secret')}</h1>{from && <span class="muted small">{t('reveal.from_sender', { sender: from })}</span>}</div>
         {data.items.map((it, i) => it.t === 'note' ? (
           <div class="note out-note" key={i}>
-            <pre>{it.v}</pre>
-            <span class="acts"><button class="btn icon sm ghost" aria-label={t('reveal.copy')} title={t('reveal.copy')} onClick={() => copyText(it.v)}><Icon name="copy" size="sm" /></button></span>
+            <pre dir="auto">{it.v}</pre>
+            <span class="acts"><button class="btn icon sm ghost" aria-label={t('reveal.copy')} title={t('reveal.copy')} onClick={() => copy(it.v)}><Icon name="copy" size="sm" /></button></span>
           </div>
         ) : (
           <div class="field" key={i}>
-            <span class="k">{it.k}</span>
-            <span class={`v${it.secret && !shown.has(i) ? ' secret' : ''}`}>{it.secret && !shown.has(i) ? '•'.repeat(Math.min(16, Math.max(8, it.v.length))) : it.v}</span>
+            <span class="k" dir="auto">{it.k}</span>
+            <span dir="auto" class={`v${it.secret && !shown.has(i) ? ' secret' : ''}`}>{it.secret && !shown.has(i) ? '•'.repeat(Math.min(16, Math.max(8, it.v.length))) : it.v}</span>
             <span class="acts">
               {it.secret && (
                 <button class="btn icon sm ghost" aria-label={shown.has(i) ? t('reveal.hide') : t('reveal.show')} title={shown.has(i) ? t('reveal.hide') : t('reveal.show')}
@@ -194,7 +254,10 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
                   <Icon name={shown.has(i) ? 'eyeoff' : 'eye'} size="sm" />
                 </button>
               )}
-              <button class="btn icon sm ghost" aria-label={t('reveal.copy_field', { name: it.k })} title={t('reveal.copy')} onClick={() => copyText(it.v)}><Icon name="copy" size="sm" /></button>
+              <button class="btn icon sm ghost" aria-label={t('reveal.copy_field', { name: it.k })} title={t('reveal.copy')} onClick={() => copy(it.v)}><Icon name="copy" size="sm" /></button>
+              {/* A key or certificate is used as a file: save it as one, line breaks and all. */}
+              {it.v.includes('\n') && <Btn kind="secondary" class="sm" icon="down" label={t('reveal.save_field', { name: it.k })}
+                onClick={() => save(new Blob([it.v], { type: 'text/plain' }), it.k || t('reveal.secret'), urls.current)}>{t('reveal.save')}</Btn>}
             </span>
           </div>
         ))}
@@ -211,13 +274,13 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
           link's ready page. */}
       {tools && <div class="actions-m between">
         <div class="row">
-          {fields.length > 0 && <Btn kind="secondary" icon="copy" onClick={() => copyText(toEnv(data.items), t('reveal.copied_env'))}>{t('reveal.copy_env')}</Btn>}
+          {envable && <Btn kind="secondary" icon="copy" onClick={() => copy(toEnv(data.items), t('reveal.copied_env'))}>{t('reveal.copy_env')}</Btn>}
           {zippable && <Btn kind="secondary" icon="down" loading={zipping} onClick={zipAll}>{t('reveal.zip')}</Btn>}
         </div>
         {clearNow('hide-m')}
       </div>}
       {clearNow(tools ? 'sm show-m' : '')}
-      <p class="fine">{t('reveal.clipboard_note')}</p>
+      {copied && <p class="fine">{t('reveal.clipboard_note')}</p>}
     </>
   );
 }

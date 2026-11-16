@@ -65,12 +65,18 @@ export function AskDialog({ open, onClose }: { open: boolean; onClose: () => voi
         <button type="button" class="btn secondary" onClick={onClose}>{t('send.cancel')}</button>
         <Btn kind="primary" icon="link" loading={busy} onClick={() => void create()}>{t('ask.create')}</Btn>
       </>}>
-      <div class="stack ask-dialog">
+      {/* ⌘/Ctrl+Enter submits this dialog, as it creates a link on the page behind it. */}
+      <div class="stack ask-dialog" onKeyDown={(e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !busy) {
+          e.preventDefault();
+          void create();
+        }
+      }}>
         <h2 class="h3" id="ask-title">{t('ask.title')}</h2>
         <p class="muted">{t('ask.lede')}</p>
         <div>
           <label class="label" for="ask-note">{t('ask.note')}<span class="opt-tag">{t('common.optional')}</span></label>
-          <textarea id="ask-note" class="input textarea" rows={3} maxLength={NOTE_MAX} value={note} readOnly={busy} data-autofocus
+          <textarea id="ask-note" dir="auto" class="input textarea" rows={3} maxLength={NOTE_MAX} value={note} readOnly={busy} data-autofocus
             aria-describedby="ask-note-help" onInput={(e) => setNote((e.target as HTMLTextAreaElement).value)} />
           <p class="help" id="ask-note-help">{t('ask.note_help')}</p>
         </div>

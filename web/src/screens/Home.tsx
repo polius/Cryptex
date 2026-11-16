@@ -34,20 +34,50 @@ const SLOW_MS = 3000;
 const calm = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const pause = (ms: number) => new Promise<void>((r) => setTimeout(r, calm() ? 0 : Math.max(0, ms)));
 
+/** The draft, kept in memory outside the page (S6): a visit to Your links and Back finds it where it was. Never
+ *  written to storage; gone when the link is made, or with the tab (beforeunload asks first). */
+let draft: ComposerState = emptyComposer();
+
 export function Home() {
   const c = cfg();
-  const [composer, setComposer] = useState<ComposerState>(emptyComposer);
+  const [composer, setComposerState] = useState<ComposerState>(() => draft);
+  const setComposer = (s: ComposerState) => {
+    draft = s;
+    setComposerState(s);
+  };
   const [policy, setPolicy] = useState<SendPolicy>(() => defaultPolicy(c));
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [phase, setPhase] = useState<Phase>({ k: 'compose' });
   const [formError, setFormError] = useState<string | null>(null);
+  const [passError, setPassError] = useState<string | null>(null);
+  // The options as the link is being made: the line under the seal keeps saying "Passphrase" until it's done (S10).
+  const sealedWith = useRef<SendPolicy | null>(null);
   const [cancelling, setCancelling] = useState(false);
   const abort = useRef<AbortController | null>(null);
   const upload = useRef<{ id: string; token: string } | null>(null);
   const pasteHandler = useRef<(raw: string) => void>(() => undefined);
   const dropHandler = useRef<(files: File[]) => void>(() => undefined);
   const dragging = usePageInput(phase.k === 'compose', pasteHandler, dropHandler);
+
+  // A reload or a closed tab loses what's typed and any file being sent: ask first (S6).
+  const unsaved = phase.k === 'sealing' || (phase.k !== 'sent' && !isEmpty(composer));
+  useEffect(() => {
+    if (!unsaved) return;
+    const onBefore = (e: BeforeUnloadEvent) => e.preventDefault();
+    window.addEventListener('beforeunload', onBefore);
+    return () => window.removeEventListener('beforeunload', onBefore);
+  }, [unsaved]);
+  // Leaving the page while a link is being made cancels it, so it can't finish out of sight, take over the clipboard
+  // and jump to its page from wherever the person went. The draft stays, files included.
+  const alive = useRef(true);
+  useEffect(() => () => {
+    alive.current = false;
+    if (!abort.current) return;
+    abort.current.abort();
+    if (upload.current) void cancelUpload(upload.current.id, upload.current.token);
+    upload.current = null;
+  }, []);
 
   // Restore the last-used policy, within today's limits.
   useEffect(() => {
@@ -58,7 +88,9 @@ export function Home() {
   // ⌘/Ctrl+Enter creates (⌘/Ctrl+V anywhere pastes into the composer, and files drop anywhere: usePageInput).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && phase.k === 'compose') {
+      // Not under another dialog (Ask for a secret): its own shortcut is for it, not for the half-written secret here.
+      const otherDialog = document.querySelector('.scrim:not(.editor-scrim) [aria-modal="true"]');
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && phase.k === 'compose' && !otherDialog) {
         e.preventDefault();
         setExpanded(false);
         void create();
@@ -80,6 +112,7 @@ export function Home() {
   // ------------------------------------------------------------------ send
   async function create() {
     setFormError(null);
+    setPassError(null);
     if (isEmpty(composer)) {
       // Nothing to send yet: the button is shown as unavailable, so a click (or ⌘Enter) just puts the cursor where to type.
       document.getElementById('composer')?.focus();
@@ -91,13 +124,15 @@ export function Home() {
     }
     if (policy.passphraseOn && !policy.passphrase) {
       setOptionsOpen(true);
-      setFormError(t('policy.passphrase_empty'));
+      setPassError(t('policy.passphrase_empty')); // under the passphrase box itself (S10)
+      requestAnimationFrame(() => document.querySelector<HTMLInputElement>('.pass-input input')?.focus());
       return;
     }
     const items = [
       ...(composer.note.trim() ? [{ t: 'note' as const, v: composer.note }] : []),
       ...composer.fields.filter((f) => f.k.trim() || f.v).map((f) => ({ t: 'field' as const, k: f.k.trim() || t('send.field_value'), v: f.v, secret: f.secret })),
     ];
+    sealedWith.current = policy;
     const ctrl = new AbortController();
     abort.current = ctrl;
     setOptionsOpen(false);
@@ -117,6 +152,8 @@ export function Home() {
         upload.current = { id, token };
       });
       upload.current = null;
+      abort.current = null;
+      draft = emptyComposer(); // made: the next visit starts afresh (this page still shows it until it's left)
       if (!c.demo) void prefs.set('policy', { ...policy, passphraseOn: false, passphrase: '' });
       const passphrase = policy.passphraseOn ? policy.passphrase : null;
       setPolicy((p) => ({ ...p, passphraseOn: false, passphrase: '' })); // each link gets its own passphrase
@@ -127,6 +164,7 @@ export function Home() {
       await pause(SEAL.ready);
       sealing({ step: 4 }); // the page fades up and out, then the link page rises in
       await pause(SEAL.leave);
+      if (!alive.current) return; // left during the seal: the link is made and in Your links; stay where they went
       countLinks();
       if (c.demo) void loadConfig().catch(() => undefined); // refresh the quota in the demo bar
       if (sent.saved !== 'none') {
@@ -149,6 +187,7 @@ export function Home() {
       // The seal and its buttons are gone: focus goes to Try again (the error itself is announced).
       requestAnimationFrame(() => document.getElementById('send-go')?.focus({ preventScroll: true }));
     } finally {
+      if (abort.current === ctrl) abort.current = null;
       timers.forEach(clearTimeout);
       window.removeEventListener('offline', onOffline);
       window.removeEventListener('online', onOnline);
@@ -182,7 +221,9 @@ export function Home() {
   const nav = route.value;
   const firstNav = useRef(nav);
   useEffect(() => {
-    if (nav !== firstNav.current && (phase.k === 'sent' || phase.k === 'error')) reset();
+    if (nav === firstNav.current) return;
+    if (phase.k === 'sent') reset();
+    else if (phase.k === 'error') setPhase({ k: 'compose' }); // "what you typed is still here": keep it
   }, [nav]);
 
   // ------------------------------------------------------------------ render
@@ -221,6 +262,7 @@ export function Home() {
   }
 
   const sealing = phase.k === 'sealing';
+  const twoFa = twoFaNudge(c);
 
   return (
     <Page header={<AppHeader active="new" />}>
@@ -229,6 +271,7 @@ export function Home() {
         {phase.k === 'error' && (
           <><H1 class="sr">{t('send.title')}</H1><Banner kind="danger" icon="alert">{phase.message} {t('send.retry_note')}</Banner></>
         )}
+        {twoFa && phase.k === 'compose' && <TwoFaNotice uid={twoFa} />}
         {phase.k !== 'error' && (
           <div class="send-head">
             <div class="head-row">
@@ -256,13 +299,13 @@ export function Home() {
               maxChars={c.limits.max_message_chars} maxFiles={c.limits.max_files} maxFileBytes={c.limits.max_file_bytes}
               onFilesRejected={(m) => toast(m, 'error')} />
             {phase.k === 'sealing' && !phase.slow ? (
-              <SendFoot items={sendRuleItems(policy)} />
+              <SendFoot items={sendRuleItems(sealedWith.current ?? policy)} />
             ) : phase.k === 'sealing' ? (
               <Sealing files={composer.files} manifestBytes={Math.max(1, phase.progress.total - composer.files.reduce((n, f) => n + f.size, 0))}
-                progress={phase.progress} offline={phase.offline} onCancel={cancel} cancelling={cancelling} />
+                progress={phase.progress} offline={phase.offline} onCancel={cancel} cancelling={cancelling} ready={phase.step >= 3} />
             ) : (
               <>
-                {optionsOpen && <OptionsPanel policy={policy} onChange={setPolicy} onDone={closeOptions} cfg={c} />}
+                {optionsOpen && <OptionsPanel policy={policy} onChange={(p) => { setPassError(null); setPolicy(p); }} onDone={closeOptions} cfg={c} passError={passError} />}
                 {formError && <p class="err-msg" role="alert"><Icon name="alert" size="sm" />{formError}</p>}
                 <SendFoot items={sendRuleItems(policy)} open={optionsOpen} onChange={() => (optionsOpen ? closeOptions() : setOptionsOpen(true))} />
               </>
@@ -273,48 +316,72 @@ export function Home() {
   );
 }
 
-/** What's in the composer, as plain lines for the scramble (values included: it's this person's own screen). */
-function cipherLines(c: ComposerState): string[] {
+/** An owner without 2FA, who hasn't dismissed the reminder on this browser (M10): their uid, else null. */
+function twoFaNudge(c: ReturnType<typeof cfg>): string | null {
+  const u = c.signed_in && !c.demo ? c.user : null;
+  if (!u || u.role !== 'owner' || u.totp) return null;
+  try {
+    return localStorage.getItem(`cx-2fa-nudge:${u.id}`) ? null : u.id;
+  } catch {
+    return null;
+  }
+}
+
+/** Setup ends with 2FA off: one reminder, dismissed for good. */
+function TwoFaNotice({ uid }: { uid: string }) {
+  const [gone, setGone] = useState(false);
+  if (gone) return null;
+  const dismiss = () => {
+    try {
+      localStorage.setItem(`cx-2fa-nudge:${uid}`, '1');
+    } catch {
+      /* shown again next time */
+    }
+    setGone(true);
+  };
+  return (
+    <Banner kind="info" icon="shield" action={<span class="row"><a class="btn sm secondary" href="/account">{t('account.turn_on_2fa_short')}</a>
+      <button type="button" class="btn icon sm ghost" aria-label={t('dialog.close')} title={t('dialog.close')} onClick={dismiss}><Icon name="x" size="sm" /></button></span>}>
+      {t('account.nudge_2fa')}
+    </Banner>
+  );
+}
+
+/** The composer's shape, as lines for the scramble (Cipher), which shows a glyph for each character and never the
+ *  characters themselves, so no frame shows a value (masked or not) to someone watching the screen. */
+export function cipherLines(c: ComposerState): string[] {
   return [
     ...(c.title.trim() ? [c.title.trim()] : []),
     ...(c.note ? c.note.split('\n') : []),
-    ...c.fields.filter((f) => f.k || f.v).map((f) => `${f.k}  ${f.v}`),
+    ...c.fields.filter((f) => f.k || f.v).map((f) => `${f.k}  ${f.v.split('\n')[0]}`),
     ...c.files.map((f) => f.name),
   ];
 }
 
 const GLYPHS = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789#%&*+=?@$/';
+const scramble = (s: string) => s.replace(/\S/g, () => GLYPHS[(Math.random() * GLYPHS.length) | 0]);
 
-/** The person's own text turning into gibberish from left to right, then shuffling until the seal is done. */
-function Cipher({ lines, ms }: { lines: string[]; ms: number }) {
+/** Random glyphs in the composer's shape, shuffling until the seal is done. */
+export function Cipher({ lines }: { lines: string[] }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [src] = useState(() => lines.join('\n').slice(0, 600));
+  const [first] = useState(() => scramble(src));
   useEffect(() => {
     const el = ref.current;
-    const src = lines.join('\n').slice(0, 600);
-    if (!el || calm()) {
-      if (el) el.textContent = src.replace(/\S/g, () => GLYPHS[(Math.random() * GLYPHS.length) | 0]);
-      return;
-    }
-    const start = performance.now();
+    if (!el || calm()) return;
     let last = 0;
     let raf = 0;
     const tick = (now: number) => {
       if (now - last > 45) {
         last = now;
-        const cut = ((now - start) / ms) * src.length * 1.1;
-        let out = '';
-        for (let i = 0; i < src.length; i++) {
-          const ch = src[i];
-          out += /\s/.test(ch) || i > cut ? ch : GLYPHS[(Math.random() * GLYPHS.length) | 0];
-        }
-        el.textContent = out;
+        el.textContent = scramble(src);
       }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
   }, []);
-  return <div class="seal-cipher" ref={ref} aria-hidden="true">{lines.join('\n')}</div>;
+  return <div class="seal-cipher" ref={ref} aria-hidden="true">{first}</div>;
 }
 
 /** The seal closing over the composer while the link is made: the same pattern the recipient sees lift when they reveal. */
@@ -323,7 +390,7 @@ function SealOverlay({ step: at, lines }: { step: 1 | 2 | 3 | 4; lines: string[]
   const text = step === 1 ? t('send.seal_locking') : step === 2 ? t('send.seal_saving') : t('send.seal_ready');
   return (
     <div class={`seal-over s${step}`} style={`--lock:${SEAL.lock}ms;--save:${SEAL.save}ms;--ready:${SEAL.ready}ms`}>
-      <Cipher lines={lines} ms={SEAL.lock * 0.75} />
+      <Cipher lines={lines} />
       <div class="seal-cover tint" aria-hidden="true" />
       <span class="seal-mark" aria-hidden="true">{step === 3 ? <Icon name="check" /> : <Mark open={step === 1} />}</span>
       <div class="seal-status">

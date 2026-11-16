@@ -112,7 +112,8 @@ function Adopt({ n }: { n: number }) {
     }
   };
   return (
-    <Dialog open onClose={() => void keepLocal()} labelledBy="va-title"
+    // Esc or a click outside means "not now": asked again next time, never recorded as no (M10).
+    <Dialog open onClose={() => { adoptOffer.value = 0; }} labelledBy="va-title"
       footer={<><button class="btn secondary" onClick={() => void keepLocal()}>{t('vault.adopt_keep')}</button>
         <Btn kind="primary" loading={busy} onClick={add}>{t('vault.adopt_add')}</Btn></>}>
       <div class="vault-head"><span class="vault-icon"><Icon name="link" /></span><h2 class="h3" id="va-title">{t('vault.adopt_title')}</h2></div>

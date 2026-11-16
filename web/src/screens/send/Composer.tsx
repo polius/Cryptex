@@ -122,6 +122,28 @@ export function DropZone({ on }: { on: boolean }) {
   return on ? <div class="dropzone" aria-hidden="true"><span><Icon name="upload" size="lg" />{t('send.drop_overlay')}</span></div> : null;
 }
 
+/** Lines and size of a multi-line value, for its summary while masked: "4 lines · 141 bytes". */
+export const multiLineSummary = (v: string) => t('send.multiline_summary', { lines: v.replace(/\n$/, '').split('\n').length, size: bytes(new TextEncoder().encode(v).length) });
+
+/** A field's value. A one-line <input> can't hold line breaks (a private key, a certificate): a multi-line value is
+ *  a summary while masked and a text area when shown, so editing it never flattens it. */
+function FieldValue({ f, n, disabled, onInput }: { f: FieldRow; n: number; disabled?: boolean; onInput: (v: string) => void }) {
+  const label = t('send.field_value_label', { name: f.k || t('send.field_n', { n }) });
+  const hide = f.secret && !f.shown;
+  if (f.v.includes('\n')) {
+    if (hide) return <span class="v multi-sum" aria-label={label}>{multiLineSummary(f.v)}</span>;
+    return (
+      <textarea class="v multi" dir="auto" value={f.v} aria-label={label} disabled={disabled} autoComplete="off" spellcheck={false}
+        rows={Math.min(8, f.v.replace(/\n$/, '').split('\n').length)} onInput={(e) => onInput((e.target as HTMLTextAreaElement).value)} />
+    );
+  }
+  return (
+    <input class={`v${hide ? ' secret' : ''}`} {...masked(hide)} dir="auto" value={f.v}
+      placeholder={t('send.field_value')} aria-label={label} disabled={disabled} autoComplete="off" spellcheck={false}
+      onInput={(e) => onInput((e.target as HTMLInputElement).value)} />
+  );
+}
+
 export function Composer(props: {
   state: ComposerState; onChange: (s: ComposerState) => void; maxChars: number; maxFiles: number; maxFileBytes: number;
   disabled?: boolean; onFilesRejected: (msg: string) => void; registerPaste: (fn: (raw: string) => void) => void;
@@ -230,7 +252,7 @@ export function Composer(props: {
       >
       {!empty && (
         <div class="cmp-title">
-          <input class="t" value={s.title} maxLength={120} placeholder={t('send.title_placeholder')} aria-label={t('send.title_label')} disabled={props.disabled}
+          <input class="t" dir="auto" value={s.title} maxLength={120} placeholder={t('send.title_placeholder')} aria-label={t('send.title_label')} disabled={props.disabled}
             aria-describedby="title-hint" onFocus={() => setTitleFocus(true)} onBlur={() => setTitleFocus(false)}
             onInput={(e) => set({ title: (e.target as HTMLInputElement).value })} />
           {/* Only while editing the title: that's when "they'll see this first" matters. It slides, so nothing jumps. */}
@@ -242,7 +264,7 @@ export function Composer(props: {
       {/* Always there, so a note can be added next to fields (Add field on an empty box used to hide it). */}
       <div class={empty ? 'cmp-empty' : 'cmp-note'}>
         <textarea ref={noteRef} class={empty ? 'ph-area' : `note-area${s.fields.length ? ' slim' : ''}`} value={s.note} disabled={props.disabled} id={props.expanded ? 'composer-big' : 'composer'}
-          aria-label={t('send.secret_label')} spellcheck={false} autoComplete="off" data-autofocus rows={1}
+          aria-label={t('send.secret_label')} dir="auto" spellcheck={false} autoComplete="off" data-autofocus rows={1}
           placeholder={s.fields.length && !s.note ? t('send.note_placeholder') : t('send.placeholder')}
           onPaste={onPaste} onInput={(e) => set({ note: (e.target as HTMLTextAreaElement).value, detected: null })} />
       </div>
@@ -251,22 +273,21 @@ export function Composer(props: {
           {s.fields.map((f, i) => (
             <div class="field edit" key={f.id}>
               <span class="k">
-                <input value={f.k} placeholder={t('send.field_name')} aria-label={t('send.field_n_name', { n: i + 1 })} disabled={props.disabled} maxLength={80}
+                <input value={f.k} dir="auto" placeholder={t('send.field_name')} aria-label={t('send.field_n_name', { n: i + 1 })} disabled={props.disabled} maxLength={80}
                   onInput={(e) => {
                     const k = (e.target as HTMLInputElement).value;
                     updateRow(f.id, { k, secret: f.secret || isSecretKey(k) });
                   }} />
-                {f.generated && <span class="tag">{t('send.generated')}</span>}
               </span>
-              <input class={`v${f.secret && !f.shown ? ' secret' : ''}`} {...masked(!!f.secret && !f.shown)} value={f.v}
-                placeholder={t('send.field_value')} aria-label={t('send.field_value_label', { name: f.k || t('send.field_n', { n: i + 1 }) })} disabled={props.disabled} autoComplete="off" spellcheck={false}
-                onInput={(e) => updateRow(f.id, { v: (e.target as HTMLInputElement).value, generated: false })} />
+              <FieldValue f={f} n={i + 1} disabled={props.disabled} onInput={(v) => updateRow(f.id, { v, generated: false })} />
               <span class="acts">
+                {f.generated && <span class="tag">{t('send.generated')}</span>}
                 {f.secret && (
                   <button type="button" class="btn icon sm ghost" aria-label={f.shown ? t('reveal.hide') : t('reveal.show')} title={f.shown ? t('reveal.hide') : t('reveal.show')}
                     onClick={() => updateRow(f.id, { shown: !f.shown })}><Icon name={f.shown ? 'eyeoff' : 'eye'} size="sm" /></button>
                 )}
-                {(isPasswordKey(f.k) || f.k === t('send.field_password')) && (
+                {/* Only into an empty value: generating over a pasted secret would replace it without a trace. */}
+                {!f.v && (isPasswordKey(f.k) || f.k === t('send.field_password')) && (
                   <button type="button" class="btn sm ghost" onClick={() => updateRow(f.id, { v: generatePassword(), generated: true, secret: true })}>{t('send.generate')}</button>
                 )}
                 <button type="button" class="btn icon sm ghost" aria-label={t('send.remove_field')} title={t('send.remove_field')} onClick={() => removeRow(f.id)}><Icon name="x" size="sm" /></button>

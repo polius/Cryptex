@@ -10,8 +10,9 @@ export interface SealProgress {
   total: number;
 }
 
-export function Sealing({ files, manifestBytes, progress, onCancel, cancelling, offline }: {
-  files: File[]; manifestBytes: number; progress: SealProgress; onCancel: () => void; cancelling: boolean; offline: boolean;
+/** `ready`: the link is made (the seal says "Link ready"): the last step shows done too, so the two agree (S10). */
+export function Sealing({ files, manifestBytes, progress, onCancel, cancelling, offline, ready = false }: {
+  files: File[]; manifestBytes: number; progress: SealProgress; onCancel: () => void; cancelling: boolean; offline: boolean; ready?: boolean;
 }) {
   const started = useRef(Date.now());
   const pct = progress.total ? Math.min(100, Math.round((100 * progress.done) / progress.total)) : 0;
@@ -29,7 +30,7 @@ export function Sealing({ files, manifestBytes, progress, onCancel, cancelling, 
   const allUploaded = progress.done >= progress.total;
   // Announced at milestones only (each file, then making the link), never on byte progress.
   const current = steps.find((s) => s.state === 'now');
-  const milestone = allUploaded ? t('send.step_create') : current ? t('send.encrypting_file', { name: current.f.name }) : t('send.encrypting');
+  const milestone = ready ? t('send.seal_ready') : allUploaded ? t('send.step_create') : current ? t('send.encrypting_file', { name: current.f.name }) : t('send.encrypting');
   return (
     <section class="card">
       <span class="sr" role="status">{milestone}</span>
@@ -51,8 +52,9 @@ export function Sealing({ files, manifestBytes, progress, onCancel, cancelling, 
                 <span class="mono small muted">{state === 'now' ? `${bytes(doneHere)} / ${bytes(f.size)}` : bytes(f.size)}</span>
               </div>
             ))}
-            <div class={`step ${allUploaded ? 'now' : 'todo'}`}>
-              <span class="s">{files.length + 1}</span>{allUploaded ? <b>{t('send.step_create')}</b> : <span>{t('send.step_create')}</span>}<span />
+            <div class={`step ${ready ? 'done' : allUploaded ? 'now' : 'todo'}`}>
+              <span class="s">{ready ? <Icon name="check" /> : files.length + 1}</span>
+              {ready ? <span>{t('send.seal_ready')}</span> : allUploaded ? <b>{t('send.step_create')}</b> : <span>{t('send.step_create')}</span>}<span />
             </div>
           </div>
         )}

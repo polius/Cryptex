@@ -75,9 +75,11 @@ def _status(u: Any, reset_until: int | None) -> str:
 
 def _people() -> list[dict[str, Any]]:
     resets = {r["user_id"]: r["expires_at"] for r in db.all("SELECT user_id, expires_at FROM reset_links WHERE expires_at > ?", now())}
+    live = {r["owner_id"]: r["n"] for r in db.all("SELECT owner_id, count(*) AS n FROM secrets WHERE sealed = 1 AND consumed_at IS NULL "
+                                                    "AND expires_at > ? AND owner_id IS NOT NULL GROUP BY owner_id", now())}
     return [{"id": u["id"], "username": u["username"], "role": u["role"], "status": _status(u, resets.get(u["id"])),
              "invite_expires_at": iso(u["invite_expires_at"]), "reset_expires_at": iso(resets.get(u["id"])),
-             "last_seen_at": iso(u["last_seen_at"])}
+             "last_seen_at": iso(u["last_seen_at"]), "live_links": live.get(u["id"], 0)}
             for u in db.all("SELECT * FROM users ORDER BY role = 'owner' DESC, username")]
 
 
@@ -182,8 +184,10 @@ def still_owner(conn: sqlite3.Connection, c: Caller) -> None:
 
 
 @router.delete("/server/users/{user_id}", status_code=204)
-def remove_person(user_id: str, request: Request) -> Response:
-    """Their links keep working until they expire; they just can't sign in or see them any more."""
+def remove_person(user_id: str, request: Request, destroy_links: bool = False) -> Response:
+    """They can't sign in any more. With destroy_links, every link they sent that still works is destroyed too (M7:
+    offboarding, or an account that was misused); without it, those keep working until they expire. Answers to their
+    requests go either way: their requests go with the account, and nobody else could open those answers."""
     c = require_owner(request)
     require_reauth(c)
     if user_id == c.user_id:
@@ -194,8 +198,15 @@ def remove_person(user_id: str, request: Request) -> Response:
         if u is None:
             raise NotFound()
         forget_sign_ins(conn, user_id)  # their temporary password file too: a new account by that name starts clean
+        answers = [r[0] for r in conn.execute("SELECT answer_id FROM requests WHERE owner_id = ? AND answer_id IS NOT NULL", (user_id,))]
+        links = [r[0] for r in conn.execute("SELECT id FROM secrets WHERE owner_id = ? AND sealed = 1", (user_id,))] if destroy_links else []
         conn.execute("DELETE FROM users WHERE id = ?", (user_id,))
-        emit("user.removed", actor="user", user_id=c.user_id, detail={"user_id": user_id, "role": u["role"]}, c=conn)
+        emit("user.removed", actor="user", user_id=c.user_id, c=conn,
+             detail={"user_id": user_id, "role": u["role"], "links_destroyed": len(links)})
+    for sid in answers:
+        items.purge_secret(sid, None)
+    for sid in links:
+        items.purge_secret(sid, "destroyed", event=("secret.destroyed", {"reason": "owner"}), actor="user", user_id=c.user_id)
     return Response(status_code=204)
 
 
@@ -235,6 +246,7 @@ def get_limits(request: Request) -> dict[str, Any]:
 @router.put("/server/limits", status_code=204)
 def put_limits(body: dict[str, Any], request: Request) -> Response:
     c = require_owner(request)
+    require_reauth(c)  # limits include audit retention and the longest expiry (B7)
     parsed = {}
     for k, v in body.items():
         if k not in LIMIT_KEYS:
@@ -269,6 +281,7 @@ class BrandingBody(Body):
 @router.put("/server/branding", status_code=204)
 def put_branding(body: BrandingBody, request: Request) -> Response:
     c = require_owner(request)
+    require_reauth(c)
     if body.name is not None:
         r = state.resolve("brand_name")
         if r.locked_by:
@@ -327,6 +340,7 @@ def sanitize_svg(data: bytes) -> bytes:
 @router.put("/server/branding/logo", status_code=204)
 async def put_logo(request: Request) -> Response:
     c = await run_in_threadpool(require_owner, request)
+    require_reauth(c)
     data = await read_body(request, 1024 * 1024)  # async: reading the body is the only part that waits on the network
     await run_in_threadpool(_save_logo, c, request, data)  # parsing, files and the database: off the event loop
     return Response(status_code=204)
@@ -358,6 +372,7 @@ def _save_logo(c: Caller, request: Request, data: bytes) -> None:
 @router.delete("/server/branding/logo", status_code=204)
 def delete_logo(request: Request) -> Response:
     c = require_owner(request)
+    require_reauth(c)
     old = state.raw("brand_logo")
     if old:
         (state.env().data_dir / "brand" / old["file"]).unlink(missing_ok=True)

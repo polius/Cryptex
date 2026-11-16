@@ -8,7 +8,7 @@ import { H1, useTick } from '../ui/bits';
 import { AppHeader, host, Page } from '../ui/chrome';
 import { Icon } from '../ui/icons';
 
-const SETUP_GUIDE = 'https://github.com/polius/cryptex#run-it';
+const SETUP_GUIDE = 'https://github.com/polius/cryptex#quick-start';
 
 export function DemoLimit() {
   useTick(30_000);

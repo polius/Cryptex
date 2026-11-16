@@ -11,7 +11,7 @@ export interface ParsedField {
 }
 
 export type Parsed =
-  | { kind: 'fields'; rule: 'pem' | 'env' | 'yaml' | 'url' | 'pair'; fields: ParsedField[] }
+  | { kind: 'fields'; rule: 'pem' | 'json' | 'env' | 'yaml' | 'url' | 'pair'; fields: ParsedField[] }
   | { kind: 'note'; text: string };
 
 const SECRET_KEY = /pass|secret|token|key|pwd|private|credential|mnemonic|seed[\s_.-]*phrase|recovery[\s_.-]*(?:phrase|code)/i;
@@ -19,27 +19,34 @@ const SECRET_KEY = /pass|secret|token|key|pwd|private|credential|mnemonic|seed[\
 // forms count: "Wi-Fi şifresi", "секретный"); short or ambiguous ones only as a whole word ("cle" isn't "clear",
 // "пин" isn't "пингвин", "sandi" isn't "sandiwara", "pin" isn't "spin" or "pinned"). Japanese and Chinese have no
 // spaces: their words match anywhere, and the one-character ones only at the end of a word ("APIキー", "秘密鍵", not
-// "キーボード" or "鍵盤"). Words for a password or a secret also get "Generate" in the composer (isPasswordKey).
-const PASSWORD_START = ['contraseña', 'contrasenya', 'secreto', 'mot de passe', 'passwort', 'kennwort', 'geheim', "parola d'ordine",
-  'segreto', 'senha', 'segredo', 'wachtwoord', 'hasło', 'haslo', 'sekret', 'şifre', 'sifre', 'parola', 'gizli', 'пароль', 'гасло',
-  'секрет', 'पासवर्ड', 'गुप्त', 'kata sandi', 'rahasia'];
+// "キーボード" or "鍵盤"). Words for a password also get "Generate" in the composer (isPasswordKey); a secret that isn't a
+// password (an API secret, a client secret) doesn't: a generated string is never a valid one.
+const PASSWORD_START = ['contraseña', 'contrasenya', 'mot de passe', 'passwort', 'kennwort', "parola d'ordine",
+  'senha', 'wachtwoord', 'hasło', 'haslo', 'şifre', 'sifre', 'parola', 'пароль', 'гасло', 'पासवर्ड', 'kata sandi'];
 const PASSWORD_WHOLE = ['mdp', 'sandi'];
-const PASSWORD_ANYWHERE = ['パスワード', 'シークレット', '秘密', '密码', '口令', '비밀번호', '암호', '시크릿'];
-const WORD_START = [...PASSWORD_START, 'clave', 'jeton', 'schlüssel', 'schluessel', 'chiave', 'chave', 'sleutel', 'toegangscode',
+const PASSWORD_ANYWHERE = ['パスワード', '密码', '口令', '비밀번호', '암호'];
+const SECRET_START = ['secreto', 'geheim', 'segreto', 'segredo', 'sekret', 'gizli', 'секрет', 'गुप्त', 'rahasia'];
+const SECRET_ANYWHERE = ['シークレット', '秘密', '시크릿'];
+const WORD_START = [...PASSWORD_START, ...SECRET_START, 'clave', 'jeton', 'schlüssel', 'schluessel', 'chiave', 'chave', 'sleutel', 'toegangscode',
   'klucz', 'anahtar', 'belirteç', 'ключ', 'токен', 'कुंजी', 'टोकन', 'kunci'];
 // PIN codes, one-time codes and card security codes (and the Russian and Ukrainian PIN) are secrets too.
 const WHOLE_WORD = [...PASSWORD_WHOLE, 'clé', 'cle', 'clau', 'пин', 'пін', 'pin', 'otp', 'totp', 'cvv', 'cvc', 'cvv2'];
-const ANYWHERE = [...PASSWORD_ANYWHERE, '暗証番号', 'トークン', '密钥', '秘钥', '令牌', '私钥', '토큰'];
+const ANYWHERE = [...PASSWORD_ANYWHERE, ...SECRET_ANYWHERE, '暗証番号', 'トークン', '密钥', '秘钥', '令牌', '私钥', '토큰'];
 const WORD_END = ['キー', '鍵', '키'];
 const L = '[\\p{L}\\p{M}\\p{N}]'; // a letter (with its marks) or digit: anything else separates words
 const words = (list: string[]) => list.map((w) => w.split(/[\s']+/).join("[\\s_.'’-]*")).join('|');
 const matcher = (start: string[], whole: string[], anywhere: string[], end: string[]) => new RegExp(
   `(?:^|[^\\p{L}\\p{M}\\p{N}])(?:(?:${words(start)})|(?:${words(whole)})(?!${L}))|(?:${words(anywhere)})${end.length ? `|(?:${words(end)})(?!${L})` : ''}`, 'iu');
 const SECRET_KEY_I18N = matcher(WORD_START, WHOLE_WORD, ANYWHERE, WORD_END);
-const PASSWORD_KEY = /pass|pwd|secret/i;
+const PASSWORD_KEY = /pass|pwd/i;
 const PASSWORD_KEY_I18N = matcher(PASSWORD_START, PASSWORD_WHOLE, PASSWORD_ANYWHERE, []);
 const PEM = /^-----BEGIN ([A-Z0-9 ]+)-----\n[\s\S]*?\n-----END \1-----$/;
 const ENV_LINE = /^(?:export\s+)?([A-Za-z_][A-Za-z0-9_.-]*)\s*=\s?(.*)$/;
+// A lone `name=value` line is read as a variable only when the name looks like one (API_KEY, DB_PASSWORD) or is a known
+// word (password, token), and the value isn't empty or only "=": otherwise it's a password or a base64 key that holds
+// an "=" (hunter2=xyz!, c2VjcmV0LWtleQ==, Summer2024=), and splitting it would show part of it as the field's name.
+const VAR_NAME = /^[A-Z_][A-Z0-9_]*$/;
+const loneVariable = (name: string, value: string) => (VAR_NAME.test(name) || (/^[a-z_.-]+$/i.test(name) && isSecretKey(name))) && !/^=*$/.test(value.trim());
 // A name in any language ("Пароль", "Contraseña", "Şifre", "パスワード"), then a colon and a space ("10:30" isn't one),
 // or a full-width colon, which needs none.
 const YAML_LINE = /^(\p{L}[\p{L}\p{M}\p{N}_ .()/'’-]{0,60}?)\s*(?::(?=\s|$)|：)\s*(.*)$/u;
@@ -51,7 +58,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export const isSecretKey = (k: string) => SECRET_KEY.test(k) || SECRET_KEY_I18N.test(k.replace(/İ/g, 'i')); // Turkish capital İ doesn't case-fold
 
-/** A field for a password or a secret, in English or another of those languages: the composer offers "Generate" there. */
+/** A field for a password, in English or another of those languages: the composer offers "Generate" there. */
 export const isPasswordKey = (k: string) => PASSWORD_KEY.test(k) || PASSWORD_KEY_I18N.test(k.replace(/İ/g, 'i'));
 
 /** A value that holds a secret whatever its name: a URL with a password in it (scheme://user:password@host), or with
@@ -85,6 +92,8 @@ function urlFields(line: string): ParsedField[] | null {
   if (pass === undefined && !secrets.length) return null;
   const rest = params.filter((p) => !secrets.includes(p)).map((p) => p.raw).join('&');
   return [
+    // The string itself first: it's often what the recipient pastes into their tool (S10).
+    { k: t('send.field_connection'), v: line, secret: true },
     { k: t('send.field_host'), v: host + (secrets.length ? path + (rest ? `?${rest}` : '') : tail), secret: false },
     ...(user ? [{ k: t('send.field_username'), v: decode(user), secret: false }] : []),
     ...(pass !== undefined ? [{ k: t('send.field_password'), v: decode(pass), secret: true }] : []),
@@ -121,6 +130,22 @@ function pemField(text: string): ParsedField | null {
   return { k: label.charAt(0) + label.slice(1).toLowerCase(), v: text, secret: true };
 }
 
+/** A flat JSON object of names and plain values (strings, numbers, booleans): one field each. Anything nested stays
+ *  a note, as typed. */
+function jsonFields(text: string): ParsedField[] | null {
+  if (!/^\{[\s\S]*\}$/.test(text.trim())) return null;
+  let o: unknown;
+  try {
+    o = JSON.parse(text);
+  } catch {
+    return null;
+  }
+  if (!o || typeof o !== 'object' || Array.isArray(o)) return null;
+  const entries = Object.entries(o as Record<string, unknown>);
+  if (!entries.length || !entries.every(([, v]) => ['string', 'number', 'boolean'].includes(typeof v))) return null;
+  return entries.map(([k, v]) => ({ k, v: String(v), secret: isSecretKey(k) || hasCredentials(String(v)) }));
+}
+
 function looksLikePassword(s: string): boolean {
   if (s.length < 8 || /\s/.test(s)) return false;
   const classes = [/[a-z]/, /[A-Z]/, /\d/, /[^A-Za-z0-9]/].filter((r) => r.test(s)).length;
@@ -134,11 +159,18 @@ export function parsePaste(raw: string): Parsed {
 
   // 1 · one PEM block
   const pem = pemField(text.trim());
+  // Keep a pasted key's final line break: some OpenSSH versions refuse a key file without one.
+  if (pem && /\n[ \t]*$/.test(raw.replace(/\r\n?/g, '\n'))) pem.v += '\n';
   if (pem) return { kind: 'fields', rule: 'pem', fields: [pem] };
 
-  // 2 · every non-empty, non-# line is KEY=value
+  // 2 · a flat JSON object: {"client_id": "…", "client_secret": "…"}
+  const json = jsonFields(text);
+  if (json) return { kind: 'fields', rule: 'json', fields: json };
+
+  // 3 · every non-empty, non-# line is KEY=value
   const content = lines.filter((l) => l.trim() && !l.trim().startsWith('#'));
-  if (content.length && content.every((l) => ENV_LINE.test(l.trim()))) {
+  const lone = content.length === 1 && ENV_LINE.exec(content[0].trim());
+  if (content.length && content.every((l) => ENV_LINE.test(l.trim())) && (!lone || loneVariable(lone[1], lone[2]))) {
     const fields = content.map((l) => {
       const m = ENV_LINE.exec(l.trim())!;
       const v = unquote(m[2], isSecretKey(m[1]));
@@ -147,31 +179,42 @@ export function parsePaste(raw: string): Parsed {
     return { kind: 'fields', rule: 'env', fields };
   }
 
-  // 3 · every line is `key: value` (2+ lines)
+  // 4 · every line is `key: value` (2+ lines). A key with nothing after it and indented lines below is a section
+  // (db: / host: x): its children are named db.host, and it makes no empty field of its own.
   const nonEmpty = lines.filter((l) => l.trim());
   if (nonEmpty.length >= 2 && nonEmpty.every((l) => YAML_LINE.test(l.trim()) && !/^[a-z][a-z0-9+.-]*:\/\//i.test(l.trim()))) {
-    const fields = nonEmpty.map((l) => {
+    const indent = (l: string) => l.length - l.trimStart().length;
+    const parents: Array<{ k: string; at: number }> = [];
+    const fields: ParsedField[] = [];
+    nonEmpty.forEach((l, i) => {
       const m = YAML_LINE.exec(l.trim())!;
-      const v = unquote(m[2] ?? '', isSecretKey(m[1]));
-      return { k: m[1].trim(), v, secret: isSecretKey(m[1]) || hasCredentials(v) };
+      while (parents.length && parents[parents.length - 1].at >= indent(l)) parents.pop();
+      const k = [...parents.map((p) => p.k), m[1].trim()].join('.');
+      if (!(m[2] ?? '').trim() && i + 1 < nonEmpty.length && indent(nonEmpty[i + 1]) > indent(l)) {
+        parents.push({ k: m[1].trim(), at: indent(l) });
+        return;
+      }
+      const v = unquote(m[2] ?? '', isSecretKey(k));
+      fields.push({ k, v, secret: isSecretKey(k) || hasCredentials(v) });
     });
     return { kind: 'fields', rule: 'yaml', fields };
   }
 
-  // 4 · one URL with credentials
+  // 5 · one URL with credentials
   if (nonEmpty.length === 1) {
     const fields = urlFields(nonEmpty[0].trim());
     if (fields) return { kind: 'fields', rule: 'url', fields };
   }
 
-  // 5 · two lines: identity, then secret
+  // 6 · two lines: identity, then secret
   if (nonEmpty.length === 2) {
     const [id, secret] = nonEmpty.map((l) => l.trim());
-    if (!/\s/.test(id) && id.length <= 128 && !/\s/.test(secret) && (EMAIL.test(id) || looksLikePassword(secret))) {
+    // Not a URL as the identity: "https://…" then a password would become "Username: https://…".
+    if (!/\s/.test(id) && id.length <= 128 && !/^[a-z][a-z0-9+.-]*:\/\//i.test(id) && !/\s/.test(secret) && (EMAIL.test(id) || looksLikePassword(secret))) {
       return { kind: 'fields', rule: 'pair', fields: [{ k: t('send.field_username'), v: id, secret: false }, { k: t('send.field_password'), v: secret, secret: true }] };
     }
   }
 
-  // 6 · anything else
+  // 7 · anything else
   return { kind: 'note', text: raw };
 }

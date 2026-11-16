@@ -6,6 +6,7 @@ import { bytes } from '../lib/format';
 import { rich, t } from '../lib/i18n';
 import { toast } from '../lib/state';
 import { errorText } from '../screens/errors';
+import { reauthThen } from '../screens/server/common';
 import { ErrMsg } from './bits';
 import { Mark } from './icons';
 
@@ -22,6 +23,7 @@ export function LogoDrop({ logoUrl, logoName, disabled, onChange, onPick }: {
       await fn();
       onChange?.();
     } catch (e) {
+      if (reauthThen(e, () => run(fn))) return;
       const big = e instanceof ApiError && (e.status === 413 || e.code === 'too_large'); // from the API or a proxy in front of it
       setErr(big ? t('branding.logo_size', { size: bytes(LOGO_MAX) }) : errorText(e));
     }

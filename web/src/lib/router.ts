@@ -12,7 +12,8 @@ const read = (): Location => ({ path: location.pathname, query: new URLSearchPar
 export const route = signal<Location>(read());
 
 export function navigate(to: string, o: { replace?: boolean } = {}): void {
-  if (o.replace) history.replaceState(null, '', to);
+  // The same address again (Your links clicked twice) replaces, so Back isn't needed once per click.
+  if (o.replace || to === location.pathname + location.search + location.hash) history.replaceState(null, '', to);
   else history.pushState(null, '', to);
   route.value = read();
   window.scrollTo(0, 0);
@@ -37,8 +38,46 @@ window.addEventListener('hashchange', () => {
   }
 });
 
+/** An invite's or reset's token, read once from the address bar and moved to this tab's sessionStorage, so it isn't
+ *  left in history but a reload (a phone returning from the authenticator app) still finds it. `forgetTabToken`
+ *  once it's used or no longer works. */
+export function tabToken(path: string): string {
+  if (location.pathname !== path) return '';
+  const key = `cx-token:${path}`;
+  const fromUrl = location.hash.slice(1);
+  try {
+    if (fromUrl) sessionStorage.setItem(key, fromUrl);
+  } catch {
+    /* storage off: a reload can't find it, as before */
+  }
+  if (fromUrl) history.replaceState(null, '', path);
+  try {
+    return fromUrl || sessionStorage.getItem(key) || '';
+  } catch {
+    return fromUrl;
+  }
+}
+
+export function forgetTabToken(path: string): void {
+  try {
+    sessionStorage.removeItem(`cx-token:${path}`);
+  } catch {
+    /* nothing kept */
+  }
+}
+
 /** Secret, request and receipt IDs: 10 base62 characters. Anything else never reaches the API. */
 export const isId = (v: string): boolean => /^[0-9A-Za-z]{10}$/.test(v);
+
+/** Asked before an in-app link leaves the page (a passphrase shown only now and not yet copied): resolves whether to
+ *  go. Returns a function that removes it. */
+let leaveGuard: (() => Promise<boolean>) | null = null;
+export function guardLeave(ask: () => Promise<boolean>): () => void {
+  leaveGuard = ask;
+  return () => {
+    if (leaveGuard === ask) leaveGuard = null;
+  };
+}
 
 /** Same-origin <a href> clicks navigate without a page load. */
 document.addEventListener('click', (e) => {
@@ -48,7 +87,13 @@ document.addEventListener('click', (e) => {
   const href = a.getAttribute('href');
   if (!href || !href.startsWith('/') || href.startsWith('//') || href.startsWith('/api/')) return;
   e.preventDefault();
-  navigate(href);
+  const ask = leaveGuard;
+  if (!ask) return navigate(href);
+  void ask().then((go) => {
+    if (!go) return;
+    if (leaveGuard === ask) leaveGuard = null;
+    navigate(href);
+  });
 });
 
 export function match(pattern: string, path: string): Record<string, string> | null {

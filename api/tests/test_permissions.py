@@ -134,3 +134,18 @@ def test_demo_has_no_server_tab_and_no_sign_in(server, path):
     r = c.post("/api/v1/auth/login", json={"username": OWNER["username"], "auth_key": "A" * 43})
     assert r.status_code == 403 and r.json()["error"]["code"] == "demo_locked"
     assert c.post("/api/v1/setup", json=SETUP).status_code == 409
+
+
+def test_limits_and_branding_need_reauth(client):
+    """B7: an owner's open session could set audit retention to one day, or the longest expiry to 100 years, without
+    the password. Limits, branding and the logo now ask for it again, like access and people."""
+    from cryptex import db
+    db.run("UPDATE sessions SET reauth_until = 0")
+    for method, path, kw in (("PUT", "/api/v1/server/limits", {"json": {"audit_retention_days": 1}}),
+                             ("PUT", "/api/v1/server/branding", {"json": {"name": "Evil"}}),
+                             ("PUT", "/api/v1/server/branding/logo", {"content": b"x", "headers": {"Content-Type": "image/png"}}),
+                             ("DELETE", "/api/v1/server/branding/logo", {})):
+        r = client.request(method, path, **kw)
+        assert r.status_code == 403 and r.json()["error"]["code"] == "reauth_required", path
+    reauth(client)
+    assert client.put("/api/v1/server/limits", json={"audit_retention_days": 30}).status_code == 204

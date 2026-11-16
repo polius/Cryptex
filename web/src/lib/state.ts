@@ -1,7 +1,6 @@
 /** App-wide state as signals: server config, the signed-in user, toasts, theme. */
 import { signal } from '@preact/signals';
 import { api, onSessionEnded, setCsrf, setSignedInAs, signedInUid, type Config, type User } from '../api/client';
-import { t } from './i18n';
 
 export const config = signal<Config | null>(null);
 export const bootError = signal<string | null>(null);
@@ -30,7 +29,6 @@ export async function loadConfig(): Promise<Config> {
     vaultModule ??= await import('../store/vault');
     await vaultModule.syncVault(uid).catch(() => undefined);
   }
-  document.title = c.brand.name ? `${c.brand.name} · ${t('app.brand_suffix')}` : 'Cryptex';
   if (c.demo && !document.querySelector('meta[name="robots"]')) {
     const m = document.createElement('meta');
     m.name = 'robots';
@@ -140,6 +138,10 @@ export const linksCount = signal(0);
 /** A link just made (a secret or a request), until its page (/r/:id) is left: that page then says it's ready and
  *  copied, and shows the passphrase, which is kept nowhere else. Only in memory: a reload forgets it.
  *  `saved: 'local'`: the account couldn't keep it, this browser does. */
+/** An answer opened from its request's page (Open answer): the reveal page names the request and quotes its note
+ *  instead of presenting the organisation as the sender (M2). Matched by the answer's ID. */
+export const answerOf = signal<{ answerId: string; code: string; note?: string; answeredAt?: string } | null>(null);
+
 export const justCreated = signal<{ id: string; copied: boolean; passphrase?: string | null; saved?: 'ok' | 'local' } | null>(null);
 let counting = 0;
 

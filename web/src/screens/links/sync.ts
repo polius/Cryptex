@@ -144,6 +144,11 @@ async function remove(r: Row): Promise<void> {
   if (signedInUid()) await api('DELETE', `/me/receipts/${encodeURIComponent(r.id)}`).catch(() => undefined);
 }
 
+/** Forget a link on this device (M9): its stored copy, with the link and its key, goes; the link keeps working. */
+export function forgetRow(r: Row): Promise<void> {
+  return oneAtATime(() => receipts.remove(r.id));
+}
+
 /** Expired, as the list shows it: its time ran out (or, since then, the server has forgotten it). */
 export const isExpired = (r: Row): boolean => {
   const s = r.remote?.status ?? r.local?.last_status;

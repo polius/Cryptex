@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, setCsrf, type User } from '../../api/client';
 import { PASSWORD_MIN } from '../../lib/format';
 import { rich, t } from '../../lib/i18n';
-import { navigate } from '../../lib/router';
+import { forgetTabToken, navigate, tabToken } from '../../lib/router';
 import { cfg, loadConfig } from '../../lib/state';
 import { Btn, ErrMsg, H1, PasswordInput, SharedCheck, useViewFocus } from '../../ui/bits';
 import { Page, RecipientHeader } from '../../ui/chrome';
@@ -13,10 +13,13 @@ import type { Bundle } from '../../store/vault';
 
 interface Invite extends TotpSetup { username: string; role: 'member' | 'owner'; reset: boolean }
 
-// Read once: the token leaves the address bar right away, so it isn't left in history.
-const token = location.pathname === '/invite' ? location.hash.slice(1) : '';
-if (token) history.replaceState(null, '', '/invite');
-const goneText = (e: unknown) => ((e as { code?: string }).code === 'gone' ? t('invite.gone_body') : errorText(e));
+// Read once: the token leaves the address bar right away, so it isn't left in history (a reload finds it: tabToken).
+const token = tabToken('/invite');
+const goneText = (e: unknown) => {
+  if ((e as { code?: string }).code !== 'gone') return errorText(e);
+  forgetTabToken('/invite');
+  return t('invite.gone_body');
+};
 
 export function Invite() {
   const brand = cfg().brand.name;
@@ -50,6 +53,7 @@ export function Invite() {
       setCsrf(r.csrf);
       await v.openAfterSignIn(r.user.id, pw.wrap, r.vault, { shared: r.shared ?? shared, authKey: pw.authKey });
       await loadConfig();
+      forgetTabToken('/invite');
       navigate('/', { replace: true });
     } catch (e) {
       const ae = e as { field?: string; code?: string };

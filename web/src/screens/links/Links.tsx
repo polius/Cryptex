@@ -1,9 +1,10 @@
 /** /links (B1, B3): everything you sent or asked for, with statuses read again while it's open. */
 import { useEffect, useRef, useState } from 'preact/hooks';
+import { signedInUid } from '../../api/client';
 import { fold, num, relative, stamp } from '../../lib/format';
 import { t } from '../../lib/i18n';
 import { navigate } from '../../lib/router';
-import { config, loadConfig, toast } from '../../lib/state';
+import { answerOf, config, loadConfig, toast } from '../../lib/state';
 import { answerLink, requestCode } from '../../flows/request';
 import { receipts } from '../../store/db';
 import { vault } from '../../store/vault';
@@ -13,7 +14,7 @@ import { Dialog } from '../../ui/dialog';
 import { Icon, Mark, type IconName } from '../../ui/icons';
 import { errorText } from '../errors';
 import { AskButton } from '../request/AskButton';
-import { clearExpired, deleteLocked, deleteRow, deleteRows, isExpired, isFinal, isRequest, loadRows, opensUntilExpiry, usePoll, type Row } from './sync';
+import { clearExpired, deleteLocked, deleteRow, deleteRows, forgetRow, isExpired, isFinal, isRequest, loadRows, opensUntilExpiry, usePoll, type Row } from './sync';
 
 type Tab = 'all' | 'waiting' | 'done';
 
@@ -60,7 +61,9 @@ export const answerReady = (r: Row): boolean => isRequest(r) && r.remote?.status
 /** Open a request's answer: its own link, opened with the private key from the vault, on the usual reveal page. */
 export async function openAnswer(r: Row): Promise<void> {
   try {
-    navigate(await answerLink(r.local, r.remote!));
+    const link = await answerLink(r.local, r.remote!);
+    answerOf.value = { answerId: r.remote!.answer!.id, code: requestCode(r.id), note: r.local?.note, answeredAt: r.remote!.answered_at };
+    navigate(link);
   } catch (e) {
     toast((e as Error)?.message === 'locked' ? t('ask.unlock') : errorText(e), 'error');
   }
@@ -92,8 +95,8 @@ export function DeleteDialog({ row, onClose, onDeleted }: { row: Row | null; onC
   return (
     <Dialog open={!!row} alert onClose={onClose} labelledBy="dl-title"
       footer={<><button class="btn secondary" onClick={onClose} data-autofocus>{t('dialog.destroy_keep')}</button>
-        <Btn kind="danger solid" icon="trash" loading={busy} onClick={go}>{t('links.delete')}</Btn></>}>
-      <h2 class="h2" id="dl-title">{t(row && isRequest(row) ? 'links.delete_title_request' : 'links.delete_title', { title: row ? displayName(row) : '' })}</h2>
+        <Btn kind="danger solid" icon="trash" loading={busy} onClick={go}>{t(row && isFinal(row) ? 'links.remove' : 'links.delete')}</Btn></>}>
+      <h2 class="h2" id="dl-title">{t(row && isFinal(row) ? 'links.remove_title' : row && isRequest(row) ? 'links.delete_title_request' : 'links.delete_title', { title: row ? displayName(row) : '' })}</h2>
       <p class="muted">{t(row && isRequest(row) ? (isFinal(row) ? 'links.delete_body' : 'links.delete_body_request')
         : row && !isFinal(row) && row.local ? 'links.delete_body_live' : 'links.delete_body')}</p>
     </Dialog>
@@ -280,11 +283,14 @@ export function Links() {
     return () => document.removeEventListener('keydown', onKey);
   }, [selecting, q]);
 
-  const loadFailed = failed && (
+  // A refresh that fails (offline, rate limited behind a shared address) keeps the last list with a quiet note (M6).
+  const loadFailed = failed && (rows ? (
+    <p class="muted small" role="status">{t('links.refresh_paused')} · <button type="button" class="link" disabled={retrying} onClick={() => void retry()}>{t('send.try_again')}</button></p>
+  ) : (
     <Banner kind="danger" icon="alert" action={<Btn kind="secondary" class="sm" icon="refresh" loading={retrying} onClick={() => void retry()}>{t('send.try_again')}</Btn>}>
       {t('links.load_failed')}
     </Banner>
-  );
+  ));
 
   if (rows === null) {
     return <Page header={<AppHeader active="links" />}><main class="main wide" id="main"><H1>{t('links.title')}</H1>{loadFailed || <div class="rows placeholder" aria-busy="true" />}</main></Page>;
@@ -411,7 +417,8 @@ export function Links() {
                   <b>{displayName(r)}</b>
                   <small>{subtitle(r)}</small>
                 </a>
-                <span class="s"><Status kind={st.kind}>{st.text}</Status></span>
+                {/* Phones drop the time column: the time joins the status line there (M10). */}
+                <span class="s"><Status kind={st.kind}>{st.text}</Status><small class="when-m">{when(r)}</small></span>
                 <span class="when">{when(r)}</span>
                 <span class="acts">
                   {answerReady(r) ? <Btn kind="primary" class="sm" icon="eye" onClick={() => void openAnswer(r)}>{t('links.open_answer')}</Btn>
@@ -425,9 +432,14 @@ export function Links() {
                         {/* The sender's own copy of the link, in a new tab. Loading it changes nothing: revealing is a click there. */}
                         {!final && r.local?.link && <a class="mi" role="menuitem" tabIndex={-1} href={r.local.link} target="_blank" rel="noopener noreferrer" onClick={() => setMenu(null)}><Icon name="link" size="sm" />{t('links.open_link')}</a>}
                         {r.local && <button class="mi" role="menuitem" tabIndex={-1} onClick={pick(() => setRenaming(r))}><Icon name="pencil" size="sm" />{t('links.rename')}</button>}
+                        {/* The local copy goes, the link keeps working (M9): for a browser that isn't signed in, often a shared one. */}
+                        {!final && r.local && !signedInUid() && !isRequest(r) && <button class="mi" role="menuitem" tabIndex={-1} onClick={pick(() => void forgetRow(r).then(() => {
+                          toast(t('links.forgotten'));
+                          void load();
+                        }))}><Icon name="eyeoff" size="sm" />{t('links.forget')}</button>}
                         {/* Destroy, as on the receipt page: the link stops working and leaves Your links. */}
                         <button class="mi danger" role="menuitem" tabIndex={-1} aria-disabled={deleteLocked() || undefined} title={deleteLocked() ? t('links.delete_locked') : undefined}
-                          onClick={pick(() => deleteBlocked() || setDeleting(r))}><Icon name="trash" size="sm" />{t('links.delete')}</button>
+                          onClick={pick(() => deleteBlocked() || setDeleting(r))}><Icon name="trash" size="sm" />{t(final ? 'links.remove' : 'links.delete')}</button>
                       </RowMenu>
                     )}
                   </div>

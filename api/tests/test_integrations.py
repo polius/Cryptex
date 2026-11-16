@@ -357,12 +357,10 @@ def test_links_made_before_signing_in_join_the_account_only_with_their_manage_to
     """Audit Q1: links a browser adopted after signing in had no receipt in the account, so "Start fresh" (a new
     vault) lost them. POST /me/receipts saves them to the account, each proven with its manage token."""
     mine, theirs = send(anon(client)), send(anon(client))
-    failed = lambda: db.val("SELECT coalesce(sum(count), 0) FROM rate_limits WHERE bucket LIKE 'failed:%'")  # noqa: E731
     r = client.post("/api/v1/me/receipts", json={"items": [{"id": mine.id, "manage_token": mine.manage_token},
                                                            {"id": theirs.id, "manage_token": mine.manage_token},
                                                            {"id": "Zz00000000", "manage_token": "x"}]})
     assert r.status_code == 200 and r.json() == {"attached": [mine.id]}
-    assert failed() == 1  # the wrong token for an ID that exists; an unknown ID isn't a guess
     listed = [i["id"] for i in client.get("/api/v1/me/receipts").json()["items"]]
     assert mine.id in listed and theirs.id not in listed
     again = client.post("/api/v1/me/receipts", json={"items": [{"id": mine.id, "manage_token": mine.manage_token}]})
@@ -378,7 +376,9 @@ def test_links_made_before_signing_in_join_the_account_only_with_their_manage_to
 
 
 # ------------------------------------------------------------------ server tab
-def test_overview(client):
+def test_overview(client, monkeypatch):
+    from cryptex import storage
+    monkeypatch.setattr(type(storage.get()), "disk", lambda self: (100 * 1024**3, 50 * 1024**3))  # B8: not this machine's disk
     send(client)
     o = client.get("/api/v1/server/overview").json()
     assert o["live"]["secrets"] == 1 and o["week"]["created"] == 1 and o["week"]["senders"] == 1
@@ -523,3 +523,39 @@ def test_cleanup_deletes_temporary_passwords_nobody_read_after_a_day(client, mon
     db.run("UPDATE users SET temp_expires_at = ?", now() - 1)
     jobs.cleanup()
     assert not path.exists() and db.val("SELECT temp_key_hash FROM users WHERE username = ?", OWNER["username"]) is None
+
+
+# ------------------------------------------------------------------ M7: offboarding
+def test_removing_a_person_can_destroy_their_live_links(client):
+    """M7: removing an account left every link it sent working, and nobody could revoke them afterwards."""
+    lisa, uid, _ = lisa_joined(client)
+    kept, gone = send(lisa), send(lisa)
+    people = {p["username"]: p for p in client.get("/api/v1/server/access").json()["people"]}
+    assert people["lisa"]["live_links"] == 2
+    reauth(client)
+    assert client.delete(f"/api/v1/server/users/{uid}", params={"destroy_links": "true"}).status_code == 204
+    for s in (kept, gone):
+        r = anon(client).get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers())
+        assert r.status_code == 410 and r.json()["error"]["reason"] == "destroyed"
+
+
+def test_removing_a_person_without_destroying_keeps_their_links(client):
+    lisa, uid, _ = lisa_joined(client)
+    s = send(lisa)
+    reauth(client)
+    assert client.delete(f"/api/v1/server/users/{uid}").status_code == 204
+    assert anon(client).get(f"/api/v1/secrets/{s.id}/meta", headers=s.reveal_headers()).status_code == 200
+
+
+# ------------------------------------------------------------------ M6: shared offices
+def test_signed_in_status_and_reveal_limits_are_per_person(server):
+    """M6: three colleagues behind one address shared RATE_STATUS and RATE_REVEAL, so the third open Your links
+    broke everyone's. Signed in, each person has their own."""
+    c = server(RATE_STATUS="3/h")
+    s = send(c)
+    stranger = anon(c)
+    for _ in range(3):
+        assert stranger.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 200
+    assert stranger.post("/api/v1/receipts/lookup", json={"items": []}).status_code == 429  # same address, not signed in
+    r = c.post("/api/v1/receipts/lookup", json={"items": [{"id": s.id, "manage_token": s.manage_token}]})
+    assert r.status_code == 200 and [i["id"] for i in r.json()["items"]] == [s.id]  # the owner, same address: own budget

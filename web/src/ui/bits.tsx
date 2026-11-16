@@ -1,6 +1,7 @@
 /** Small shared components. */
 import type { ComponentChildren, JSX } from 'preact';
 import { useEffect, useId, useRef, useState } from 'preact/hooks';
+import { signal } from '@preact/signals';
 import { t } from '../lib/i18n';
 import { toast } from '../lib/state';
 import { Icon, type IconName } from './icons';
@@ -102,23 +103,32 @@ export function SharedCheck({ checked, onChange }: { checked: boolean; onChange:
 }
 
 /** Copy inside the click handler; on failure, select the text and say how. */
+/** Text the browser wouldn't put on the clipboard: shown, selected, in a small box to copy by hand (S10). */
+export const copyFallback = signal<string | null>(null);
+
 export async function copyText(text: string, okMessage = t('toast.copied'), selectEl?: HTMLElement | null): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);
     toast(okMessage);
     return true;
   } catch {
-    if (selectEl) {
+    if (selectEl && selectEl.textContent === text) {
       const r = document.createRange();
       r.selectNodeContents(selectEl);
       const s = getSelection();
       s?.removeAllRanges();
       s?.addRange(r);
+      toast(copyHint(), 'info');
+    } else {
+      copyFallback.value = text; // nothing on the page holds exactly this (a masked value, a .env): show it to copy
     }
-    toast(t('toast.press_to_copy', { keys: navigator.platform.includes('Mac') ? '⌘C' : 'Ctrl+C' }), 'info');
     return false;
   }
 }
+
+/** "Press ⌘C to copy", or on a touch screen, where there's no keyboard shortcut, "Select it and copy". */
+export const copyHint = (): string => (matchMedia?.('(pointer:coarse)').matches ? t('toast.select_to_copy')
+  : t('toast.press_to_copy', { keys: /Mac|iPhone|iPad/.test(navigator.platform) ? '⌘C' : 'Ctrl+C' }));
 
 /** Re-render every `ms` (relative times, countdowns). */
 export function useTick(ms = 30_000): number {

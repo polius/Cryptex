@@ -24,7 +24,7 @@ test('passphrase: 5 wrong tries destroy the secret, and the sender sees why', as
     await expect(r.page.getByRole('alert')).toContainText(`${left} ${left === 1 ? 'try' : 'tries'} left`);
   }
   await r.page.locator('#pass').fill('wrong-final');
-  await r.page.getByRole('button', { name: 'Try again' }).click();
+  await r.page.getByRole('button', { name: 'Reveal secret' }).click();
   await expect(r.page.getByRole('heading', { name: 'This secret was destroyed' })).toBeVisible();
   await page.goto(`/r/${id}`);
   await expect(page.locator('.status')).toContainText('too many wrong passphrases');
@@ -304,8 +304,8 @@ test('Server tab: limits validate, branding shows to recipients, audit records i
   await expect(page.locator('table')).not.toContainText('brand canary');
 });
 
-test('members and visitors get the 404 page for the Server tab', async ({ browser }) => {
+test('visitors are sent to sign in from the Server tab, and come back after (M5)', async ({ browser }) => {
   const s = await stranger(browser);
-  await s.page.goto('/server');
-  await expect(s.page.getByRole('heading', { name: 'There’s nothing at this address' })).toBeVisible();
+  await s.page.goto('/server/limits');
+  await expect(s.page).toHaveURL(/\/signin\?next=%2Fserver%2Flimits$/);
 });

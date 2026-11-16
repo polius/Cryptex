@@ -26,8 +26,8 @@ def cleanup() -> int:
     for r in db.all(f"SELECT id, views FROM secrets WHERE sealed = 1 AND consumed_at IS NULL AND expires_at <= ? AND {no_download}", t, t):
         items.purge_secret(r["id"], "expired", event=("secret.expired", {"views_used": r["views"]}))
         removed += 1
-    # Unsealed uploads idle for 30 minutes never existed for anyone.
-    for r in db.all("SELECT id FROM secrets WHERE sealed = 0 AND upload_active_at < ?", t - items.UPLOAD_IDLE):
+    # Unsealed uploads idle for 30 minutes, or started a day ago, never existed for anyone.
+    for r in db.all("SELECT id FROM secrets WHERE sealed = 0 AND (upload_active_at < ? OR created_at < ?)", t - items.UPLOAD_IDLE, t - items.UPLOAD_MAX):
         items.drop_upload(r["id"])
         removed += 1
     # Requests never sealed (their link was never shown); and any request as long after it ended as Your links keeps
@@ -76,7 +76,8 @@ def record(name: str, fn: Callable[[], int]) -> int:
 async def loop() -> None:
     """Runs every job on its schedule until cancelled. Nothing a job or the schedule raises stops the loop."""
     last: dict[str, float] = {}
-    schedule = [("cleanup", 60, cleanup), ("tombstones", 3600, tombstones), ("audit", 86400, audit)]
+    # orphans: at start and daily, chunk files no row points to (B5)
+    schedule = [("cleanup", 60, cleanup), ("tombstones", 3600, tombstones), ("audit", 86400, audit), ("orphans", 86400, items.sweep_orphans)]
     while True:
         try:
             await _tick(last, schedule)

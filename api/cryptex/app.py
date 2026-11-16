@@ -5,9 +5,11 @@ import asyncio
 import contextlib
 import json
 import logging
+import mimetypes
 import os
 import re
 import secrets
+import sqlite3
 import sys
 import time
 from collections import Counter
@@ -87,9 +89,22 @@ def create_app(env: Env | None = None, run_jobs: bool = True) -> FastAPI:
     if env is None:
         try:
             env = load_env()
-        except ValueError as err:  # a setting or the key: say what, without a traceback
+        except (ValueError, OSError) as err:  # a setting, the key, an unwritable data folder: say what, no traceback
             sys.exit(f"cryptex: {err}")
+        try:
+            return _create(env, run_jobs)
+        except (OSError, RuntimeError, sqlite3.Error) as err:
+            sys.exit(f"cryptex: {err}")
+    return _create(env, run_jobs)
+
+
+def _create(env: Env, run_jobs: bool) -> FastAPI:
     setup_logging(env)
+    for note in env.notes:
+        log.warning("%s", note)
+    if env.new_key:
+        log.warning("Generated %s, the key that protects this server's sign-in data. Keep it with the data folder and "
+                    "in every backup: without it, nobody can sign in.", env.data_dir / "enc.key")
     state.init(env)
     db.configure(env.data_dir / "cryptex.db")
     security.check_canary()  # refuses to start with another enc.key than the one the database was set up with
@@ -135,7 +150,7 @@ def create_app(env: Env | None = None, run_jobs: bool = True) -> FastAPI:
             return ApiError("too_large", limit=MAX_BODY).response()
         if e.status_code in (404, 405):
             if env.static_dir and not request.url.path.startswith("/api/") and request.method in ("GET", "HEAD"):
-                return _spa(env.static_dir, request.url.path)
+                return _spa(env.static_dir, request.url.path, request.headers.get("accept-encoding", ""))
             return NotFound().response()
         return ApiError("invalid", str(e.detail), status=e.status_code).response()
 
@@ -170,15 +185,16 @@ def create_app(env: Env | None = None, run_jobs: bool = True) -> FastAPI:
         extra = {"route": route, "status": response.status_code, "ms": ms, "request_id": rid, "method": request.method}
         if env.log_ips:
             extra["ip"] = ratelimit.client_ip(request)
-        log.info("request", extra=extra)
+        # The image's own health check every 30 s isn't worth a line each time.
+        log.log(logging.DEBUG if route == "/healthz" else logging.INFO, "request", extra=extra)
         return response
 
     if env.static_dir:
         static = env.static_dir
 
         @app.get("/{path:path}", include_in_schema=False)
-        async def spa(path: str) -> Response:
-            return _spa(static, "/" + path)
+        async def spa(path: str, request: Request) -> Response:
+            return _spa(static, "/" + path, request.headers.get("accept-encoding", ""))
 
     return app
 
@@ -204,7 +220,22 @@ class BodyLimit:
         await self.app(scope, counted, send)
 
 
-def _spa(static: Path, path: str) -> Response:
+COMPRESSED = (("br", ".br"), ("gzip", ".gz"))  # copies made at image build (web/scripts/compress.mjs), best first
+
+
+def _file(target: Path, cache: str, accept: str, media_type: str | None = None) -> FileResponse:
+    """A built file, compressed when the browser takes it and the build made a copy (D9): no work per request."""
+    takes = {e.split(";")[0].strip() for e in accept.lower().split(",")}
+    headers = {"Cache-Control": cache, "Vary": "Accept-Encoding"}
+    media_type = media_type or mimetypes.guess_type(target.name)[0] or "application/octet-stream"
+    for name, ext in COMPRESSED:
+        alt = target.with_name(target.name + ext)
+        if name in takes and alt.is_file():
+            return FileResponse(alt, headers={**headers, "Content-Encoding": name}, media_type=media_type)
+    return FileResponse(target, headers=headers, media_type=media_type)
+
+
+def _spa(static: Path, path: str, accept: str = "") -> Response:
     """Serve built front-end files, falling back to index.html for app routes. Dotfiles (Vite's .vite/) are never
     served, and a missing asset is a 404, not the app. A "." or ".." segment (an encoded /s/..%2Fx) is only ever answered
     with the app, which shows its own not-found page: the file check below keeps it inside the static folder."""
@@ -215,7 +246,7 @@ def _spa(static: Path, path: str) -> Response:
     if rel and target.is_file() and static.resolve() in target.parents:
         cache = ("public, max-age=31536000, immutable" if rel.startswith("assets/")  # content-hashed
                  else "public, max-age=86400" if rel in ICONS else "no-cache")  # index.html, theme.js, the manifest
-        return FileResponse(target, headers={"Cache-Control": cache})
+        return _file(target, cache, accept)
     if rel.startswith(("api/", "assets/")):
         return NotFound().response()
-    return FileResponse(static / "index.html", headers={"Cache-Control": "no-cache"}, media_type="text/html")
+    return _file(static / "index.html", "no-cache", accept, media_type="text/html")

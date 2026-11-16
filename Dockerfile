@@ -7,7 +7,7 @@ COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
 COPY docs/vectors.json /src/docs/
 COPY web/ ./
-RUN npm run build && node scripts/budget.mjs && rm -rf dist/.vite
+RUN npm run build && node scripts/budget.mjs && rm -rf dist/.vite && node scripts/compress.mjs dist
 
 FROM python:3.15-alpine@sha256:a0f2e268f2ce8f3709611a90054ec6a8ae31f6251f5896b8648b9bb99835e30a
 WORKDIR /app
@@ -26,7 +26,7 @@ COPY api/cryptex ./cryptex
 COPY --from=web /src/web/dist /usr/share/cryptex/web
 RUN python -m compileall -q cryptex
 ENV DATA_DIR=/data STATIC_DIR=/usr/share/cryptex/web PYTHONPATH=/app PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 \
-    TRUSTED_PROXIES=127.0.0.0/8,::1,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16,fc00::/7
+    TRUSTED_PROXIES=127.0.0.1,::1
 VOLUME /data
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=30s --start-interval=2s --retries=3 \
@@ -35,4 +35,4 @@ ENTRYPOINT ["docker-entrypoint.sh"]
 # Shell form for $TRUSTED_PROXIES; exec makes uvicorn PID 1, so `docker stop` reaches it (open requests get 5 s).
 CMD exec uvicorn cryptex.app:create_app --factory --host 0.0.0.0 --port 8080 --loop uvloop --http httptools \
     --proxy-headers --forwarded-allow-ips "$TRUSTED_PROXIES" --no-server-header --log-level warning \
-    --timeout-graceful-shutdown 5
+    --timeout-graceful-shutdown 5 --limit-concurrency 500

@@ -7,16 +7,19 @@ stores each chunk under a random name.
 from __future__ import annotations
 
 import sqlite3
-from typing import Any
+from pathlib import Path
+from typing import Any, BinaryIO
 
-from . import db, state, storage
+from . import db, ratelimit, state, storage
+from .config import Rate
 from .errors import ApiError, NotFound, gone, invalid
 from .events import emit
 from .util import b64u, now, unb64u
 
 CHUNK = 5 * 1024 * 1024
 TAG = 16
-UPLOAD_IDLE = 30 * 60
+UPLOAD_IDLE = 30 * 60      # an unsealed upload with no new chunk for this long goes...
+UPLOAD_MAX = 24 * 3600     # ...and any unsealed upload this long after it started, whatever is re-sent (B1)
 READ_SESSION = 10 * 60     # a read session at first: time to fetch the first chunk
 READ_SLIDE = 15 * 60       # then each chunk request, and each chunk sent in full, keeps it open at least this much
                            # longer (a slow phone takes minutes per 5 MiB chunk; a retry after a dropped connection)...
@@ -86,17 +89,18 @@ def stream_list(secret_id: str) -> list[dict[str, Any]]:
     return [{"stream": r["stream"], "prefix": b64u(r["prefix"]), "chunks": r["chunks"], "size": r["size_bytes"]} for r in rows]
 
 
-def store_chunk(secret_id: str, stream: int, n: int, data: bytes) -> None:
-    """Idempotent: re-sending a chunk replaces it. The blob is written first and its row claimed in one transaction
+def store_chunk(secret_id: str, stream: int, n: int, tmp: Path, size: int) -> bool:
+    """Idempotent: re-sending a chunk replaces it. Returns whether it was a new chunk (only that keeps the upload
+    alive: re-sending one chunk forever doesn't, B1). The blob is written first and its row claimed in one transaction
     with the checks, so a lost race, a cancelled upload or a seal in between never leaves a blob without a row."""
     st = db.one("SELECT * FROM streams WHERE secret_id = ? AND stream = ?", secret_id, stream)
     if st is None or not (0 <= n < st["chunks"]):
         raise invalid("n", "No such chunk in this upload.")
-    if len(data) != expected_chunk_size(st, n):
-        raise ApiError("too_large" if len(data) > CHUNK + TAG else "invalid",
+    if size != expected_chunk_size(st, n):
+        raise ApiError("too_large" if size > CHUNK + TAG else "invalid",
                        "Chunk size doesn’t match the declared stream.", field="body", limit=expected_chunk_size(st, n))
     blobs = storage.get()
-    key = blobs.put(data)
+    key = blobs.put_file(tmp)
     old = None
     try:
         with db.tx() as c:
@@ -109,16 +113,17 @@ def store_chunk(secret_id: str, stream: int, n: int, data: bytes) -> None:
             if row is not None:
                 old = row[0]
                 c.execute("UPDATE chunks SET blob_key = ?, size_bytes = ? WHERE secret_id = ? AND stream = ? AND n = ?",
-                          (key, len(data), secret_id, stream, n))
+                          (key, size, secret_id, stream, n))
             else:
                 c.execute("INSERT INTO chunks(secret_id, stream, n, size_bytes, blob_key) VALUES (?,?,?,?,?)",
-                          (secret_id, stream, n, len(data), key))
+                          (secret_id, stream, n, size, key))
                 c.execute("UPDATE streams SET received = received + 1 WHERE secret_id = ? AND stream = ?", (secret_id, stream))
     except BaseException:
         blobs.delete(key)
         raise
     if old is not None:
         blobs.delete(old)
+    return old is None
 
 
 def check_complete(secret_id: str) -> None:
@@ -132,9 +137,12 @@ def check_complete(secret_id: str) -> None:
         raise invalid("chunks", "Some chunks haven’t arrived yet.")
 
 
-def check_disk(upload_bytes: int) -> None:
+def check_disk(upload_bytes: int, caller_key: str, one_secret_max: int) -> None:
     """Refuse a new secret that would leave less than MIN_FREE_DISK free on DATA_DIR, counting what uploads in
-    progress still have to send. A full disk takes the database down with it."""
+    progress still have to send. A full disk takes the database down with it. One caller (an account, or an address)
+    may declare at most two of the largest secrets' worth of bytes an hour (B1): with unfinished uploads ending 30
+    minutes after their last new chunk, declaring sizes and sending nothing can't reserve the disk for everyone else."""
+    ratelimit.hit("upload_bytes", Rate(2 * one_secret_max, 3600), caller_key, cost=upload_bytes)
     _, free = storage.get().disk()
     declared = db.val("SELECT coalesce(sum(size_bytes), 0) FROM secrets WHERE sealed = 0")
     stored = db.val("SELECT coalesce(sum(c.size_bytes), 0) FROM chunks c JOIN secrets s ON s.id = c.secret_id WHERE s.sealed = 0")
@@ -143,14 +151,34 @@ def check_disk(upload_bytes: int) -> None:
         raise ApiError("storage_full", limit=max(0, room))
 
 
-def read_chunk(secret_id: str, stream: int, n: int) -> bytes | None:
+def open_chunk(secret_id: str, stream: int, n: int) -> BinaryIO | None:
+    """The chunk's file, open for reading (B2: served from disk, never read whole into memory)."""
     row = db.one("SELECT blob_key FROM chunks WHERE secret_id = ? AND stream = ? AND n = ?", secret_id, stream, n)
     if row is None:
         return None
     try:
-        return storage.get().get(row["blob_key"])
+        return storage.get().open(row["blob_key"])
     except FileNotFoundError:
         return None
+
+
+def sweep_orphans(older_than: int = 3600) -> int:
+    """Chunk files no row points to (B5): a crash between writing a chunk and recording it, or between deleting a
+    row and its file, left them behind for good, uncounted. Only files older than `older_than`, so a chunk being
+    stored right now is never taken."""
+    blobs = storage.get()
+    n = blobs.sweep_incoming(older_than)
+    known = {r[0] for r in db.all("SELECT blob_key FROM chunks")}
+    for key in blobs.keys():
+        if key in known:
+            continue
+        try:
+            if blobs.age(key) > older_than:
+                blobs.delete(key)
+                n += 1
+        except FileNotFoundError:
+            pass
+    return n
 
 
 def drop_chunks(c: sqlite3.Connection, secret_id: str) -> list[str]:
