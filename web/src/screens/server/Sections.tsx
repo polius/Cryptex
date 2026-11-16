@@ -212,9 +212,9 @@ function PeopleTable({ people, me, onRole, onInvite, onRemove }: {
                 : p.status === 'locked' ? <Status kind="danger">{t('people.locked')}</Status>
                   : <Status kind="expired">{t('people.invite_expired')}</Status>}</td>
           <td style="text-align:right;white-space:nowrap">{!readOnly() && p.id !== me && <>
-            <button class="btn sm ghost" onClick={() => onRole(p, p.role === 'owner' ? 'member' : 'owner')}>{p.role === 'owner' ? t('people.make_member') : t('people.make_owner')}</button>
-            <button class="btn sm ghost" onClick={() => onInvite(p)}>{p.status === 'invited' || p.status === 'expired' ? t('people.new_invite') : t('people.reset_signin')}</button>
-            <button class="btn sm ghost danger" onClick={() => onRemove(p)}>{t('people.remove')}</button>
+            <button class="btn sm ghost" aria-label={t(p.role === 'owner' ? 'people.make_member_named' : 'people.make_owner_named', { name: p.username })} onClick={() => onRole(p, p.role === 'owner' ? 'member' : 'owner')}>{p.role === 'owner' ? t('people.make_member') : t('people.make_owner')}</button>
+            <button class="btn sm ghost" aria-label={t(p.status === 'invited' || p.status === 'expired' ? 'people.new_invite_named' : 'people.reset_signin_named', { name: p.username })} onClick={() => onInvite(p)}>{p.status === 'invited' || p.status === 'expired' ? t('people.new_invite') : t('people.reset_signin')}</button>
+            <button class="btn sm ghost danger" aria-label={t('people.remove_named', { name: p.username })} onClick={() => onRemove(p)}>{t('people.remove')}</button>
           </>}</td>
         </tr>
       ))}</tbody>

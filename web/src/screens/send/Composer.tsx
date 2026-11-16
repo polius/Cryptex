@@ -133,12 +133,12 @@ function FieldValue({ f, n, disabled, onInput }: { f: FieldRow; n: number; disab
   if (f.v.includes('\n')) {
     if (hide) return <span class="v multi-sum" aria-label={label}>{multiLineSummary(f.v)}</span>;
     return (
-      <textarea class="v multi" value={f.v} aria-label={label} disabled={disabled} autoComplete="off" spellcheck={false}
+      <textarea class="v multi" dir="auto" value={f.v} aria-label={label} disabled={disabled} autoComplete="off" spellcheck={false}
         rows={Math.min(8, f.v.replace(/\n$/, '').split('\n').length)} onInput={(e) => onInput((e.target as HTMLTextAreaElement).value)} />
     );
   }
   return (
-    <input class={`v${hide ? ' secret' : ''}`} {...masked(hide)} value={f.v}
+    <input class={`v${hide ? ' secret' : ''}`} {...masked(hide)} dir="auto" value={f.v}
       placeholder={t('send.field_value')} aria-label={label} disabled={disabled} autoComplete="off" spellcheck={false}
       onInput={(e) => onInput((e.target as HTMLInputElement).value)} />
   );
@@ -252,7 +252,7 @@ export function Composer(props: {
       >
       {!empty && (
         <div class="cmp-title">
-          <input class="t" value={s.title} maxLength={120} placeholder={t('send.title_placeholder')} aria-label={t('send.title_label')} disabled={props.disabled}
+          <input class="t" dir="auto" value={s.title} maxLength={120} placeholder={t('send.title_placeholder')} aria-label={t('send.title_label')} disabled={props.disabled}
             aria-describedby="title-hint" onFocus={() => setTitleFocus(true)} onBlur={() => setTitleFocus(false)}
             onInput={(e) => set({ title: (e.target as HTMLInputElement).value })} />
           {/* Only while editing the title: that's when "they'll see this first" matters. It slides, so nothing jumps. */}
@@ -264,7 +264,7 @@ export function Composer(props: {
       {/* Always there, so a note can be added next to fields (Add field on an empty box used to hide it). */}
       <div class={empty ? 'cmp-empty' : 'cmp-note'}>
         <textarea ref={noteRef} class={empty ? 'ph-area' : `note-area${s.fields.length ? ' slim' : ''}`} value={s.note} disabled={props.disabled} id={props.expanded ? 'composer-big' : 'composer'}
-          aria-label={t('send.secret_label')} spellcheck={false} autoComplete="off" data-autofocus rows={1}
+          aria-label={t('send.secret_label')} dir="auto" spellcheck={false} autoComplete="off" data-autofocus rows={1}
           placeholder={s.fields.length && !s.note ? t('send.note_placeholder') : t('send.placeholder')}
           onPaste={onPaste} onInput={(e) => set({ note: (e.target as HTMLTextAreaElement).value, detected: null })} />
       </div>
@@ -273,7 +273,7 @@ export function Composer(props: {
           {s.fields.map((f, i) => (
             <div class="field edit" key={f.id}>
               <span class="k">
-                <input value={f.k} placeholder={t('send.field_name')} aria-label={t('send.field_n_name', { n: i + 1 })} disabled={props.disabled} maxLength={80}
+                <input value={f.k} dir="auto" placeholder={t('send.field_name')} aria-label={t('send.field_n_name', { n: i + 1 })} disabled={props.disabled} maxLength={80}
                   onInput={(e) => {
                     const k = (e.target as HTMLInputElement).value;
                     updateRow(f.id, { k, secret: f.secret || isSecretKey(k) });

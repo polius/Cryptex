@@ -12,7 +12,8 @@ const read = (): Location => ({ path: location.pathname, query: new URLSearchPar
 export const route = signal<Location>(read());
 
 export function navigate(to: string, o: { replace?: boolean } = {}): void {
-  if (o.replace) history.replaceState(null, '', to);
+  // The same address again (Your links clicked twice) replaces, so Back isn't needed once per click.
+  if (o.replace || to === location.pathname + location.search + location.hash) history.replaceState(null, '', to);
   else history.pushState(null, '', to);
   route.value = read();
   window.scrollTo(0, 0);

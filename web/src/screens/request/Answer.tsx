@@ -167,7 +167,7 @@ export function Answer({ id }: { id: string }) {
       {a.note && (
         <figure class="ask-said">
           <figcaption><Icon name="user" size="sm" />{t('answer.note')}</figcaption>
-          <blockquote>{a.note}</blockquote>
+          <blockquote dir="auto">{a.note}</blockquote>
         </figure>
       )}
     </div>

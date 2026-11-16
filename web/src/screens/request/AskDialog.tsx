@@ -76,7 +76,7 @@ export function AskDialog({ open, onClose }: { open: boolean; onClose: () => voi
         <p class="muted">{t('ask.lede')}</p>
         <div>
           <label class="label" for="ask-note">{t('ask.note')}<span class="opt-tag">{t('common.optional')}</span></label>
-          <textarea id="ask-note" class="input textarea" rows={3} maxLength={NOTE_MAX} value={note} readOnly={busy} data-autofocus
+          <textarea id="ask-note" dir="auto" class="input textarea" rows={3} maxLength={NOTE_MAX} value={note} readOnly={busy} data-autofocus
             aria-describedby="ask-note-help" onInput={(e) => setNote((e.target as HTMLTextAreaElement).value)} />
           <p class="help" id="ask-note-help">{t('ask.note_help')}</p>
         </div>

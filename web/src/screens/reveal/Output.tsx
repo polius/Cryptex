@@ -240,13 +240,13 @@ export function Output({ data, title, from, deletedNote, onCleared }: {
         <div class="out-h"><h1 class="h3">{title || t('reveal.secret')}</h1>{from && <span class="muted small">{t('reveal.from_sender', { sender: from })}</span>}</div>
         {data.items.map((it, i) => it.t === 'note' ? (
           <div class="note out-note" key={i}>
-            <pre>{it.v}</pre>
+            <pre dir="auto">{it.v}</pre>
             <span class="acts"><button class="btn icon sm ghost" aria-label={t('reveal.copy')} title={t('reveal.copy')} onClick={() => copy(it.v)}><Icon name="copy" size="sm" /></button></span>
           </div>
         ) : (
           <div class="field" key={i}>
-            <span class="k">{it.k}</span>
-            <span class={`v${it.secret && !shown.has(i) ? ' secret' : ''}`}>{it.secret && !shown.has(i) ? '•'.repeat(Math.min(16, Math.max(8, it.v.length))) : it.v}</span>
+            <span class="k" dir="auto">{it.k}</span>
+            <span dir="auto" class={`v${it.secret && !shown.has(i) ? ' secret' : ''}`}>{it.secret && !shown.has(i) ? '•'.repeat(Math.min(16, Math.max(8, it.v.length))) : it.v}</span>
             <span class="acts">
               {it.secret && (
                 <button class="btn icon sm ghost" aria-label={shown.has(i) ? t('reveal.hide') : t('reveal.show')} title={shown.has(i) ? t('reveal.hide') : t('reveal.show')}
