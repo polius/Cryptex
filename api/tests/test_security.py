@@ -1316,7 +1316,7 @@ def _declare(c, size: int, files: int = 1):
 
 def test_one_address_cannot_reserve_the_disk(server, monkeypatch):
     """B1: six creates declaring the largest file, with no chunks, from one address made everyone else's 100 KB
-    secret fail with 507. Now one caller holds at most the largest secret's worth of unsent space."""
+    secret fail with 507. Now one caller declares at most two of the largest secrets' worth of bytes an hour."""
     from conftest import from_address
 
     from cryptex import storage
@@ -1324,8 +1324,8 @@ def test_one_address_cannot_reserve_the_disk(server, monkeypatch):
     monkeypatch.setattr(type(storage.get()), "disk", lambda self: (4 * GiB, 2 * GiB))
     hog = from_address(c, "198.51.100.7")
     codes = [_declare(hog, 100 * 1000**2, files=5).status_code for _ in range(6)]
-    assert codes[0] == 201 and set(codes[1:]) == {429}
-    assert _declare(hog, 50 * 1024**2).json()["error"]["code"] == "uploads_pending"
+    assert codes[:2] == [201, 201] and set(codes[2:]) == {429}
+    assert _declare(hog, 50 * 1024**2).json()["error"]["code"] == "rate_limited"
     other = from_address(c, "203.0.113.9")
     assert _declare(other, 100 * 1024).status_code == 201
 
@@ -1347,11 +1347,6 @@ def test_an_unfinished_upload_ends_whatever_is_re_sent(server):
     assert c.put(f"/api/v1/secrets/{s.id}/chunks/0/0", content=body, headers=up).status_code == 404
     jobs.cleanup()
     assert db.val("SELECT 1 FROM secrets WHERE id = ?", s.id) is None
-
-
-def test_a_sealed_secret_keeps_no_address(client):
-    s = send(client)
-    assert db.val("SELECT creator FROM secrets WHERE id = ?", s.id) is None
 
 
 # ------------------------------------------------------------------ B6: the five-try limit under parallel guesses

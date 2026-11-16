@@ -445,7 +445,6 @@
     "rate_limited_later": "Too many tries. Try again later.",
     "last_owner": "There has to be at least one owner. Make someone else an owner first.",
     "storage_full": "This server is out of space right now, so nothing was saved. Try again later.",
-    "uploads_pending": "Other uploads you started haven’t finished yet. Let them finish, or try again in a little while.",
     "wrong_password": "That password didn’t work.",
     "date": "That date couldn’t be read. Pick the time range again.",
     "csrf": "You signed in or out in another tab. Try again; what you typed is still here.",

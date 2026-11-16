@@ -77,8 +77,7 @@ def create_secret(body: CreateSecret, request: Request) -> dict[str, Any]:
     total = sum(s["size"] for s in streams)
     if e.demo:
         demo.before_create(c, request, total, len(streams) - 1)
-    creator = c.user_id or c.subject
-    items.check_disk(total, creator, largest_secret())
+    items.check_disk(total, f"user:{c.user_id}" if c.user_id else c.subject, largest_secret())
 
     upload, upload_h = new_token()
     manage, manage_h = new_token()
@@ -87,9 +86,9 @@ def create_secret(body: CreateSecret, request: Request) -> dict[str, Any]:
         sid = unique_id(conn)
         conn.execute(
             "INSERT INTO secrets(id, owner_id, created_at, expires_at, max_views, passphrase_salt, "
-            "manage_hash, upload_hash, upload_active_at, size_bytes, creator) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            "manage_hash, upload_hash, upload_active_at, size_bytes) VALUES (?,?,?,?,?,?,?,?,?,?)",
             (sid, c.user_id, t, t + p.expires_in, p.views, salt,
-             manage_h, upload_h, t, total, creator),
+             manage_h, upload_h, t, total),
         )
         items.insert_streams(conn, sid, streams)
         if c.user_id:
@@ -169,7 +168,7 @@ def seal(sid: str, body: SealSecret, request: Request) -> dict[str, Any]:
     t = now()
     try:
         with db.tx() as conn:
-            expires = conn.execute("UPDATE secrets SET sealed = 1, upload_active_at = NULL, creator = NULL, meta_ct = ?, reveal_hash = ?, passcheck_hash = ?, "
+            expires = conn.execute("UPDATE secrets SET sealed = 1, upload_active_at = NULL, meta_ct = ?, reveal_hash = ?, passcheck_hash = ?, "
                                    "expires_at = CASE WHEN request_id IS NULL THEN ? + expires_at - created_at ELSE expires_at END "
                                    "WHERE id = ? AND sealed = 0 RETURNING expires_at",
                                    (body.meta_ct.encode(), body.reveal_hash, body.passcheck_hash, t, sid)).fetchone()

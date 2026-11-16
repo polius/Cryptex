@@ -10,7 +10,8 @@ import sqlite3
 from pathlib import Path
 from typing import Any, BinaryIO
 
-from . import db, state, storage
+from . import db, ratelimit, state, storage
+from .config import Rate
 from .errors import ApiError, NotFound, gone, invalid
 from .events import emit
 from .util import b64u, now, unb64u
@@ -136,21 +137,12 @@ def check_complete(secret_id: str) -> None:
         raise invalid("chunks", "Some chunks haven’t arrived yet.")
 
 
-def pending_bytes(creator: str) -> int:
-    """What this caller's unfinished uploads declared and haven't sent yet."""
-    declared = db.val("SELECT coalesce(sum(size_bytes), 0) FROM secrets WHERE sealed = 0 AND creator = ?", creator)
-    stored = db.val("SELECT coalesce(sum(c.size_bytes), 0) FROM chunks c JOIN secrets s ON s.id = c.secret_id "
-                    "WHERE s.sealed = 0 AND s.creator = ?", creator)
-    return max(0, int(declared) - int(stored))
-
-
-def check_disk(upload_bytes: int, creator: str, one_secret_max: int) -> None:
+def check_disk(upload_bytes: int, caller_key: str, one_secret_max: int) -> None:
     """Refuse a new secret that would leave less than MIN_FREE_DISK free on DATA_DIR, counting what uploads in
     progress still have to send. A full disk takes the database down with it. One caller (an account, or an address)
-    may hold at most the largest secret's worth of unsent space at once (B1), so declaring sizes and sending nothing
-    can't reserve the disk for everyone else."""
-    if pending_bytes(creator) + upload_bytes > one_secret_max:
-        raise ApiError("uploads_pending")
+    may declare at most two of the largest secrets' worth of bytes an hour (B1): with unfinished uploads ending 30
+    minutes after their last new chunk, declaring sizes and sending nothing can't reserve the disk for everyone else."""
+    ratelimit.hit("upload_bytes", Rate(2 * one_secret_max, 3600), caller_key, cost=upload_bytes)
     _, free = storage.get().disk()
     declared = db.val("SELECT coalesce(sum(size_bytes), 0) FROM secrets WHERE sealed = 0")
     stored = db.val("SELECT coalesce(sum(c.size_bytes), 0) FROM chunks c JOIN secrets s ON s.id = c.secret_id WHERE s.sealed = 0")

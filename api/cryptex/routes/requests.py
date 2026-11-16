@@ -184,8 +184,7 @@ def start_answer(rid: str, body: StartAnswer, request: Request) -> dict[str, Any
         demo.before_create(c, request, total, len(streams) - 1)
     for s in db.all("SELECT id FROM secrets WHERE request_id = ? AND sealed = 0", rid):
         items.drop_upload(s["id"])
-    creator = c.user_id or c.subject
-    items.check_disk(total, creator, largest_secret())
+    items.check_disk(total, f"user:{c.user_id}" if c.user_id else c.subject, largest_secret())
     upload, upload_h = new_token()
     _, manage_h = new_token()  # nobody manages an answer by token: the requester deletes it with the request
     t = now()
@@ -193,7 +192,7 @@ def start_answer(rid: str, body: StartAnswer, request: Request) -> dict[str, Any
         sid = unique_id(conn)
         conn.execute(
             "INSERT INTO secrets(id, created_at, expires_at, max_views, passphrase_salt, manage_hash, upload_hash, upload_active_at, "
-            "size_bytes, request_id, creator) VALUES (?,?,?,NULL,?,?,?,?,?,?,?)",
-            (sid, t, row["expires_at"], salt, manage_h, upload_h, t, total, rid, creator))
+            "size_bytes, request_id) VALUES (?,?,?,NULL,?,?,?,?,?,?)",
+            (sid, t, row["expires_at"], salt, manage_h, upload_h, t, total, rid))
         items.insert_streams(conn, sid, streams)
     return {"id": sid, "upload_token": upload}
