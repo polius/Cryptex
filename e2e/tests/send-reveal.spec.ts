@@ -149,6 +149,8 @@ test('"Send another" starts without the last link\'s passphrase', async ({ brows
   await page.getByRole('button', { name: 'Create link' }).click();
   await expect(page.locator('.pass-ready')).toContainText('copper-lantern-river-42');
   await page.getByRole('link', { name: 'Send another' }).click();
+  // The passphrase is shown only here and wasn't copied: leaving asks first (S7).
+  await page.getByRole('alertdialog').getByRole('button', { name: 'Leave this page' }).click();
   await page.getByRole('button', { name: 'Change' }).click();
   await expect(page.getByRole('checkbox', { name: /Ask for a passphrase/ })).not.toBeChecked();
 });

@@ -304,8 +304,8 @@ test('Server tab: limits validate, branding shows to recipients, audit records i
   await expect(page.locator('table')).not.toContainText('brand canary');
 });
 
-test('members and visitors get the 404 page for the Server tab', async ({ browser }) => {
+test('visitors are sent to sign in from the Server tab, and come back after (M5)', async ({ browser }) => {
   const s = await stranger(browser);
-  await s.page.goto('/server');
-  await expect(s.page.getByRole('heading', { name: 'There’s nothing at this address' })).toBeVisible();
+  await s.page.goto('/server/limits');
+  await expect(s.page).toHaveURL(/\/signin\?next=%2Fserver%2Flimits$/);
 });
