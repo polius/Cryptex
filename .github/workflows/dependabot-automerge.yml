@@ -32,6 +32,12 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           safe=false
+          # Never unreviewed (D8): GitHub Actions run with the release secrets, and the crypto libraries are the format.
+          if [ "$ECOSYSTEM" = github_actions ] || jq -e 'any(.[]; .dependencyName | IN("cryptography", "argon2-cffi", "hash-wasm"))' <<<"$DEPS" >/dev/null; then
+            echo "ecosystem=$ECOSYSTEM safe=false (always reviewed)"
+            echo "safe=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           if [ "$ECOSYSTEM" = docker ]; then
             # Same image:tag before and after, only the @sha256 digest moved.
             from_lines=$(gh pr diff "$PR_URL" | grep -E '^[-+]FROM ' | sed -E 's/@sha256:[0-9a-f]+//') || true

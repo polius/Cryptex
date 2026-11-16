@@ -6,7 +6,7 @@ Every implementation (the browser worker, and any future client) must reproduce 
 
 ## 0. Goals and non-goals
 
-- The server stores only ciphertext, sizes, times and hashes of high-entropy tokens. It never sees contents, file names, titles, sender names, link keys or passphrases.
+- The server stores only ciphertext, sizes, times and hashes of high-entropy tokens. It never sees contents, file names, titles, link keys or passphrases. The format carries no sender name (§3.3); for a sender who is signed in, the server knows which account made the link, outside the format.
 - Holding a secret's ID authorizes nothing. Every operation needs a token derived from, or issued alongside, the link key.
 - Chunked uploads and downloads resist tampering, truncation, reordering and extension.
 - Non-goal: protecting against a malicious server operator who changes the JavaScript the server serves (see `threat-model.md`).
