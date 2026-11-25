@@ -5,17 +5,17 @@ description = "Blind secret sharing with end-to-end-encrypted links"
 requires-python = ">=3.12"
 license = "MIT"
 dependencies = [
-  "fastapi==0.162.4",
+  "fastapi==0.164.0",
   "uvicorn==0.54.0",
   "uvloop==0.23.0",
   "httptools==0.9.0",
   "cryptography==50.0.2",
   "argon2-cffi==25.1.0",
-  "pyotp==2.10.0",
+  "pyotp==2.12.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest==9.2.0", "httpx==0.28.1", "ruff==0.17.4", "mypy"]
+dev = ["pytest==9.2.0", "httpx==0.28.1", "ruff==0.17.5", "mypy"]
 
 [tool.setuptools]
 packages = ["cryptex", "cryptex.routes", "cryptex.migrations"]
