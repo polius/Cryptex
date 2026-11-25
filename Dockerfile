@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 # Cryptex: one uvicorn process serves the API and the web app. TLS terminates at a proxy in front (README.md).
 # Base images are pinned by digest (Dependabot updates both the tag and the digest).
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:a34ab6d7f6f4813f4d0c5469d74685604b962fbdbf5793a7bc7b4998ecb867c8 AS web
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS web
 WORKDIR /src/web
 COPY web/package.json web/package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -9,7 +9,7 @@ COPY docs/vectors.json /src/docs/
 COPY web/ ./
 RUN npm run build && node scripts/budget.mjs && rm -rf dist/.vite && node scripts/compress.mjs dist
 
-FROM python:3.15-alpine@sha256:a0f2e268f2ce8f3709611a90054ec6a8ae31f6251f5896b8648b9bb99835e30a
+FROM python:3.15-alpine@sha256:0f9552bb28711333da16915ec146f5e6bb44a7fdac9ced15dc17c2e0206346dd
 WORKDIR /app
 COPY api/requirements.txt ./
 # The server runs as cryptex (UID 10001). docker-entrypoint.sh starts as root only to hand it the data folder; the
